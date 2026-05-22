@@ -1,0 +1,4 @@
+interface:
+  display_name: "Enterprise Data Ecosystems"
+  short_description: "Build realistic local enterprise data ecosystems with SQLite, synthetic data, validation, and optional dashboards."
+  default_prompt: "Use $agent-skill-enterprise-data-ecosystems to design and build a realistic fictional enterprise data ecosystem with systems, schemas, dataflows, controls, governance, a populated local SQLite database, executable validation, and an optional dashboard."
