@@ -7,6 +7,11 @@
    content hashes — every table must match.
 3. Runs the database validator in --strict mode (zero critical AND zero warnings).
 4. Runs the profiler to confirm it executes.
+5. Rebuilds with high-rate copy-style imperfections (duplicate_entity,
+   duplicate_webhook, restatement_reversal) appended to one integer-PK table —
+   thousands of synthetic PKs per stream. Guards the collision-free allocator:
+   random draws from the old 1e6-wide range birthday-collide at this volume and
+   crash the build with a UNIQUE constraint failure.
 
 Usage:
   python run_self_test.py [--spec path] [--keep] [--scale-multiplier 1.0]
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import sqlite3
@@ -81,14 +87,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Self-test workspace: {tmp}")
     try:
         # 1. Spec validation
-        print("\n[1/4] validate_ecosystem_spec.py ...")
+        print("\n[1/5] validate_ecosystem_spec.py ...")
         result = run([sys.executable, str(SCRIPTS / "validate_ecosystem_spec.py"), str(args.spec)])
         print(result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "(no output)")
         if result.returncode != 0:
             failures.append(f"spec validation failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}")
 
         # 2. Deterministic double build with different hash seeds
-        print("\n[2/4] double build with PYTHONHASHSEED 1 vs 2 ...")
+        print("\n[2/5] double build with PYTHONHASHSEED 1 vs 2 ...")
         builds = []
         for i, hash_seed in enumerate(("1", "2")):
             out_dir = tmp / f"build{i}"
@@ -118,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # 3. Strict database validation
         if builds:
-            print("\n[3/4] validate_sqlite_database.py --strict ...")
+            print("\n[3/5] validate_sqlite_database.py --strict ...")
             result = run([sys.executable, str(SCRIPTS / "validate_sqlite_database.py"),
                           "--db", str(builds[0]), "--spec", str(args.spec), "--strict"])
             verdict_lines = [l for l in result.stdout.splitlines() if l.startswith("## Verdict") or "Realism score" in l]
@@ -131,13 +137,75 @@ def main(argv: list[str] | None = None) -> int:
                                     if l.startswith("- **")) + f"\n{result.stderr}")
 
             # 4. Profiler smoke
-            print("\n[4/4] profile_sqlite_database.py ...")
+            print("\n[4/5] profile_sqlite_database.py ...")
             result = run([sys.executable, str(SCRIPTS / "profile_sqlite_database.py"),
                           "--db", str(builds[0]), "--report", str(tmp / "profile.md")])
             if result.returncode != 0:
                 failures.append(f"profiler failed (exit {result.returncode}):\n{result.stderr}")
             else:
                 print("profiler OK")
+
+        # 5. High-volume copy-imperfection PK regression: every copy-style
+        # injector must allocate collision-free synthetic integer PKs. Rates are
+        # chosen so each sentinel range (80M dup-entity, 85M dup-webhook,
+        # 70M/75M restatement) receives thousands of new PKs — the volume at
+        # which the pre-allocator random draw collided with ~99% probability.
+        print("\n[5/5] high-volume copy-imperfection PK regression ...")
+        if args.spec.resolve() != DEFAULT_SPEC.resolve():
+            print("skipped: regression targets a table of the default example spec")
+        else:
+            target = "erp.sales_order_line"
+            spec_data = json.loads(args.spec.read_text(encoding="utf-8"))
+            spec_data.setdefault("imperfections", []).extend([
+                {"name": "regress_pk_duplicate_entity", "type": "duplicate_entity",
+                 "table": target, "rate": 0.3, "stage": "post_derivation"},
+                {"name": "regress_pk_duplicate_webhook", "type": "duplicate_webhook",
+                 "table": target, "rate": 0.25, "stage": "post_derivation"},
+                {"name": "regress_pk_restatement", "type": "restatement_reversal",
+                 "table": target, "rate": 0.15, "stage": "post_derivation"},
+            ])
+            schema_name, _, table_name = target.partition(".")
+            table_entry = next(t for t in spec_data["tables"]
+                               if t["schema"] == schema_name and t["name"] == table_name)
+            pk_column = table_entry["primary_key"][0]
+            reg_spec = tmp / "regression_spec.json"
+            reg_spec.write_text(json.dumps(spec_data), encoding="utf-8")
+            out_dir = tmp / "build_regression"
+            # Fixed scale (not args.scale_multiplier) so the volume thresholds hold.
+            result = run([sys.executable, str(SCRIPTS / "build_sqlite_ecosystem.py"), str(reg_spec),
+                          "--out", str(out_dir), "--scale-multiplier", "0.3", "--force", "--quiet"])
+            db_files = list(out_dir.glob("*.db")) if result.returncode == 0 else []
+            if result.returncode != 0 or not db_files:
+                failures.append("PK regression build failed — synthetic-PK collision is back? "
+                                f"(exit {result.returncode}):\n{result.stdout[-2000:]}\n{result.stderr[-2000:]}")
+            else:
+                conn = sqlite3.connect(f"file:{db_files[0].as_posix()}?mode=ro", uri=True)
+                try:
+                    copy_counts = dict(conn.execute(
+                        "select imperfection_name, count(*) from meta_imperfection_log "
+                        "where imperfection_name like 'regress_pk_%' group by 1"))
+                    physical = target.replace(".", "_")
+                    pk_dupes = conn.execute(
+                        f'select count(*) - count(distinct "{pk_column}") from "{physical}"').fetchone()[0]
+                finally:
+                    conn.close()
+                # restatement inserts two rows (reversal + restated) per sampled PK,
+                # one per sentinel range, so it needs double the floor.
+                volume_floor = {"regress_pk_duplicate_entity": 3000,
+                                "regress_pk_duplicate_webhook": 3000,
+                                "regress_pk_restatement": 6000}
+                thin = {n: copy_counts.get(n, 0) for n, floor in volume_floor.items()
+                        if copy_counts.get(n, 0) < floor}
+                if thin:
+                    failures.append(f"PK regression volume too low to prove anything: {thin} — "
+                                    "raise rates or table size so each stream stays past the "
+                                    "birthday-collision threshold of the old allocator")
+                elif pk_dupes:
+                    failures.append(f"PK regression: {pk_dupes} duplicate values of "
+                                    f"{physical}.{pk_column} after copy imperfections")
+                else:
+                    print(f"PK regression OK: {sum(copy_counts.values())} synthetic-PK copies "
+                          f"on {target}, all {pk_column} values unique")
     finally:
         if args.keep:
             print(f"\nKeeping workspace: {tmp}")
@@ -150,7 +218,8 @@ def main(argv: list[str] | None = None) -> int:
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("SELF-TEST PASSED: spec valid, deterministic across hash seeds, strict validation green, profiler OK.")
+    print("SELF-TEST PASSED: spec valid, deterministic across hash seeds, strict validation green, "
+          "profiler OK, PK regression green.")
     return 0
 
 

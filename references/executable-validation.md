@@ -58,4 +58,4 @@ The report leads with a verdict, then: critical findings, warnings, failed reali
 - `1`: critical findings (or, with `--strict`, any warning or failed realism signature)
 - `2`: usage/configuration error
 
-`scripts/run_self_test.py` runs the spec validator, a double build across different `PYTHONHASHSEED` values (logical per-table hashes must match), strict database validation, and the profiler. Run it whenever engine behavior is in doubt.
+`scripts/run_self_test.py` runs the spec validator, a double build across different `PYTHONHASHSEED` values (logical per-table hashes must match), strict database validation, the profiler, and a high-volume copy-imperfection regression (thousands of synthetic integer PKs on one table must insert collision-free). Run it whenever engine behavior is in doubt.
