@@ -1,4 +1,4 @@
 interface:
   display_name: "Enterprise Data Ecosystems"
-  short_description: "Build realistic local enterprise data ecosystems with SQLite, synthetic data, validation, and optional dashboards."
-  default_prompt: "Use $agent-skill-enterprise-data-ecosystems to design and build a realistic fictional enterprise data ecosystem with systems, schemas, dataflows, controls, governance, a populated local SQLite database, executable validation, and an optional dashboard."
+  short_description: "Build realistic local enterprise data ecosystems: author a spec JSON, then a deterministic engine generates a populated SQLite database with real lineage, controlled imperfections, executable validation, and a realism scorecard."
+  default_prompt: "Use $agent-skill-enterprise-data-ecosystems to design and build a realistic fictional enterprise data ecosystem: author an ecosystem spec, build it with scripts/build_sqlite_ecosystem.py, validate with scripts/validate_sqlite_database.py, and report the validation verdict, realism score, and known controlled imperfections."

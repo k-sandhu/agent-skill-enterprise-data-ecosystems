@@ -158,6 +158,12 @@ Columns matching none of these do NOT error — they fall through to generic typ
 // choice object forms (weights optional): {"type": "choice", "values": ["a","b"], "weights": [0.8, 0.2]}
 // or values as [{"value": "a", "weight": 0.8}, ...]
 // company_name with "unique": true de-duplicates (city-suffix disambiguation), for entity name columns
+// company_name with "chain_pool": N draws from N shared brands with numbered locations
+// ("Cedar Point Cantina #3") — use for chain segments so multi-location accounts share a brand
+
+// B2B account emails: role/proprietor addresses on a company-derived example.com subdomain
+// (orders@cedar-point-cantina.example.com — RFC 2606 keeps subdomains fictional-safe):
+{"type": "business_email", "company_column": "account_name", "roles": ["orders", "ap", "info"], "role_share": 0.55}
 
 // Per-parent tables: "parent_key", {"type": "parent_copy", "source_column": "x"}, "child_index"
 // Self-referencing hierarchy: {"type": "self_fk", "root_share": 0.25}

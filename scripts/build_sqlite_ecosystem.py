@@ -773,7 +773,7 @@ GENERATOR_TYPES = [
     "choice", "boolean", "int", "number", "money", "date", "timestamp",
     "date_offset", "fk", "fk_copy", "self_fk", "parent_key", "parent_copy",
     "child_index", "person_first", "person_last", "person_full", "email",
-    "phone", "username", "job_title", "company_name", "addr_street",
+    "business_email", "phone", "username", "job_title", "company_name", "addr_street",
     "addr_city", "addr_region", "addr_postal", "addr_full", "identifier",
     "text_template", "lorem_note", "staff_user", "table_source_system",
     "batch_id", "auto_created_at", "auto_updated_at", "auto_ingested_at",
@@ -1040,6 +1040,8 @@ class TableGenerator:
         self.own_pks: list[Any] = []
         self.track_own_pks = any((c.get("gen") or {}).get("type") == "self_fk" for c in tbl.columns)
         self.sorted_pools: dict[str, list[Any]] = {}
+        self.chain_pools: dict[str, list[str]] = {}
+        self.chain_counts: dict[str, dict[str, int]] = {}
 
     def rng_for(self, purpose: str) -> random.Random:
         if purpose not in self.rngs:
@@ -1284,6 +1286,25 @@ class TableGenerator:
             domain = gen.get("domain")
             persona = self.persona(row_state, rng)
             return f"{persona['user']}@{domain}" if domain else persona["email"]
+        if gtype == "business_email":
+            # Role or proprietor address on a company-derived subdomain of
+            # example.com — RFC 2606 keeps every subdomain provably fictional.
+            company_col = gen.get("company_column")
+            if company_col not in row:
+                raise SpecError(f"{where}: business_email.company_column '{company_col}' must be an "
+                                f"earlier column.{suggest(str(company_col), list(row))}")
+            company = row.get(company_col)
+            if company is None:
+                return None
+            slug = re.sub(r"[^a-z0-9]+", "-", str(company).lower()).strip("-")[:32].strip("-")
+            slug = re.sub(r"-?\d+$", "", slug).strip("-") or "company"  # chain locations share a brand domain
+            roles = gen.get("roles", ["orders", "ap", "info", "office", "manager"])
+            if rng.random() < float(gen.get("role_share", 0.55)):
+                local = str(rng.choice(roles))
+            else:
+                persona = self.persona(row_state, rng)
+                local = re.sub(r"[^a-z]", "", persona["first"].lower()) or "owner"
+            return f"{local}@{slug}.example.com"
         if gtype == "username":
             return self.persona(row_state, rng)["user"]
         if gtype == "phone":
@@ -1297,6 +1318,27 @@ class TableGenerator:
             tails = COMPANY_FLAVORS.get(flavor)
             if tails is None:
                 raise SpecError(f"{where}: unknown company flavor '{flavor}'.{suggest(flavor, list(COMPANY_FLAVORS))}")
+            chain_pool = int(gen.get("chain_pool", 0))
+            if chain_pool:
+                # Multi-location chains: a small pool of shared brands, each row a
+                # numbered location ("Cedar Point Cantina #3"). Unique by construction.
+                pool = self.chain_pools.get(name)
+                if pool is None:
+                    pool_rng = substream(self.ctx.seed, self.tbl.key, "chainpool", name)
+                    brands: list[str] = []
+                    seen_brands: set = set()
+                    while len(brands) < chain_pool:
+                        brand = f"{pool_rng.choice(COMPANY_HEADS)} {pool_rng.choice(tails)}"
+                        if brand not in seen_brands:
+                            seen_brands.add(brand)
+                            brands.append(brand)
+                    pool = brands
+                    self.chain_pools[name] = pool
+                    self.chain_counts[name] = {}
+                brand = pool[rng.randrange(len(pool))]
+                counts = self.chain_counts[name]
+                counts[brand] = counts.get(brand, 0) + 1
+                return f"{brand} #{counts[brand]}"
             value = f"{rng.choice(COMPANY_HEADS)} {rng.choice(tails)}"
             if gen.get("unique"):
                 seen = self.unique_seen.setdefault(name, set())
