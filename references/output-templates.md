@@ -63,17 +63,15 @@ Use when the user wants a local, portable, populated ecosystem.
 1. Discovery assumptions
 2. Approved package
 3. Folder structure
-4. SQLite DDL files
-5. SQL flow files or views
-6. Deterministic data generator
-7. Populated database path
-8. Validation scripts
-9. Validation report
-10. Profile summary
-11. Optional dashboard
-12. Run commands
-13. Known controlled imperfections
-14. Recommended next iterations
+4. Ecosystem spec path (the authored artifact)
+5. SQLite DDL artifacts (sqlite/01_schema.sql .. 04_views.sql)
+6. Populated database path + build_summary.json (row counts, seed, multiplier)
+7. Validation report path + verdict + realism score
+8. Profile summary path
+9. Optional dashboard
+10. Run commands (validate spec -> plan -> build -> validate db -> profile)
+11. Known controlled imperfections (from meta_imperfection_log, with scenarios)
+12. Recommended next iterations
 ```
 
 ## Delegation Plan

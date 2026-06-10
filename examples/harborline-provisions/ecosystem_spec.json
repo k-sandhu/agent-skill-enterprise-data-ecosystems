@@ -1,0 +1,807 @@
+{
+  "_note": "Worked example: Harborline Provisions, a fictional regional foodservice distributor. This spec is the primary teaching artifact for the build engine — it exercises shorthand generators, inference, traits, per_parent rows, fk affinity matching, state machines, SQL derivations (real lineage), views, and logged imperfections. Keys starting with '_' are comments and are stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Harborline Provisions",
+    "archetype": "foodservice_distribution",
+    "industry": "Foodservice distribution",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 7,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "weekday_weights": [1.05, 1.1, 1.05, 1.0, 0.95, 0.45, 0.1],
+    "month_weights": [1.0, 0.98, 1.02, 1.0, 1.04, 1.06, 1.05, 1.04, 1.02, 1.03, 1.08, 0.95],
+    "holidays": ["2024-01-01", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-07-04", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.07,
+    "business_hours": [7, 18]
+  },
+  "vocab": {
+    "food_product": [
+      "Diced Tomatoes", "Chicken Breast", "Extra Virgin Olive Oil", "Cheddar Block",
+      "Romaine Hearts", "Ground Beef 80/20", "Basmati Rice", "Black Beans",
+      "Mozzarella Shred", "Pork Loin", "Atlantic Salmon Fillet", "Penne Pasta",
+      "Marinara Sauce", "Russet Potatoes", "Yellow Onions", "Heavy Cream",
+      "Unsalted Butter", "Maple Syrup", "Whole Bean Coffee", "Orange Juice",
+      "Flour Tortillas 10in", "Applewood Bacon", "Turkey Breast", "Greek Yogurt",
+      "Spring Mix", "Jasmine Rice", "Panko Breadcrumbs", "Avocado Oil",
+      "Provolone Sliced", "Brioche Buns"
+    ],
+    "pack_size": ["6/10 LB", "12/1 LB", "25 LB BAG", "4/5 LB", "CASE", "2/5 GAL", "24 CT", "10 LB AVG"]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "OrchardCRM", "2": "LedgerWorks ERP", "3": "BinWise WMS", "4": "RouteRunner TMS", "5": "PricePoint Hub", "6": "Harborline Data Warehouse", "7": "FlowBridge Integration", "8": "Insight BI Portal"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "CRM", "2": "ERP", "3": "WMS", "4": "TMS", "5": "pricing", "6": "warehouse", "7": "integration", "8": "BI"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "customer", "2": "orders/finance", "3": "inventory", "4": "delivery", "5": "contract pricing", "6": "reporting", "7": "integration", "8": "dashboards"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.5,tier2=0.4,tier3=0.1"},
+        {"name": "contains_pii_flag", "type": "boolean", "gen": "bool:0.5"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "CRM is the customer system of record. created_at is sorted so account IDs correlate with onboarding date, like a real sequence-keyed table.",
+      "schema": "crm", "name": "account", "layer": "source",
+      "purpose": "CRM customer accounts (restaurants, institutions, chains).",
+      "source_system": "OrchardCRM",
+      "primary_key": ["account_id"], "natural_key": ["account_code"],
+      "rows": 650, "traits": ["audited"],
+      "indexes": [["segment"], ["sales_region"]],
+      "columns": [
+        {"name": "account_id", "type": "integer"},
+        {"name": "account_code", "type": "string", "gen": {"type": "pattern", "pattern": "ACCT-#####", "unique": true}},
+        {"name": "account_name", "type": "string", "gen": "company:restaurant"},
+        {"name": "segment", "type": "string", "gen": "choice:independent=0.55,regional_chain=0.25,institution=0.12,national_chain=0.08"},
+        {"name": "sales_region", "type": "string", "gen": "choice:Northeast=0.3,Southeast=0.27,Midwest=0.25,West=0.18"},
+        {"name": "street_address", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "phone", "type": "string"},
+        {"name": "email", "type": "string", "null_rate": 0.07},
+        {"name": "credit_terms", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"independent": {"type": "choice", "values": ["NET14", "NET30", "COD"], "weights": [0.3, 0.45, 0.25]}, "regional_chain": {"type": "choice", "values": ["NET30", "NET45"], "weights": [0.7, 0.3]}, "institution": "NET45", "national_chain": "NET60"}}},
+        {"name": "status", "type": "string", "gen": "choice:active=0.84,inactive=0.12,prospect=0.04"},
+        {"name": "created_at", "type": "timestamp", "_note": "sorted: account IDs correlate with onboarding order; backfill: 65% of accounts predate the data window (tenured book), so in-window volume grows ~7%/yr instead of ramping from zero.", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.65, "backfill_start": "2019-01-01"}}
+      ]
+    },
+    {
+      "_note": "ERP customer is generated 1:1 per CRM account (parent_copy keeps attributes coherent across systems); imperfections later make the two systems disagree realistically.",
+      "schema": "erp", "name": "customer", "layer": "source",
+      "purpose": "ERP customer master, fed from CRM but maintained separately.",
+      "source_system": "LedgerWorks ERP",
+      "primary_key": ["customer_id"], "natural_key": ["customer_code"],
+      "rows": {"per_parent": "crm.account", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
+      "traits": ["audited", "source_stamped"],
+      "columns": [
+        {"name": "customer_id", "type": "integer", "gen": "seq"},
+        {"name": "customer_code", "type": "string", "gen": {"type": "pattern", "pattern": "C######", "unique": true}},
+        {"name": "crm_account_id", "type": "integer", "gen": "parent_key"},
+        {"name": "customer_name", "type": "string", "gen": {"type": "parent_copy", "source_column": "account_name"}},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "sales_region", "type": "string", "gen": {"type": "parent_copy", "source_column": "sales_region"}},
+        {"name": "credit_terms", "type": "string", "gen": {"type": "parent_copy", "source_column": "credit_terms"}},
+        {"name": "credit_limit", "type": "decimal", "gen": {"type": "case", "on": "segment", "cases": {"independent": {"type": "money", "median": 8000, "sigma": 0.6, "decimals": 0}, "regional_chain": {"type": "money", "median": 40000, "sigma": 0.5, "decimals": 0}, "institution": {"type": "money", "median": 60000, "sigma": 0.4, "decimals": 0}, "national_chain": {"type": "money", "median": 150000, "sigma": 0.4, "decimals": 0}}}},
+        {"name": "tax_id_surrogate", "type": "string", "gen": "pattern:TAX-#######"},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "days", "offset": {"distribution": "lognormal", "median": 3, "sigma": 1.0, "max": 60}}}
+      ]
+    },
+    {
+      "schema": "erp", "name": "product", "layer": "source",
+      "purpose": "Product master with cost and tiered list pricing.",
+      "source_system": "LedgerWorks ERP",
+      "primary_key": ["product_id"], "natural_key": ["sku"],
+      "rows": 350, "traits": ["audited"],
+      "columns": [
+        {"name": "product_id", "type": "integer"},
+        {"name": "sku", "type": "string", "gen": {"type": "pattern", "pattern": "SKU-#####", "unique": true}},
+        {"name": "product_name", "type": "string", "gen": {"type": "text_template", "templates": ["{food_product}", "{food_product} {pack_size}"]}},
+        {"name": "category", "type": "string", "gen": "choice:protein=0.24,produce=0.18,dairy=0.14,dry_goods=0.2,frozen=0.12,beverage=0.07,disposables=0.05"},
+        {"name": "storage_zone", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"frozen": "freezer", "dairy": "cooler", "produce": "cooler", "protein": "cooler"}, "default": "dry"}},
+        {"name": "gtin", "type": "string", "gen": "identifier:gtin13"},
+        {"name": "unit_cost", "type": "decimal", "gen": "money:lognormal(median=28,sigma=0.7)"},
+        {"name": "markup_class", "type": "string", "gen": "choice:standard=0.6,premium=0.25,value=0.15"},
+        {"name": "list_price", "type": "decimal", "gen": {"type": "case", "on": "markup_class", "cases": {"standard": {"type": "expression", "expression": "round(unit_cost * 1.32, 2)"}, "premium": {"type": "expression", "expression": "round(unit_cost * 1.45, 2)"}, "value": {"type": "expression", "expression": "round(unit_cost * 1.18, 2)"}}}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.91"}
+      ]
+    },
+    {
+      "_note": "Exactly 4 warehouses, one per region, so fk affinity matching on region has full coverage.",
+      "schema": "wms", "name": "warehouse", "layer": "source",
+      "purpose": "Distribution centers.",
+      "source_system": "BinWise WMS",
+      "primary_key": ["warehouse_id"], "rows": 4, "scale_exempt": true,
+      "columns": [
+        {"name": "warehouse_id", "type": "integer"},
+        {"name": "warehouse_code", "type": "string", "gen": {"type": "case", "on": "warehouse_id", "cases": {"1": "DC-NE", "2": "DC-SE", "3": "DC-MW", "4": "DC-W"}}},
+        {"name": "region", "type": "string", "gen": {"type": "case", "on": "warehouse_id", "cases": {"1": "Northeast", "2": "Southeast", "3": "Midwest", "4": "West"}}},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "dock_doors", "type": "integer", "gen": "int:uniform(12,40)"}
+      ]
+    },
+    {
+      "schema": "pricing", "name": "contract", "layer": "source",
+      "purpose": "Customer pricing contracts (chains and institutions).",
+      "source_system": "PricePoint Hub",
+      "primary_key": ["contract_id"], "rows": 140, "traits": ["audited", "effective_dated"],
+      "columns": [
+        {"name": "contract_id", "type": "integer"},
+        {"name": "contract_number", "type": "string", "gen": {"type": "pattern", "pattern": "PC-2#-####", "unique": true}},
+        {"name": "account_id", "type": "integer", "gen": "fk:crm.account@zipf"},
+        {"name": "status", "type": "string", "gen": "choice:active=0.78,expired=0.16,draft=0.06"}
+      ]
+    },
+    {
+      "schema": "pricing", "name": "contract_line", "layer": "source",
+      "purpose": "Contracted price per product; discount off list.",
+      "source_system": "PricePoint Hub",
+      "primary_key": ["contract_line_id"],
+      "rows": {"per_parent": "pricing.contract", "distribution": {"distribution": "poisson", "lam": 9}, "min": 1, "max": 30},
+      "columns": [
+        {"name": "contract_line_id", "type": "integer", "gen": "seq"},
+        {"name": "contract_id", "type": "integer", "gen": "parent_key"},
+        {"name": "product_id", "type": "integer", "gen": "fk:erp.product@zipf"},
+        {"name": "list_price_snapshot", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "erp.product", "source_column": "list_price"}},
+        {"name": "contract_price", "type": "decimal", "gen": {"type": "expression", "expression": "round(list_price_snapshot * 0.92, 2)"}}
+      ]
+    },
+    {
+      "_note": "Orders flow through a right-censored state machine: orders near the as_of date are legitimately stuck mid-pipeline. Warehouse assignment uses affinity matching on region with a 5% leak.",
+      "schema": "erp", "name": "sales_order", "layer": "transaction",
+      "purpose": "Sales order headers.", "grain": "one row per customer order",
+      "source_system": "LedgerWorks ERP",
+      "primary_key": ["order_id"], "natural_key": ["order_number"],
+      "rows": {"per_parent": "erp.customer", "distribution": {"distribution": "lognormal", "median": 6, "sigma": 1.1}, "min": 0, "max": 60},
+      "traits": ["audited"],
+      "indexes": [["customer_id"], ["order_date"], ["status"]],
+      "columns": [
+        {"name": "order_id", "type": "integer", "gen": "seq"},
+        {"name": "order_number", "type": "string", "gen": {"type": "pattern", "pattern": "SO-#######", "unique": true}},
+        {"name": "customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "crm_account_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "crm_account_id"}},
+        {"name": "region", "type": "string", "gen": {"type": "parent_copy", "source_column": "sales_region"}},
+        {"name": "warehouse_id", "type": "integer", "gen": {"type": "fk", "ref": "wms.warehouse", "match": {"parent_column": "region", "local_column": "region", "leak_rate": 0.05}}},
+        {"name": "channel", "type": "string", "gen": "choice:rep=0.52,online=0.31,phone=0.17"},
+        {"name": "order_date", "type": "date", "_note": "Calendar-weighted date bounded by the customer's onboarding date: weekday/seasonality shape AND no orders before the customer existed. Use date_offset only for short process lags, never long activity windows (clamping piles rows onto the as_of date).", "gen": {"type": "date", "min": "parent.created_at"}},
+        {"name": "requested_delivery_date", "type": "date", "gen": {"type": "date_offset", "from": "order_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 2, "sigma": 0.5, "min": 1, "max": 10}, "business_days": true, "clamp_as_of": false, "as": "date"}},
+        {"name": "status", "type": "string", "gen": "const:draft"},
+        {"name": "submitted_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "shipped_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "invoiced_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "paid_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "manual_override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "erp", "name": "sales_order_event", "layer": "event",
+      "purpose": "Order status history emitted by the state machine.",
+      "grain": "one row per order per state entered",
+      "source": "state_machine",
+      "primary_key": ["order_id", "event_seq"],
+      "indexes": [["order_id"]],
+      "columns": [
+        {"name": "order_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "erp", "name": "sales_order_line", "layer": "transaction",
+      "purpose": "Order lines priced from the product list with contract/street mix.",
+      "grain": "one row per order per line number",
+      "source_system": "LedgerWorks ERP",
+      "primary_key": ["order_line_id"], "natural_key": ["order_id", "line_number"],
+      "rows": {"per_parent": "erp.sales_order", "distribution": {"distribution": "lognormal", "median": 4.5, "sigma": 0.7}, "min": 1, "max": 40},
+      "indexes": [["order_id"], ["product_id"]],
+      "columns": [
+        {"name": "order_line_id", "type": "integer", "gen": "seq"},
+        {"name": "order_id", "type": "integer", "gen": "parent_key"},
+        {"name": "line_number", "type": "integer", "gen": "child_index"},
+        {"name": "product_id", "type": "integer", "gen": "fk:erp.product@zipf"},
+        {"name": "quantity", "type": "integer", "gen": "int:lognormal(median=5,sigma=0.9,min=1,max=200)"},
+        {"name": "list_price", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "erp.product", "source_column": "list_price"}},
+        {"name": "price_source", "type": "string", "gen": "choice:contract=0.44,street=0.56"},
+        {"name": "unit_price", "type": "decimal", "gen": {"type": "case", "on": "price_source", "cases": {"contract": {"type": "expression", "expression": "round(list_price * 0.92, 2)"}, "street": {"type": "expression", "expression": "round(list_price, 2)"}}}},
+        {"name": "extended_amount", "type": "decimal", "gen": "expr:round(quantity * unit_price, 2)"}
+      ]
+    },
+    {
+      "schema": "wms", "name": "inventory_lot", "layer": "operational",
+      "purpose": "Received lots with expiry for perishables.",
+      "source_system": "BinWise WMS",
+      "primary_key": ["lot_id"],
+      "rows": {"per_parent": "erp.product", "distribution": {"distribution": "poisson", "lam": 4}, "min": 1, "max": 12},
+      "columns": [
+        {"name": "lot_id", "type": "integer", "gen": "seq"},
+        {"name": "product_id", "type": "integer", "gen": "parent_key"},
+        {"name": "warehouse_id", "type": "integer", "gen": "fk:wms.warehouse"},
+        {"name": "lot_code", "type": "string", "gen": "pattern:LOT-@@######"},
+        {"name": "received_date", "type": "date"},
+        {"name": "expiry_date", "type": "date", "gen": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 90, "sigma": 0.5, "min": 7, "max": 540}, "clamp_as_of": false, "as": "date"}},
+        {"name": "qty_received", "type": "integer", "gen": "int:lognormal(median=80,sigma=0.6,min=5,max=2000)"},
+        {"name": "lot_status", "type": "string", "gen": "choice:available=0.55,depleted=0.34,expired=0.08,quality_hold=0.03"}
+      ]
+    },
+    {
+      "schema": "tms", "name": "route", "layer": "operational",
+      "purpose": "Daily delivery routes per DC.",
+      "source_system": "RouteRunner TMS",
+      "primary_key": ["route_id"], "rows": 900,
+      "columns": [
+        {"name": "route_id", "type": "integer"},
+        {"name": "route_code", "type": "string", "gen": "pattern:RT-####-@@"},
+        {"name": "warehouse_id", "type": "integer", "gen": "fk:wms.warehouse"},
+        {"name": "route_date", "type": "date"},
+        {"name": "driver_name", "type": "string", "gen": "person_full"},
+        {"name": "truck_number", "type": "string", "gen": "pattern:TRK-###"}
+      ]
+    },
+    {
+      "schema": "tms", "name": "delivery_stop", "layer": "event",
+      "purpose": "Stops with proof-of-delivery notes.",
+      "grain": "one row per route per stop sequence",
+      "source_system": "RouteRunner TMS",
+      "primary_key": ["stop_id"],
+      "rows": {"per_parent": "tms.route", "distribution": {"distribution": "poisson", "lam": 13}, "min": 4, "max": 28},
+      "indexes": [["route_id"], ["order_id"]],
+      "columns": [
+        {"name": "stop_id", "type": "integer", "gen": "seq"},
+        {"name": "route_id", "type": "integer", "gen": "parent_key"},
+        {"name": "stop_sequence", "type": "integer", "gen": "child_index"},
+        {"name": "order_id", "type": "integer", "gen": "fk:erp.sales_order@recency"},
+        {"name": "arrival_time", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.route_date", "max": "parent.route_date"}},
+        {"name": "stop_status", "type": "string", "gen": "choice:delivered=0.9,partial=0.05,refused=0.02,not_home=0.03"},
+        {"name": "pod_note", "type": "string", "null_rate": 0.25, "gen": "text:delivery_note"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case", "layer": "workflow",
+      "purpose": "Exception and review queues.",
+      "source_system": "FlowBridge Integration",
+      "primary_key": ["case_id"], "rows": 130, "traits": ["audited"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-#####", "unique": true}},
+        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.22,recon_break=0.26,failed_delivery=0.2,credit_hold=0.17,data_correction=0.15"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "recon_break": "finance_controls", "failed_delivery": "ops_exceptions", "credit_hold": "credit_desk", "data_correction": "data_stewards"}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.3,medium=0.5,high=0.2"},
+        {"name": "related_entity", "type": "string", "gen": "pattern:ENT-######"},
+        {"name": "status", "type": "string", "gen": "const:open"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case_event", "layer": "workflow",
+      "purpose": "Case status history.",
+      "source": "state_machine",
+      "primary_key": ["case_id", "event_seq"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "audit", "name": "change_event", "layer": "audit",
+      "purpose": "Field-level change history on CRM accounts.",
+      "rows": {"per_parent": "crm.account", "distribution": {"distribution": "poisson", "lam": 2}, "max": 12},
+      "primary_key": ["change_id"],
+      "columns": [
+        {"name": "change_id", "type": "integer", "gen": "seq"},
+        {"name": "account_id", "type": "integer", "gen": "parent_key"},
+        {"name": "field_name", "type": "string", "gen": "choice:credit_terms=0.2,phone=0.2,email=0.25,status=0.15,sales_region=0.05,account_name=0.15"},
+        {"name": "old_value", "type": "string", "gen": "pattern:?????????"},
+        {"name": "new_value", "type": "string", "gen": "pattern:?????????"},
+        {"name": "changed_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "changed_by", "type": "string", "gen": "staff_user"},
+        {"name": "change_note", "type": "string", "null_rate": 0.6, "gen": "text:audit_comment"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Batch job run log.",
+      "primary_key": ["run_id"], "rows": 700,
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": "choice:crm_account_extract=0.2,erp_order_load=0.25,wms_inventory_sync=0.2,tms_pod_import=0.15,warehouse_refresh=0.2"},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=4000,sigma=1.0,min=0)"},
+        {"name": "error_note", "type": "string", "null_rate": 0.85, "gen": "text:exception_note"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq.rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 4, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active account missing email", "2": "order line references unknown product", "3": "erp customer missing xref mapping", "4": "unparseable raw account date"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.account", "2": "erp.sales_order_line", "3": "xref.entity_identifier", "4": "raw.crm_account_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "_note": "Everything below is populated by SQL derivations from the source tables above — real lineage, not parallel-faked data.",
+      "schema": "raw", "name": "crm_account_extract", "layer": "raw",
+      "purpose": "Nightly CRM extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["account_id"],
+      "columns": [
+        {"name": "account_id", "type": "string"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "source_created_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "crm_account", "layer": "staging",
+      "purpose": "Cleaned CRM accounts; normalizes raw extract dates.",
+      "source": "derivation", "primary_key": ["account_id"],
+      "columns": [
+        {"name": "account_id", "type": "integer"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "created_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "xref", "name": "entity_identifier", "layer": "xref",
+      "purpose": "Source-system identifier crosswalk for canonical customers.",
+      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "columns": [
+        {"name": "entity_identifier_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_entity_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "customer", "layer": "canonical",
+      "purpose": "Canonical customer joining CRM and ERP through the crosswalk.",
+      "source": "derivation", "primary_key": ["customer_uid"],
+      "columns": [
+        {"name": "customer_uid", "type": "integer"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "erp_customer_id", "type": "integer", "nullable": true}
+      ]
+    },
+    {
+      "schema": "core", "name": "product", "layer": "canonical",
+      "purpose": "Canonical product.",
+      "source": "derivation", "primary_key": ["product_uid"],
+      "columns": [
+        {"name": "product_uid", "type": "integer"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"},
+        {"name": "storage_zone", "type": "string"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "erp", "name": "invoice", "layer": "transaction",
+      "purpose": "Invoices derived from invoiced orders (1:1 with order).",
+      "grain": "one row per invoiced order",
+      "source": "derivation", "primary_key": ["invoice_id"],
+      "indexes": [["customer_id"], ["invoice_status"]],
+      "columns": [
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "due_date", "type": "date"},
+        {"name": "invoice_total", "type": "decimal"},
+        {"name": "invoice_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "erp", "name": "invoice_line", "layer": "transaction",
+      "purpose": "Invoice lines copied from order lines at invoicing.",
+      "grain": "one row per invoice per line",
+      "source": "derivation", "primary_key": ["invoice_line_id"],
+      "indexes": [["invoice_id"], ["product_id"]],
+      "columns": [
+        {"name": "invoice_line_id", "type": "integer"},
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "line_number", "type": "integer"},
+        {"name": "product_id", "type": "integer"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "extended_amount", "type": "decimal"},
+        {"name": "line_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "erp", "name": "payment", "layer": "transaction",
+      "purpose": "Payments against paid invoices.",
+      "grain": "one row per payment",
+      "source": "derivation", "primary_key": ["payment_id"],
+      "indexes": [["invoice_id"]],
+      "columns": [
+        {"name": "payment_id", "type": "string"},
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "payment_date", "type": "date"},
+        {"name": "payment_amount", "type": "decimal"},
+        {"name": "payment_method", "type": "string"},
+        {"name": "reference_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_customer", "layer": "warehouse_dimension",
+      "purpose": "Customer dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["customer_key"],
+      "columns": [
+        {"name": "customer_key", "type": "integer"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_product", "layer": "warehouse_dimension",
+      "purpose": "Product dimension.",
+      "source": "derivation", "primary_key": ["product_key"],
+      "columns": [
+        {"name": "product_key", "type": "integer"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_order_line", "layer": "warehouse_fact",
+      "purpose": "Order line fact.",
+      "grain": "one row per sales order line",
+      "source": "derivation", "primary_key": ["order_line_id"],
+      "indexes": [["order_date"], ["customer_key"], ["product_key"]],
+      "columns": [
+        {"name": "order_line_id", "type": "integer"},
+        {"name": "order_id", "type": "integer"},
+        {"name": "order_date", "type": "date"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "product_key", "type": "integer"},
+        {"name": "warehouse_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "extended_amount", "type": "decimal"},
+        {"name": "order_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_invoice_line", "layer": "warehouse_fact",
+      "purpose": "Invoice line fact.",
+      "grain": "one row per invoice line",
+      "source": "derivation", "primary_key": ["invoice_line_id"],
+      "indexes": [["invoice_date"], ["customer_key"]],
+      "columns": [
+        {"name": "invoice_line_id", "type": "integer"},
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "product_key", "type": "integer"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "extended_amount", "type": "decimal"},
+        {"name": "invoice_status", "type": "string"}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "name": "sales_order_lifecycle",
+      "table": "erp.sales_order",
+      "status_column": "status",
+      "start_column": "order_date",
+      "entry_state": "draft",
+      "states": ["draft", "submitted", "allocated", "picked", "shipped", "invoiced", "disputed", "paid", "cancelled"],
+      "transitions": [
+        {"from": "draft", "to": "submitted", "probability": 0.975, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 1.0, "unit": "hours"}},
+        {"from": "draft", "to": "cancelled", "probability": 0.025, "dwell": {"distribution": "lognormal", "median": 24, "sigma": 0.8, "unit": "hours"}},
+        {"from": "submitted", "to": "allocated", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 5, "sigma": 0.7, "unit": "hours"}},
+        {"from": "submitted", "to": "cancelled", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 10, "sigma": 0.7, "unit": "hours"}},
+        {"from": "allocated", "to": "picked", "probability": 0.995, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 0.6, "unit": "hours"}},
+        {"from": "picked", "to": "shipped", "probability": 0.995, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.5, "unit": "hours"}},
+        {"from": "shipped", "to": "invoiced", "probability": 0.99, "dwell": {"distribution": "lognormal", "median": 18, "sigma": 0.5, "unit": "hours"}},
+        {"from": "invoiced", "to": "paid", "probability": 0.9, "dwell": {"distribution": "lognormal", "median": 26, "sigma": 0.55, "unit": "days"}},
+        {"from": "invoiced", "to": "disputed", "probability": 0.035, "dwell": {"distribution": "lognormal", "median": 12, "sigma": 0.6, "unit": "days"}},
+        {"from": "disputed", "to": "paid", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 21, "sigma": 0.6, "unit": "days"}}
+      ],
+      "timestamp_columns": {"submitted": "submitted_at", "shipped": "shipped_at", "invoiced": "invoiced_at", "paid": "paid_at"},
+      "history_table": "erp.sales_order_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "name": "case_lifecycle",
+      "table": "workflow.case",
+      "status_column": "status",
+      "start_column": "created_at",
+      "entry_state": "open",
+      "states": ["open", "triaged", "in_review", "escalated", "resolved"],
+      "transitions": [
+        {"from": "open", "to": "triaged", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "in_review", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_review", "to": "resolved", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_review", "to": "escalated", "probability": 0.12, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 8, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "resolved": "resolved_at"},
+      "history_table": "workflow.case_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_crm_account_extract",
+      "_note": "Raw landing copy with US-format dates; format_drift imperfection later corrupts a slice of these, which stg parsing then turns into NULLs that DQ-004 catches.",
+      "sql": [
+        "insert into raw.crm_account_extract",
+        "select cast(account_id as text), account_name, segment, sales_region, city, state, status,",
+        "       strftime('%m/%d/%Y', created_at), 'BATCH-NIGHTLY-CRM'",
+        "from crm.account;"
+      ]
+    },
+    {
+      "name": "stg_crm_account",
+      "sql": [
+        "insert into stg.crm_account",
+        "select cast(account_id as integer), trim(account_name), lower(segment), sales_region, city, state, lower(status),",
+        "       case when source_created_date like '__/__/____'",
+        "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
+        "            else null end",
+        "from raw.crm_account_extract;"
+      ]
+    },
+    {
+      "name": "xref_entity_identifier",
+      "sql": [
+        "insert into xref.entity_identifier",
+        "select row_number() over (order by c.customer_id), 'customer', c.crm_account_id,",
+        "       'LedgerWorks ERP', 'customer', cast(c.customer_id as text), date(c.created_at), null, 1",
+        "from erp.customer c;"
+      ]
+    },
+    {
+      "name": "core_customer",
+      "sql": [
+        "insert into core.customer",
+        "select s.account_id, s.account_name, s.segment, s.sales_region, s.city, s.state, s.status,",
+        "       (select cast(x.source_record_id as integer) from xref.entity_identifier x",
+        "         where x.canonical_entity_id = s.account_id and x.source_system = 'LedgerWorks ERP'",
+        "           and x.active_flag = 1 limit 1)",
+        "from stg.crm_account s;"
+      ]
+    },
+    {
+      "name": "core_product",
+      "sql": [
+        "insert into core.product",
+        "select product_id, sku, product_name, category, storage_zone, list_price, active_flag",
+        "from erp.product;"
+      ]
+    },
+    {
+      "name": "erp_invoice",
+      "sql": [
+        "insert into erp.invoice",
+        "select o.order_id, 'INV-' || printf('%07d', o.order_id), o.customer_id,",
+        "       date(o.invoiced_at), date(o.invoiced_at, '+30 days'),",
+        "       (select round(sum(l.extended_amount), 2) from erp.sales_order_line l where l.order_id = o.order_id),",
+        "       case when o.status = 'paid' then 'paid' when o.status = 'disputed' then 'disputed' else 'open' end",
+        "from erp.sales_order o where o.invoiced_at is not null;"
+      ]
+    },
+    {
+      "name": "erp_invoice_line",
+      "sql": [
+        "insert into erp.invoice_line",
+        "select l.order_line_id, i.invoice_id, l.line_number, l.product_id, l.quantity, l.unit_price, l.extended_amount, null",
+        "from erp.sales_order_line l join erp.invoice i on i.invoice_id = l.order_id;"
+      ]
+    },
+    {
+      "name": "erp_payment",
+      "sql": [
+        "insert into erp.payment",
+        "select 'PAY-' || printf('%07d', i.invoice_id), i.invoice_id, date(o.paid_at), i.invoice_total,",
+        "       case when i.invoice_id % 10 < 5 then 'ACH' when i.invoice_id % 10 < 8 then 'check' else 'card' end, null",
+        "from erp.invoice i join erp.sales_order o on o.order_id = i.invoice_id",
+        "where o.paid_at is not null;"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_customer",
+      "sql": [
+        "insert into wh.dim_customer",
+        "select customer_uid, account_name, segment, sales_region, status from core.customer;"
+      ]
+    },
+    {
+      "name": "wh_dim_product",
+      "sql": [
+        "insert into wh.dim_product",
+        "select product_uid, sku, product_name, category from core.product;"
+      ]
+    },
+    {
+      "name": "wh_fact_order_line",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into wh.fact_order_line",
+        "select l.order_line_id, o.order_id, o.order_date, o.crm_account_id, l.product_id,",
+        "       o.warehouse_id, o.channel, l.quantity, l.unit_price, l.extended_amount, o.status",
+        "from erp.sales_order_line l",
+        "join erp.sales_order o on o.order_id = l.order_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_invoice_line",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into wh.fact_invoice_line",
+        "select l.invoice_line_id, l.invoice_id, i.invoice_date, i.customer_id, l.product_id,",
+        "       l.quantity, l.extended_amount, i.invoice_status",
+        "from erp.invoice_line l join erp.invoice i on i.invoice_id = l.invoice_id;"
+      ]
+    },
+    {
+      "name": "mart_sales_daily",
+      "sql": [
+        "create view mart_sales_daily as",
+        "select order_date, count(distinct order_id) as orders, sum(quantity) as units,",
+        "       round(sum(extended_amount), 2) as revenue",
+        "from wh.fact_order_line where order_status != 'cancelled'",
+        "group by order_date;"
+      ]
+    },
+    {
+      "name": "mart_ar_aging",
+      "sql": [
+        "create view mart_ar_aging as",
+        "select i.invoice_id, i.invoice_number, i.customer_id, i.invoice_date, i.due_date, i.invoice_total,",
+        "       cast(julianday('2025-12-31') - julianday(i.due_date) as integer) as days_past_due,",
+        "       case when julianday('2025-12-31') - julianday(i.due_date) <= 0 then 'current'",
+        "            when julianday('2025-12-31') - julianday(i.due_date) <= 30 then '1-30'",
+        "            when julianday('2025-12-31') - julianday(i.due_date) <= 60 then '31-60'",
+        "            else '60+' end as aging_bucket",
+        "from erp.invoice i where i.invoice_status != 'paid';"
+      ]
+    },
+    {
+      "name": "control_recon_order_invoice",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation imperfections (restatement reversals on invoice lines create the breaks).",
+      "sql": [
+        "create view control_recon_order_invoice as",
+        "select ol.order_id, round(ol.total, 2) as order_total, round(il.total, 2) as invoice_total,",
+        "       round(ol.total - il.total, 2) as break_amount",
+        "from (select order_id, sum(extended_amount) as total from erp.sales_order_line group by order_id) ol",
+        "join (select i.invoice_id as order_id, sum(l.extended_amount) as total",
+        "      from erp.invoice_line l join erp.invoice i on i.invoice_id = l.invoice_id",
+        "      group by i.invoice_id) il on il.order_id = ol.order_id",
+        "where abs(ol.total - il.total) > 0.01;"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'active account missing email' as issue, cast(account_id as text) as entity_id",
+        "from crm.account where status = 'active' and (email is null or email = '')",
+        "union all",
+        "select 'DQ-002', 'order line references unknown product', cast(order_line_id as text)",
+        "from erp.sales_order_line l",
+        "where not exists (select 1 from erp.product p where p.product_id = l.product_id)",
+        "union all",
+        "select 'DQ-003', 'erp customer missing xref mapping', cast(c.customer_id as text)",
+        "from erp.customer c",
+        "where not exists (select 1 from xref.entity_identifier x",
+        "                  where x.source_system = 'LedgerWorks ERP' and x.source_record_id = cast(c.customer_id as text))",
+        "union all",
+        "select 'DQ-004', 'unparseable raw account date', account_id",
+        "from raw.crm_account_extract where source_created_date not like '__/__/____';"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "crm_name_typos", "type": "typo", "table": "crm.account", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "account_name"}, "scenario": "Hand-keyed account names accumulate typos."},
+    {"name": "crm_duplicate_accounts", "type": "duplicate_entity", "table": "crm.account", "rate": 0.012, "stage": "pre_derivation", "params": {"fuzz_columns": ["account_name", "phone"]}, "scenario": "Reps create duplicate accounts; MDM review queue exists for this."},
+    {"name": "erp_late_feeds", "type": "late_arrival", "table": "erp.customer", "rate": 0.05, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 2, "sigma": 0.8}}, "scenario": "Nightly CRM-to-ERP sync misses runs."},
+    {"name": "orphan_order_lines", "type": "orphan_fk", "table": "erp.sales_order_line", "rate": 0.004, "stage": "pre_derivation", "params": {"column": "product_id"}, "scenario": "Discontinued products hard-deleted from the product master."},
+    {"name": "order_manual_overrides", "type": "manual_override", "table": "erp.sales_order", "rate": 0.015, "stage": "pre_derivation", "params": {"column": "manual_override_flag", "value": 1, "note_column": "override_note"}, "scenario": "CSRs override pricing/terms with supervisor approval."},
+    {"name": "raw_date_format_drift", "type": "format_drift", "table": "raw.crm_account_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_created_date", "format": "padded"}, "scenario": "Legacy extract job pads dates differently after a patch."},
+    {"name": "missing_customer_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Mappings lost during the 2024 integration migration."},
+    {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired mappings never re-pointed."},
+    {"name": "stg_name_conflicts", "type": "conflicting_source_values", "table": "stg.crm_account", "rate": 0.02, "stage": "post_derivation", "params": {"column": "account_name"}, "scenario": "Staging dedup logic mangles some names vs source."},
+    {"name": "invoice_line_restatements", "type": "restatement_reversal", "table": "erp.invoice_line", "rate": 0.008, "stage": "post_derivation", "params": {"amount_columns": ["extended_amount"], "reason_column": "line_note"}, "scenario": "Billing corrections issued as reversal + restated pairs; these create the order-vs-invoice recon breaks."},
+    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate run records."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Order lines tie to invoice lines", "source_dataset": "erp.sales_order_line", "target_dataset": "erp.invoice_line", "grain": "order_id", "tolerance": "0.01", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "~0.8% of invoiced orders (restatement reversals)", "break_view": "control_recon_order_invoice"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "crm.account", "rule_type": "required_field", "condition": "active accounts have email", "severity": "warning", "expected_failure_rate": 0.06},
+    {"rule_id": "DQ-002", "dataset": "erp.sales_order_line", "rule_type": "fk_exists", "condition": "product exists", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every ERP customer mapped", "severity": "error", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-004", "dataset": "raw.crm_account_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03}
+  ],
+  "dataflows": [
+    {"name": "customer_mastering", "sequence": "crm.account -> raw extract -> staging -> xref -> core.customer -> wh.dim_customer"},
+    {"name": "order_to_cash", "sequence": "erp.sales_order -> state machine -> erp.invoice/invoice_line -> erp.payment -> wh facts -> marts"},
+    {"name": "delivery", "sequence": "erp.sales_order -> tms.route/delivery_stop -> POD notes"}
+  ],
+  "validation": {
+    "required_views": ["mart_sales_daily", "mart_ar_aging", "control_recon_order_invoice", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "crm.account": [640, 680],
+      "erp.sales_order": [3000, 16000],
+      "erp.sales_order_line": [15000, 90000]
+    }
+  }
+}

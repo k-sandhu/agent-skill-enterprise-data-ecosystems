@@ -154,20 +154,20 @@ Examples: contracts, invoices, lab requisitions, clinical notes, delivery receip
 
 ## Controlled Imperfections
 
-Use explicit, documented imperfections:
+Use explicit, documented imperfections. The build engine implements these as a closed enum, injects them at configured rates, and logs every one to `meta_imperfection_log` (see `references/generator-spec.md`):
 
-- Missing external IDs.
-- Duplicate entities.
-- Late records.
-- Invalid codes.
-- Stale mappings.
-- Manual overrides.
-- Restatements and reversals.
-- Failed integrations.
-- Duplicated webhooks.
-- Vendor file schema drift.
-- Out-of-order CDC events.
-- Source conflicts.
-- Legacy records missing newer fields.
+- `missing_xref`: unmapped external/source identifiers.
+- `duplicate_entity`: near-duplicate entities with fuzzed attributes.
+- `late_arrival`: ingestion lag well past the event date.
+- `orphan_fk`: references to hard-deleted parents.
+- `conflicting_source_values`: systems disagree on the same attribute.
+- `format_drift`: legacy batches with different date formats, casing, padding.
+- `typo`: hand-keyed text noise.
+- `restatement_reversal`: reversal + restated pairs that move totals.
+- `out_of_order_events`: CDC/webhook sequence disorder.
+- `duplicate_webhook`: retried event deliveries.
+- `stale_mapping`: expired mappings still referenced.
+- `manual_override`: human overrides with audit notes, clustered at period end.
+- `null_field`: logged missingness beyond design-level null rates.
 
-Each imperfection should trace to a scenario, rule, dataflow, or workflow case.
+Each imperfection should trace to a scenario, rule, dataflow, or workflow case — and to a DQ rule or reconciliation that catches it. Typical rates are in `references/data-realism.md`.
