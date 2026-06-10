@@ -50,8 +50,10 @@ def logical_hashes(db_path: Path) -> dict[str, str]:
                 continue
             digest = hashlib.sha256()
             for row in conn.execute(f'select * from "{table}" order by rowid'):
+                # Type-tagged, full-fidelity float repr: rounding would mask real
+                # divergence, and float 2.0 must not collide with int 2.
                 canonical = "\x1f".join(
-                    f"{value:.10g}" if isinstance(value, float) else repr(value) for value in row)
+                    f"f:{value!r}" if isinstance(value, float) else repr(value) for value in row)
                 digest.update(canonical.encode("utf-8"))
             hashes[table] = digest.hexdigest()
     finally:

@@ -23,17 +23,16 @@
     "business_hours": [7, 18]
   },
   "vocab": {
-    "food_product": [
-      "Diced Tomatoes", "Chicken Breast", "Extra Virgin Olive Oil", "Cheddar Block",
-      "Romaine Hearts", "Ground Beef 80/20", "Basmati Rice", "Black Beans",
-      "Mozzarella Shred", "Pork Loin", "Atlantic Salmon Fillet", "Penne Pasta",
-      "Marinara Sauce", "Russet Potatoes", "Yellow Onions", "Heavy Cream",
-      "Unsalted Butter", "Maple Syrup", "Whole Bean Coffee", "Orange Juice",
-      "Flour Tortillas 10in", "Applewood Bacon", "Turkey Breast", "Greek Yogurt",
-      "Spring Mix", "Jasmine Rice", "Panko Breadcrumbs", "Avocado Oil",
-      "Provolone Sliced", "Brioche Buns"
-    ],
-    "pack_size": ["6/10 LB", "12/1 LB", "25 LB BAG", "4/5 LB", "CASE", "2/5 GAL", "24 CT", "10 LB AVG"]
+    "_note": "Per-category product pools so names, categories, storage zones, and shelf life stay mutually coherent.",
+    "protein_product": ["Chicken Breast", "Ground Beef 80/20", "Pork Loin", "Atlantic Salmon Fillet", "Applewood Bacon", "Turkey Breast", "Beef Brisket", "Italian Sausage", "Lamb Shoulder", "Tilapia Fillet"],
+    "produce_product": ["Romaine Hearts", "Russet Potatoes", "Yellow Onions", "Spring Mix", "Roma Tomatoes", "Green Bell Peppers", "Baby Carrots", "Cremini Mushrooms", "Hass Avocados", "Fresh Lemons"],
+    "dairy_product": ["Cheddar Block", "Mozzarella Shred", "Heavy Cream", "Unsalted Butter", "Greek Yogurt", "Provolone Sliced", "Whole Milk", "Sour Cream", "Cream Cheese", "Parmesan Wheel"],
+    "dry_product": ["Basmati Rice", "Black Beans", "Penne Pasta", "Marinara Sauce", "Maple Syrup", "Flour Tortillas 10in", "Panko Breadcrumbs", "Jasmine Rice", "All-Purpose Flour", "Extra Virgin Olive Oil", "Avocado Oil", "Granulated Sugar"],
+    "frozen_product": ["Frozen French Fries", "Frozen Peas", "Frozen Berry Blend", "Frozen Shrimp 16/20", "Frozen Waffle Rounds", "Frozen Spinach", "Frozen Chicken Wings", "Vanilla Ice Cream Tub"],
+    "beverage_product": ["Whole Bean Coffee", "Orange Juice", "Lemonade Concentrate", "Cold Brew Concentrate", "Sparkling Water", "Iced Tea Bags", "Hot Chocolate Mix"],
+    "disposables_product": ["9in Paper Plates", "12oz Cold Cups", "Deli Containers 16oz", "Foil Sheets", "Nitrile Gloves L", "Kraft Takeout Boxes", "Napkin Packs", "Wrapped Straws"],
+    "solid_pack": ["6/10 LB", "12/1 LB", "25 LB BAG", "4/5 LB", "CASE", "24 CT", "10 LB AVG"],
+    "liquid_pack": ["2/5 GAL", "6/0.5 GAL", "CASE", "4/1 GAL", "12/32 OZ"]
   },
   "tables": [
     {
@@ -62,7 +61,7 @@
       "columns": [
         {"name": "account_id", "type": "integer"},
         {"name": "account_code", "type": "string", "gen": {"type": "pattern", "pattern": "ACCT-#####", "unique": true}},
-        {"name": "account_name", "type": "string", "gen": "company:restaurant"},
+        {"name": "account_name", "type": "string", "gen": {"type": "company_name", "flavor": "restaurant", "unique": true}},
         {"name": "segment", "type": "string", "gen": "choice:independent=0.55,regional_chain=0.25,institution=0.12,national_chain=0.08"},
         {"name": "sales_region", "type": "string", "gen": "choice:Northeast=0.3,Southeast=0.27,Midwest=0.25,West=0.18"},
         {"name": "street_address", "type": "string"},
@@ -106,8 +105,9 @@
       "columns": [
         {"name": "product_id", "type": "integer"},
         {"name": "sku", "type": "string", "gen": {"type": "pattern", "pattern": "SKU-#####", "unique": true}},
-        {"name": "product_name", "type": "string", "gen": {"type": "text_template", "templates": ["{food_product}", "{food_product} {pack_size}"]}},
         {"name": "category", "type": "string", "gen": "choice:protein=0.24,produce=0.18,dairy=0.14,dry_goods=0.2,frozen=0.12,beverage=0.07,disposables=0.05"},
+        {"name": "product_name", "type": "string", "_note": "category is drawn first, then the name comes from that category's pool — names, zones, and shelf life stay coherent.", "gen": {"type": "case", "on": "category", "cases": {"protein": {"type": "text_template", "templates": ["{protein_product}"]}, "produce": {"type": "text_template", "templates": ["{produce_product}"]}, "dairy": {"type": "text_template", "templates": ["{dairy_product}"]}, "dry_goods": {"type": "text_template", "templates": ["{dry_product}"]}, "frozen": {"type": "text_template", "templates": ["{frozen_product}"]}, "beverage": {"type": "text_template", "templates": ["{beverage_product}"]}, "disposables": {"type": "text_template", "templates": ["{disposables_product}"]}}}},
+        {"name": "pack_size", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"beverage": {"type": "text_template", "templates": ["{liquid_pack}"]}}, "default": {"type": "text_template", "templates": ["{solid_pack}"]}}},
         {"name": "storage_zone", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"frozen": "freezer", "dairy": "cooler", "produce": "cooler", "protein": "cooler"}, "default": "dry"}},
         {"name": "gtin", "type": "string", "gen": "identifier:gtin13"},
         {"name": "unit_cost", "type": "decimal", "gen": "money:lognormal(median=28,sigma=0.7)"},
@@ -152,7 +152,7 @@
       "columns": [
         {"name": "contract_line_id", "type": "integer", "gen": "seq"},
         {"name": "contract_id", "type": "integer", "gen": "parent_key"},
-        {"name": "product_id", "type": "integer", "gen": "fk:erp.product@zipf"},
+        {"name": "product_id", "type": "integer", "gen": "fk:erp.product@zipf(0.5)"},
         {"name": "list_price_snapshot", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "erp.product", "source_column": "list_price"}},
         {"name": "contract_price", "type": "decimal", "gen": {"type": "expression", "expression": "round(list_price_snapshot * 0.92, 2)"}}
       ]
@@ -163,7 +163,7 @@
       "purpose": "Sales order headers.", "grain": "one row per customer order",
       "source_system": "LedgerWorks ERP",
       "primary_key": ["order_id"], "natural_key": ["order_number"],
-      "rows": {"per_parent": "erp.customer", "distribution": {"distribution": "lognormal", "median": 6, "sigma": 1.1}, "min": 0, "max": 60},
+      "rows": {"per_parent": "erp.customer", "distribution": {"distribution": "lognormal", "median": 9, "sigma": 0.7}, "scale_by": {"parent_column": "segment", "factors": {"independent": 1.0, "regional_chain": 2.6, "institution": 4.0, "national_chain": 9.0}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.9}, "min": 0, "max": 420, "_note": "Volume conditioned on segment (chains order multiples of independents) plus a heavy-tailed per-account activity weight so a whale tier emerges."},
       "traits": ["audited"],
       "indexes": [["customer_id"], ["order_date"], ["status"]],
       "columns": [
@@ -211,7 +211,7 @@
         {"name": "order_line_id", "type": "integer", "gen": "seq"},
         {"name": "order_id", "type": "integer", "gen": "parent_key"},
         {"name": "line_number", "type": "integer", "gen": "child_index"},
-        {"name": "product_id", "type": "integer", "gen": "fk:erp.product@zipf"},
+        {"name": "product_id", "type": "integer", "_note": "zipf(0.5): popular SKUs lead but the top item stays ~2-4% of lines, not 20%.", "gen": "fk:erp.product@zipf(0.5)"},
         {"name": "quantity", "type": "integer", "gen": "int:lognormal(median=5,sigma=0.9,min=1,max=200)"},
         {"name": "list_price", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "erp.product", "source_column": "list_price"}},
         {"name": "price_source", "type": "string", "gen": "choice:contract=0.44,street=0.56"},
@@ -228,44 +228,58 @@
       "columns": [
         {"name": "lot_id", "type": "integer", "gen": "seq"},
         {"name": "product_id", "type": "integer", "gen": "parent_key"},
+        {"name": "category", "type": "string", "gen": {"type": "parent_copy", "source_column": "category"}},
         {"name": "warehouse_id", "type": "integer", "gen": "fk:wms.warehouse"},
         {"name": "lot_code", "type": "string", "gen": "pattern:LOT-@@######"},
         {"name": "received_date", "type": "date"},
-        {"name": "expiry_date", "type": "date", "gen": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 90, "sigma": 0.5, "min": 7, "max": 540}, "clamp_as_of": false, "as": "date"}},
+        {"name": "expiry_date", "type": "date", "_note": "Shelf life conditioned on category: produce days, frozen months.", "gen": {"type": "case", "on": "category", "cases": {"produce": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 10, "sigma": 0.4, "min": 4, "max": 24}, "clamp_as_of": false, "as": "date"}, "dairy": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 28, "sigma": 0.4, "min": 10, "max": 75}, "clamp_as_of": false, "as": "date"}, "protein": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 14, "sigma": 0.5, "min": 5, "max": 40}, "clamp_as_of": false, "as": "date"}, "frozen": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 270, "sigma": 0.3, "min": 120, "max": 540}, "clamp_as_of": false, "as": "date"}}, "default": {"type": "date_offset", "from": "received_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 365, "sigma": 0.3, "min": 150, "max": 900}, "clamp_as_of": false, "as": "date"}}},
         {"name": "qty_received", "type": "integer", "gen": "int:lognormal(median=80,sigma=0.6,min=5,max=2000)"},
         {"name": "lot_status", "type": "string", "gen": "choice:available=0.55,depleted=0.34,expired=0.08,quality_hold=0.03"}
       ]
     },
     {
-      "schema": "tms", "name": "route", "layer": "operational",
-      "purpose": "Daily delivery routes per DC.",
+      "schema": "tms", "name": "driver", "layer": "operational",
+      "purpose": "Delivery drivers per DC.",
       "source_system": "RouteRunner TMS",
-      "primary_key": ["route_id"], "rows": 900,
+      "primary_key": ["driver_id"], "rows": 48, "scale_exempt": true,
+      "columns": [
+        {"name": "driver_id", "type": "integer"},
+        {"name": "driver_name", "type": "string", "gen": "person_full"},
+        {"name": "warehouse_id", "type": "integer", "gen": "fk:wms.warehouse"},
+        {"name": "cdl_number", "type": "string", "gen": "pattern:CDL-@#######"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.92"}
+      ]
+    },
+    {
+      "_note": "Routes and stops are DERIVED from shipped orders so delivery dates, warehouses, and order statuses are coherent by construction — never wire delivery events to orders with a random FK.",
+      "schema": "tms", "name": "route", "layer": "operational",
+      "purpose": "Daily delivery routes per DC, one per warehouse per delivery day.",
+      "grain": "one row per warehouse per delivery date",
+      "source": "derivation", "primary_key": ["route_id"],
+      "indexes": [["route_date"]],
       "columns": [
         {"name": "route_id", "type": "integer"},
-        {"name": "route_code", "type": "string", "gen": "pattern:RT-####-@@"},
-        {"name": "warehouse_id", "type": "integer", "gen": "fk:wms.warehouse"},
+        {"name": "route_code", "type": "string"},
+        {"name": "warehouse_id", "type": "integer"},
         {"name": "route_date", "type": "date"},
-        {"name": "driver_name", "type": "string", "gen": "person_full"},
-        {"name": "truck_number", "type": "string", "gen": "pattern:TRK-###"}
+        {"name": "driver_id", "type": "integer"},
+        {"name": "truck_number", "type": "string"}
       ]
     },
     {
       "schema": "tms", "name": "delivery_stop", "layer": "event",
-      "purpose": "Stops with proof-of-delivery notes.",
-      "grain": "one row per route per stop sequence",
-      "source_system": "RouteRunner TMS",
-      "primary_key": ["stop_id"],
-      "rows": {"per_parent": "tms.route", "distribution": {"distribution": "poisson", "lam": 13}, "min": 4, "max": 28},
+      "purpose": "Stops with proof-of-delivery notes, derived from shipped orders.",
+      "grain": "one row per delivered order",
+      "source": "derivation", "primary_key": ["stop_id"],
       "indexes": [["route_id"], ["order_id"]],
       "columns": [
-        {"name": "stop_id", "type": "integer", "gen": "seq"},
-        {"name": "route_id", "type": "integer", "gen": "parent_key"},
-        {"name": "stop_sequence", "type": "integer", "gen": "child_index"},
-        {"name": "order_id", "type": "integer", "gen": "fk:erp.sales_order@recency"},
-        {"name": "arrival_time", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.route_date", "max": "parent.route_date"}},
-        {"name": "stop_status", "type": "string", "gen": "choice:delivered=0.9,partial=0.05,refused=0.02,not_home=0.03"},
-        {"name": "pod_note", "type": "string", "null_rate": 0.25, "gen": "text:delivery_note"}
+        {"name": "stop_id", "type": "integer"},
+        {"name": "route_id", "type": "integer"},
+        {"name": "stop_sequence", "type": "integer"},
+        {"name": "order_id", "type": "integer"},
+        {"name": "arrival_time", "type": "timestamp"},
+        {"name": "stop_status", "type": "string"},
+        {"name": "pod_note", "type": "string", "nullable": true}
       ]
     },
     {
@@ -307,9 +321,9 @@
       "columns": [
         {"name": "change_id", "type": "integer", "gen": "seq"},
         {"name": "account_id", "type": "integer", "gen": "parent_key"},
-        {"name": "field_name", "type": "string", "gen": "choice:credit_terms=0.2,phone=0.2,email=0.25,status=0.15,sales_region=0.05,account_name=0.15"},
-        {"name": "old_value", "type": "string", "gen": "pattern:?????????"},
-        {"name": "new_value", "type": "string", "gen": "pattern:?????????"},
+        {"name": "field_name", "type": "string", "gen": "choice:credit_terms=0.25,phone=0.25,status=0.2,sales_region=0.05,account_name=0.25"},
+        {"name": "old_value", "type": "string", "_note": "Old/new values must be plausible for the changed field — random strings here are the first thing a reviewer notices.", "gen": {"type": "case", "on": "field_name", "cases": {"credit_terms": {"type": "choice", "values": ["COD", "NET14", "NET30", "NET45", "NET60"]}, "phone": {"type": "phone"}, "status": {"type": "choice", "values": ["active", "inactive", "prospect"], "weights": [0.5, 0.3, 0.2]}, "sales_region": {"type": "choice", "values": ["Northeast", "Southeast", "Midwest", "West"]}, "account_name": {"type": "company_name", "flavor": "restaurant"}}}},
+        {"name": "new_value", "type": "string", "gen": {"type": "case", "on": "field_name", "cases": {"credit_terms": {"type": "choice", "values": ["COD", "NET14", "NET30", "NET45", "NET60"]}, "phone": {"type": "phone"}, "status": {"type": "choice", "values": ["active", "inactive", "prospect"], "weights": [0.55, 0.35, 0.1]}, "sales_region": {"type": "choice", "values": ["Northeast", "Southeast", "Midwest", "West"]}, "account_name": {"type": "company_name", "flavor": "restaurant"}}}},
         {"name": "changed_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
         {"name": "changed_by", "type": "string", "gen": "staff_user"},
         {"name": "change_note", "type": "string", "null_rate": 0.6, "gen": "text:audit_comment"}
@@ -607,11 +621,16 @@
     },
     {
       "name": "xref_entity_identifier",
+      "_note": "A crosswalk that maps a single system is not a crosswalk — include both CRM and ERP identifiers.",
       "sql": [
         "insert into xref.entity_identifier",
         "select row_number() over (order by c.customer_id), 'customer', c.crm_account_id,",
         "       'LedgerWorks ERP', 'customer', cast(c.customer_id as text), date(c.created_at), null, 1",
-        "from erp.customer c;"
+        "from erp.customer c;",
+        "insert into xref.entity_identifier",
+        "select 100000 + row_number() over (order by a.account_id), 'customer', a.account_id,",
+        "       'OrchardCRM', 'account', cast(a.account_id as text), date(a.created_at), null, 1",
+        "from crm.account a;"
       ]
     },
     {
@@ -635,13 +654,25 @@
     },
     {
       "name": "erp_invoice",
+      "_note": "due_date honors each customer's credit terms (COD/NET14/.../NET60) and aged invoices flow through a collections lifecycle instead of sitting 'open' forever.",
       "sql": [
         "insert into erp.invoice",
-        "select o.order_id, 'INV-' || printf('%07d', o.order_id), o.customer_id,",
-        "       date(o.invoiced_at), date(o.invoiced_at, '+30 days'),",
-        "       (select round(sum(l.extended_amount), 2) from erp.sales_order_line l where l.order_id = o.order_id),",
-        "       case when o.status = 'paid' then 'paid' when o.status = 'disputed' then 'disputed' else 'open' end",
-        "from erp.sales_order o where o.invoiced_at is not null;"
+        "with base as (",
+        "  select o.order_id, o.customer_id, date(o.invoiced_at) as invoice_date, o.status,",
+        "         date(o.invoiced_at, '+' || case c.credit_terms when 'COD' then 0 when 'NET14' then 14",
+        "              when 'NET45' then 45 when 'NET60' then 60 else 30 end || ' days') as due_date",
+        "  from erp.sales_order o join erp.customer c on c.customer_id = o.customer_id",
+        "  where o.invoiced_at is not null",
+        ")",
+        "select b.order_id, 'INV-' || printf('%07d', b.order_id), b.customer_id, b.invoice_date, b.due_date,",
+        "       (select round(sum(l.extended_amount), 2) from erp.sales_order_line l where l.order_id = b.order_id),",
+        "       case when b.status = 'paid' then 'paid'",
+        "            when b.status = 'disputed' then 'disputed'",
+        "            when julianday('2025-12-31') - julianday(b.due_date) > 120 and b.order_id % 9 = 0 then 'written_off'",
+        "            when julianday('2025-12-31') - julianday(b.due_date) > 90 then 'in_collections'",
+        "            when julianday('2025-12-31') - julianday(b.due_date) > 15 then 'overdue'",
+        "            else 'open' end",
+        "from base b;"
       ]
     },
     {
@@ -654,12 +685,85 @@
     },
     {
       "name": "erp_payment",
+      "_note": "Real AR is imperfect: ~4% pay in two installments, ~3% short-pay by cents-to-dollars. Exact 1:1 full payments for every invoice is a synthetic tell.",
       "sql": [
         "insert into erp.payment",
-        "select 'PAY-' || printf('%07d', i.invoice_id), i.invoice_id, date(o.paid_at), i.invoice_total,",
-        "       case when i.invoice_id % 10 < 5 then 'ACH' when i.invoice_id % 10 < 8 then 'check' else 'card' end, null",
-        "from erp.invoice i join erp.sales_order o on o.order_id = i.invoice_id",
-        "where o.paid_at is not null;"
+        "with paid as (",
+        "  select i.invoice_id, i.invoice_total, date(o.paid_at) as pay_date",
+        "  from erp.invoice i join erp.sales_order o on o.order_id = i.invoice_id",
+        "  where o.paid_at is not null",
+        ")",
+        "select 'PAY-' || printf('%07d', invoice_id), invoice_id, pay_date,",
+        "       case when invoice_id % 23 = 0 then round(invoice_total * 0.6, 2)",
+        "            when invoice_id % 31 = 0 then round(invoice_total - 0.01 * (invoice_id % 700 + 25), 2)",
+        "            else invoice_total end,",
+        "       case when invoice_id % 10 < 5 then 'ACH' when invoice_id % 10 < 8 then 'check' else 'card' end,",
+        "       case when invoice_id % 23 = 0 then 'Partial payment 1 of 2.'",
+        "            when invoice_id % 31 = 0 then 'Short pay, freight deduction.' else null end",
+        "from paid;",
+        "insert into erp.payment",
+        "select 'PAY-' || printf('%07d', p.invoice_id) || '-2', p.invoice_id, date(p.pay_date, '+12 days'),",
+        "       round(p.invoice_total * 0.4, 2), 'check', 'Partial payment 2 of 2.'",
+        "from (select i.invoice_id, i.invoice_total, date(o.paid_at) as pay_date",
+        "      from erp.invoice i join erp.sales_order o on o.order_id = i.invoice_id",
+        "      where o.paid_at is not null and i.invoice_id % 23 = 0) p;"
+      ]
+    },
+    {
+      "name": "tms_route",
+      "sql": [
+        "insert into tms.route",
+        "with slots as (",
+        "  select distinct o.warehouse_id, date(o.shipped_at, '+1 day') as route_date",
+        "  from erp.sales_order o",
+        "  where o.shipped_at is not null and date(o.shipped_at, '+1 day') <= '2025-12-31'",
+        "),",
+        "ranked_drivers as (",
+        "  select driver_id, warehouse_id,",
+        "         row_number() over (partition by warehouse_id order by driver_id) - 1 as rk,",
+        "         count(*) over (partition by warehouse_id) as cnt",
+        "  from tms.driver",
+        ")",
+        "select row_number() over (order by s.warehouse_id, s.route_date),",
+        "       'RT-' || s.warehouse_id || '-' || replace(s.route_date, '-', ''),",
+        "       s.warehouse_id, s.route_date, d.driver_id,",
+        "       printf('TRK-%03d', (s.warehouse_id * 37 + cast(strftime('%j', s.route_date) as integer)) % 180 + 1)",
+        "from slots s",
+        "join ranked_drivers d",
+        "  on d.warehouse_id = s.warehouse_id",
+        " and d.rk = cast(strftime('%j', s.route_date) as integer) % d.cnt;"
+      ]
+    },
+    {
+      "name": "tms_delivery_stop",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into tms.delivery_stop",
+        "with shipped as (",
+        "  select o.order_id, o.warehouse_id, date(o.shipped_at, '+1 day') as delivery_date",
+        "  from erp.sales_order o",
+        "  where o.shipped_at is not null and date(o.shipped_at, '+1 day') <= '2025-12-31'",
+        "),",
+        "seq as (",
+        "  select s.order_id, r.route_id, r.route_date,",
+        "         row_number() over (partition by r.route_id order by s.order_id) as stop_sequence",
+        "  from shipped s",
+        "  join tms.route r on r.warehouse_id = s.warehouse_id and r.route_date = s.delivery_date",
+        ")",
+        "select row_number() over (order by route_id, stop_sequence),",
+        "       route_id, stop_sequence, order_id,",
+        "       datetime(route_date, '+' || (350 + stop_sequence * 24 + (order_id % 17)) || ' minutes'),",
+        "       case when order_id % 29 = 0 then 'refused'",
+        "            when order_id % 29 = 1 then 'closed'",
+        "            when order_id % 29 = 2 then 'partial'",
+        "            else 'delivered' end,",
+        "       case when order_id % 7 = 0 then 'Signed by receiver.'",
+        "            when order_id % 7 = 1 then 'Left at loading dock.'",
+        "            when order_id % 7 = 2 then 'Pallet count verified.'",
+        "            when order_id % 7 = 3 then 'Temperature check passed.'",
+        "            when order_id % 7 = 4 then 'Short one case, credit requested.'",
+        "            else null end",
+        "from seq;"
       ]
     },
     {
@@ -731,7 +835,7 @@
         "            when julianday('2025-12-31') - julianday(i.due_date) <= 30 then '1-30'",
         "            when julianday('2025-12-31') - julianday(i.due_date) <= 60 then '31-60'",
         "            else '60+' end as aging_bucket",
-        "from erp.invoice i where i.invoice_status != 'paid';"
+        "from erp.invoice i where i.invoice_status not in ('paid', 'written_off');"
       ]
     },
     {
@@ -800,8 +904,8 @@
     "required_views": ["mart_sales_daily", "mart_ar_aging", "control_recon_order_invoice", "dq_rule_result_current"],
     "expected_row_ranges": {
       "crm.account": [640, 680],
-      "erp.sales_order": [3000, 16000],
-      "erp.sales_order_line": [15000, 90000]
+      "erp.sales_order": [14000, 70000],
+      "erp.sales_order_line": [70000, 400000]
     }
   }
 }

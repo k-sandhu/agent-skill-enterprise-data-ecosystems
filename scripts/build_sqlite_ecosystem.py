@@ -592,8 +592,13 @@ class BusinessCalendar:
         self.total = acc
 
     def sample_date(self, rng: random.Random, lo: dt.date | None = None, hi: dt.date | None = None) -> dt.date:
+        # Right-censor at as_of: bare draws never land after the reporting date.
+        # Deliberately future-dated columns must use date_offset with clamp_as_of false.
+        ceiling = min(self.end, self.as_of)
+        if hi is None or hi > ceiling:
+            hi = ceiling
         lo_idx = 0 if lo is None or lo <= self.start else (lo - self.start).days
-        hi_idx = len(self.days) - 1 if hi is None or hi >= self.end else (hi - self.start).days
+        hi_idx = len(self.days) - 1 if hi >= self.end else (hi - self.start).days
         lo_idx = max(0, min(lo_idx, len(self.days) - 1))
         hi_idx = max(lo_idx, min(hi_idx, len(self.days) - 1))
         lo_cum = self.cum[lo_idx - 1] if lo_idx > 0 else 0.0
@@ -722,15 +727,27 @@ class TableSpec:
         if self.source == "generator" and not self.columns:
             raise SpecError(f"{self.where} ({self.key}): generator table has no columns.")
         org = spec.get("organization", {})
+        ident = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
         for ci, col in enumerate(self.columns):
             if not col.get("name"):
                 raise SpecError(f"{self.where}.columns[{ci}]: missing 'name'.")
+            if not ident.match(str(col["name"])):
+                raise SpecError(f"{self.where}.columns[{ci}]: column name '{col['name']}' must match "
+                                "[A-Za-z_][A-Za-z0-9_]* (it is interpolated into SQL).")
             col_where = f"{self.where} ({self.key}).columns[{col['name']}]"
             col["gen"] = normalize_gen(col.get("gen"), col_where)
             if col["gen"] is None and self.source == "generator":
                 inferred = infer_gen(col, self.primary_key, org)
                 if inferred is not None:
                     col["gen"] = inferred
+        for label, names in (("primary_key", self.primary_key), ("natural_key", self.natural_key)):
+            for name in names:
+                if not ident.match(str(name)):
+                    raise SpecError(f"{self.where} ({self.key}): {label} entry '{name}' is not a valid identifier.")
+        for index in self.indexes:
+            for name in (index if isinstance(index, list) else [index]):
+                if not ident.match(str(name)):
+                    raise SpecError(f"{self.where} ({self.key}): index column '{name}' is not a valid identifier.")
 
     def fk_refs(self) -> list[tuple[str, str]]:
         """(column, ref_table_key) pairs from column generators + explicit FKs."""
@@ -780,7 +797,7 @@ def _parse_dist_args(text: str, where: str) -> dict[str, Any]:
     cfg: dict[str, Any] = {"distribution": dist}
     positional_names = {"uniform": ["min", "max"], "normal": ["mean", "stdev"],
                         "lognormal": ["median", "sigma"], "poisson": ["lam"],
-                        "pareto": ["alpha", "xm"], "beta": ["alpha", "beta"],
+                        "pareto": ["alpha", "xm"], "beta": ["alpha", "beta", "scale"],
                         "exponential": ["mean"], "geometric": ["p"],
                         "triangular": ["min", "max", "mode"], "constant": ["value"],
                         "zipf": ["n", "s"]}
@@ -850,7 +867,13 @@ def normalize_gen(gen: Any, where: str) -> dict[str, Any] | None:
         ref, _, weighting = tail.partition("@")
         out: dict[str, Any] = {"type": "fk", "ref": ref.strip()}
         if weighting:
-            out["weighting"] = weighting.strip()
+            w = weighting.strip()
+            zipf_match = re.match(r"^zipf\((\d+(?:\.\d+)?)\)$", w)
+            if zipf_match:
+                out["weighting"] = "zipf"
+                out["zipf_s"] = float(zipf_match.group(1))
+            else:
+                out["weighting"] = w
         return out
     if head == "choice":
         values, weights, weighted = [], [], False
@@ -974,6 +997,12 @@ class GenerationContext:
                     value = str(gen.get(ref_field, ""))
                     if value.startswith("parent.") and parent_ref:
                         needed.setdefault(parent_ref, set()).add(value.split(".", 1)[1])
+        for tbl in tables:
+            if isinstance(tbl.rows_cfg, dict):
+                scale_by = tbl.rows_cfg.get("scale_by")
+                parent = per_parent_ref(tbl.rows_cfg)
+                if scale_by and parent and scale_by.get("parent_column"):
+                    needed.setdefault(parent, set()).add(str(scale_by["parent_column"]))
         for machine in self.spec.get("state_machines", []):
             tkey = str(machine.get("table", ""))
             if machine.get("start_column"):
@@ -1019,8 +1048,8 @@ class TableGenerator:
 
     # -- FK pools ---------------------------------------------------------
 
-    def fk_pool(self, ref: str, weighting: str, where: str) -> dict[str, Any]:
-        pool_key = f"{ref}|{weighting}"
+    def fk_pool(self, ref: str, weighting: str, where: str, zipf_s: float = 1.1) -> dict[str, Any]:
+        pool_key = f"{ref}|{weighting}|{zipf_s}"
         if pool_key in self.fk_pools:
             return self.fk_pools[pool_key]
         cache = self.ctx.cache.get(ref)
@@ -1034,7 +1063,7 @@ class TableGenerator:
             shuffled = list(pks)
             order_rng.shuffle(shuffled)
             pool["pks"] = shuffled
-            pool["cum"] = zipf_cumweights(len(shuffled), 1.1)
+            pool["cum"] = zipf_cumweights(len(shuffled), zipf_s)
         elif weighting == "recency":
             # Linear recency: later-generated parents (later insertion order) are hotter.
             cum = []
@@ -1047,7 +1076,8 @@ class TableGenerator:
         return pool
 
     def pick_fk(self, rng: random.Random, ref: str, weighting: str, where: str,
-                match: dict[str, Any] | None = None, row: dict[str, Any] | None = None) -> Any:
+                match: dict[str, Any] | None = None, row: dict[str, Any] | None = None,
+                zipf_s: float = 1.1) -> Any:
         if match and row is not None:
             # Affinity: prefer parents whose attribute matches a local column
             # (e.g. order.warehouse picked from warehouses in the customer's region),
@@ -1071,7 +1101,7 @@ class TableGenerator:
                 candidates = index["groups"].get(local_value)
                 if candidates:
                     return candidates[rng.randrange(len(candidates))]
-        pool = self.fk_pool(ref, weighting, where)
+        pool = self.fk_pool(ref, weighting, where, zipf_s)
         pks = pool["pks"]
         if weighting in {"zipf", "recency"}:
             cum = pool["cum"]
@@ -1207,7 +1237,8 @@ class TableGenerator:
             if null_p and rng.random() < null_p:
                 return None
             return self.pick_fk(rng, str(ref), str(gen.get("weighting", "uniform")), where,
-                                match=gen.get("match"), row=row)
+                                match=gen.get("match"), row=row,
+                                zipf_s=float(gen.get("zipf_s", 1.1)))
         if gtype == "self_fk":
             # Hierarchy parent: pick among rows generated earlier in this table.
             root_share = float(gen.get("root_share", 0.25))
@@ -1266,7 +1297,20 @@ class TableGenerator:
             tails = COMPANY_FLAVORS.get(flavor)
             if tails is None:
                 raise SpecError(f"{where}: unknown company flavor '{flavor}'.{suggest(flavor, list(COMPANY_FLAVORS))}")
-            return f"{rng.choice(COMPANY_HEADS)} {rng.choice(tails)}"
+            value = f"{rng.choice(COMPANY_HEADS)} {rng.choice(tails)}"
+            if gen.get("unique"):
+                seen = self.unique_seen.setdefault(name, set())
+                for _ in range(4):
+                    if value not in seen:
+                        break
+                    value = f"{rng.choice(COMPANY_HEADS)} {rng.choice(tails)}"
+                if value in seen:
+                    # Disambiguate with a city, like real multi-location businesses.
+                    value = f"{value} {rng.choice(PLACES)[0]}"
+                while value in seen:
+                    value = f"{value} {rng.randrange(2, 99)}"
+                seen.add(value)
+            return value
         if gtype == "addr_street":
             return self.place(row_state, rng)["street"]
         if gtype == "addr_city":
@@ -1324,12 +1368,17 @@ class TableGenerator:
             lag_days = sample_number(rng, {"distribution": "lognormal", "median": 3, "sigma": 1.5, "max": 400}, where)
             updated = base + dt.timedelta(days=lag_days * (0 if rng.random() < 0.45 else 1))
             limit = dt.datetime.combine(cal.as_of, dt.time(23, 59, 59))
-            return min(updated, limit)
+            # Floor at base so a base near/after as_of can't invert ordering.
+            return max(min(updated, limit), base)
         if gtype == "auto_ingested_at":
             src = row.get("source_updated_at") or row.get("created_at")
             base = src if isinstance(src, dt.datetime) else cal.sample_timestamp(rng)
             lag_hours = sample_number(rng, {"distribution": "lognormal", "median": 4, "sigma": 0.8, "max": 96}, where)
-            return base + dt.timedelta(hours=lag_hours)
+            ingested = base + dt.timedelta(hours=lag_hours)
+            limit = dt.datetime.combine(cal.as_of, dt.time(23, 59, 59))
+            # Clamp like auto_updated_at; the late_arrival injector intentionally
+            # (and loggedly) pushes ingestion past as_of afterwards.
+            return max(min(ingested, limit), base)
         if gtype == "auto_effective_start":
             anchor = self._first_date_column(row)
             if isinstance(anchor, dt.datetime):
@@ -1436,12 +1485,15 @@ class TableGenerator:
         if gen.get("business_days") and isinstance(result, (dt.date, dt.datetime)):
             while (result.weekday() if isinstance(result, dt.date) else result.date().weekday()) >= 5:
                 result += dt.timedelta(days=1)
-        if gen.get("clamp_as_of", True):
+        if gen.get("clamp_as_of", True) and not gen.get("negate"):
             limit_d = self.ctx.calendar.as_of
             if isinstance(result, dt.datetime):
-                result = min(result, dt.datetime.combine(limit_d, dt.time(23, 59, 59)))
+                clamped = min(result, dt.datetime.combine(limit_d, dt.time(23, 59, 59)))
+                base_dt = base if isinstance(base, dt.datetime) else dt.datetime.combine(base, dt.time(0, 0))
+                result = max(clamped, base_dt)
             elif isinstance(result, dt.date):
-                result = min(result, limit_d)
+                base_d = base.date() if isinstance(base, dt.datetime) else base
+                result = max(min(result, limit_d), base_d)
         if str(gen.get("as", "")) == "date" and isinstance(result, dt.datetime):
             return result.date()
         return result
@@ -1511,13 +1563,26 @@ class TableGenerator:
                 raise SpecError(f"{self.tbl.where} ({self.tbl.key}): per_parent ref '{parent_ref}' not generated before this table.")
             dist = self.tbl.rows_cfg.get("distribution", {"distribution": "lognormal", "median": 3, "sigma": 0.8})
             count_rng = self.rng_for("__rows__")
+            # scale_by: parent-attribute volume conditioning (enterprise customers
+            # order more); per_parent_multiplier: heavy-tailed per-parent activity
+            # weight so a whale tier emerges.
+            scale_by = self.tbl.rows_cfg.get("scale_by")
+            mult_cfg = self.tbl.rows_cfg.get("per_parent_multiplier")
+            mult_rng = self.rng_for("__parent_mult__")
             row_index = 0
             # Parent count already scales with the multiplier, so per-parent child
             # counts must NOT be scaled again (that would scale children quadratically).
             for pk in cache["pks"]:
                 parent_row = dict(cache.get("rows", {}).get(pk, {}))
                 parent_row["__pk__"] = pk
-                n = int(round(sample_number(count_rng, dist, f"{self.tbl.where}.rows.distribution")))
+                n = sample_number(count_rng, dist, f"{self.tbl.where}.rows.distribution")
+                if scale_by:
+                    parent_value = str(parent_row.get(scale_by.get("parent_column")))
+                    factor = scale_by.get("factors", {}).get(parent_value, scale_by.get("default", 1.0))
+                    n *= float(factor)
+                if mult_cfg:
+                    n *= sample_number(mult_rng, mult_cfg, f"{self.tbl.where}.rows.per_parent_multiplier")
+                n = int(round(n))
                 n = max(int(self.tbl.rows_cfg.get("min", 0)), min(n, int(self.tbl.rows_cfg.get("max", 10 ** 9))))
                 for child_idx in range(n):
                     yield self._build_row(row_index, parent_row, child_idx, null_rng)
@@ -1585,7 +1650,7 @@ def expand_scd2(tbl: TableSpec, rows: list[dict[str, Any]], ctx: GenerationConte
             hist = dict(row)
             version_seq += 1
             hist[pk_col] = f"{row[pk_col]}-H{version_seq}" if isinstance(row[pk_col], str) else -(version_seq + 10 ** 7)
-            end = min(prev_start + dt.timedelta(days=spans[v]), ctx.calendar.as_of)
+            end = max(min(prev_start + dt.timedelta(days=spans[v]), ctx.calendar.as_of), prev_start)
             hist["effective_start_date"] = prev_start
             hist["effective_end_date"] = end
             hist["current_flag"] = 0
@@ -1651,6 +1716,9 @@ class StateMachine:
         table_cols = tables[self.table].column_names
         if self.status_column not in table_cols:
             raise SpecError(f"{self.where}: status_column '{self.status_column}' not a column of {self.table}.")
+        if self.start_column not in table_cols:
+            raise SpecError(f"{self.where}: start_column '{self.start_column}' not a column of {self.table}."
+                            f"{suggest(str(self.start_column), table_cols)}")
         for state, colname in self.timestamp_columns.items():
             if state not in self.states:
                 raise SpecError(f"{self.where}: timestamp_columns key '{state}' is not a declared state.")
@@ -1820,6 +1888,11 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
         tbl = tables[tkey]
         if not tbl.primary_key:
             raise SpecError(f"{where}: table '{tkey}' needs a primary_key for imperfection targeting.")
+        if len(tbl.primary_key) != 1 and itype != "out_of_order_events":
+            raise SpecError(f"{where}: table '{tkey}' has a composite primary key "
+                            f"({', '.join(tbl.primary_key)}); imperfections other than "
+                            "out_of_order_events require a single-column primary key — "
+                            "targeting by the first component would silently hit whole groups.")
         pk = tbl.primary_key[0]
         rate = float(imp.get("rate", 0.01))
         if rate > 0.5:
@@ -1832,6 +1905,15 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
 
         def log_entry(pk_value: Any, detail: str) -> None:
             entries.append((name, itype, tbl.physical, str(pk_value), detail))
+
+        def synth_pk_counter(base: int) -> list[int]:
+            """Collision-free synthetic integer PK allocator: sequential from
+            max(existing) within the branch's reserved range. Random draws from a
+            small range birthday-collide and crash the build at scale."""
+            current = conn.execute(
+                f'select coalesce(max("{pk}"), 0) from "{tbl.physical}" '
+                f'where "{pk}" >= ? and "{pk}" < ?', (base, base + 10 ** 7)).fetchone()[0]
+            return [max(base, int(current) + 1)]
 
         if itype == "null_field":
             column = params.get("column")
@@ -1870,14 +1952,18 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
         elif itype == "duplicate_entity":
             fuzz_columns = params.get("fuzz_columns", [])
             cols = tbl.column_names
+            counter = synth_pk_counter(80000000)
             for pk_value in _sample_pks(conn, tbl.physical, pk, rate, rng):
                 row = conn.execute(f'select * from "{tbl.physical}" where "{pk}" = ?', (pk_value,)).fetchone()
                 if row is None:
                     continue
                 values = dict(zip(cols, row))
                 old_pk = values[pk]
-                values[pk] = (f"{old_pk}-DUP" if isinstance(old_pk, str)
-                              else 80000000 + rng.randrange(1000000))
+                if isinstance(old_pk, str):
+                    values[pk] = f"{old_pk}-DUP{counter[0]}"
+                else:
+                    values[pk] = counter[0]
+                counter[0] += 1
                 for fc in fuzz_columns:
                     if isinstance(values.get(fc), str):
                         values[fc] = _typo(rng, values[fc])
@@ -1940,6 +2026,7 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
             amount_columns = params.get("amount_columns", [])
             reason_column = params.get("reason_column")
             cols = tbl.column_names
+            counters = {"-REV": synth_pk_counter(70000000), "-RST": synth_pk_counter(75000000)}
             for pk_value in _sample_pks(conn, tbl.physical, pk, rate, rng):
                 row = conn.execute(f'select * from "{tbl.physical}" where "{pk}" = ?', (pk_value,)).fetchone()
                 if row is None:
@@ -1948,8 +2035,12 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
                 base_pk = values[pk]
                 for suffix, sign, reason in (("-REV", -1, "reversal"), ("-RST", 1, "restated")):
                     copy = dict(values)
-                    copy[pk] = (f"{base_pk}{suffix}" if isinstance(base_pk, str)
-                                else (70000000 if sign < 0 else 75000000) + rng.randrange(1000000))
+                    counter = counters[suffix]
+                    if isinstance(base_pk, str):
+                        copy[pk] = f"{base_pk}{suffix}{counter[0]}"
+                    else:
+                        copy[pk] = counter[0]
+                    counter[0] += 1
                     for ac in amount_columns:
                         if isinstance(copy.get(ac), (int, float)) and copy[ac] is not None:
                             adj = sign * copy[ac] if sign < 0 else copy[ac] * rng.uniform(0.95, 1.05)
@@ -1968,30 +2059,38 @@ def apply_imperfections(conn: sqlite3.Connection, spec: dict[str, Any],
             if seq_column not in tbl.column_names or group_column not in tbl.column_names:
                 raise SpecError(f"{where}: needs params.sequence_column and params.group_column present in {tkey}.")
             groups = [r[0] for r in conn.execute(
-                f'select distinct "{group_column}" from "{tbl.physical}"')]
+                f'select distinct "{group_column}" from "{tbl.physical}" order by 1')]
             chosen = rng.sample(groups, min(int(round(len(groups) * rate)), len(groups))) if groups else []
             for group in chosen:
+                # rowid targeting (composite-PK safe) and a NULL-sentinel swap:
+                # SQLite checks unique/PK constraints per-row, so a direct two-step
+                # swap of constrained sequence values would fail mid-flight.
                 rows = conn.execute(
-                    f'select "{pk}", "{seq_column}" from "{tbl.physical}" where "{group_column}" = ? '
+                    f'select rowid, "{seq_column}" from "{tbl.physical}" where "{group_column}" = ? '
                     f'order by "{seq_column}"', (group,)).fetchall()
                 if len(rows) < 2:
                     continue
                 i = rng.randrange(len(rows) - 1)
-                (pk_a, seq_a), (pk_b, seq_b) = rows[i], rows[i + 1]
-                conn.execute(f'update "{tbl.physical}" set "{seq_column}" = ? where "{pk}" = ?', (seq_b, pk_a))
-                conn.execute(f'update "{tbl.physical}" set "{seq_column}" = ? where "{pk}" = ?', (seq_a, pk_b))
-                log_entry(group, f"events {pk_a}/{pk_b} sequence swapped")
+                (rid_a, seq_a), (rid_b, seq_b) = rows[i], rows[i + 1]
+                conn.execute(f'update "{tbl.physical}" set "{seq_column}" = null where rowid = ?', (rid_a,))
+                conn.execute(f'update "{tbl.physical}" set "{seq_column}" = ? where rowid = ?', (seq_a, rid_b))
+                conn.execute(f'update "{tbl.physical}" set "{seq_column}" = ? where rowid = ?', (seq_b, rid_a))
+                log_entry(group, f"{seq_column} {seq_a}/{seq_b} swapped within group")
 
         elif itype == "duplicate_webhook":
             cols = tbl.column_names
+            counter = synth_pk_counter(85000000)
             for pk_value in _sample_pks(conn, tbl.physical, pk, rate, rng):
                 row = conn.execute(f'select * from "{tbl.physical}" where "{pk}" = ?', (pk_value,)).fetchone()
                 if row is None:
                     continue
                 values = dict(zip(cols, row))
                 old_pk = values[pk]
-                values[pk] = (f"{old_pk}-RETRY" if isinstance(old_pk, str)
-                              else 85000000 + rng.randrange(1000000))
+                if isinstance(old_pk, str):
+                    values[pk] = f"{old_pk}-RETRY{counter[0]}"
+                else:
+                    values[pk] = counter[0]
+                counter[0] += 1
                 placeholders = ", ".join("?" for _ in cols)
                 collist = ", ".join(f'"{c}"' for c in cols)
                 conn.execute(f'insert into "{tbl.physical}" ({collist}) values ({placeholders})',
@@ -2228,6 +2327,7 @@ def preflight(spec: dict[str, Any]) -> list[TableSpec]:
             if ref not in by_key:
                 raise SpecError(f"{t.where} ({t.key}): fk column '{colname}' references unknown table "
                                 f"'{ref}'.{suggest(ref, list(by_key))}")
+        has_per_parent = per_parent_ref(t.rows_cfg) is not None
         for ci, col in enumerate(t.columns):
             gen = col.get("gen")
             if gen is not None and not isinstance(gen, dict):
@@ -2236,6 +2336,14 @@ def preflight(spec: dict[str, Any]) -> list[TableSpec]:
                 local = gen.get("column")
                 if local not in t.column_names:
                     raise SpecError(f"{t.where}.columns[{ci}]: fk_copy.column '{local}' is not a column of {t.key}.")
+                if t.column_names.index(local) >= ci:
+                    raise SpecError(f"{t.where}.columns[{ci}]: fk_copy.column '{local}' must be declared "
+                                    f"BEFORE this column — columns generate in listed order, so a later "
+                                    "fk_copy source would silently produce all-NULL values.")
+            if gen and gen.get("sorted") and has_per_parent:
+                raise SpecError(f"{t.where}.columns[{ci}] ({t.key}): 'sorted' generators are not supported "
+                                "on per_parent tables (row count unknown upfront). For child entities use "
+                                "date_offset from parent.<col> or {'type': 'timestamp', 'min': 'parent.<col>'}.")
         for pk_col in t.primary_key:
             if pk_col not in t.column_names and t.source == "generator":
                 raise SpecError(f"{t.where} ({t.key}): primary_key column '{pk_col}' not in columns."
@@ -2264,6 +2372,9 @@ def preflight(spec: dict[str, Any]) -> list[TableSpec]:
             referenced = any(str(m.get("history_table")) == t.key for m in spec.get("state_machines", []))
             if not referenced and t.key not in machine_tables:
                 raise SpecError(f"{t.where} ({t.key}): source='state_machine' but no state machine references it.")
+    # Construct machines so their errors surface at validation/--plan time, not mid-build.
+    for mi, raw in enumerate(spec.get("state_machines", [])):
+        StateMachine(raw, mi, by_key)
     return tables
 
 
@@ -2389,15 +2500,24 @@ def build(spec_path: Path, out_dir: Path, db_path: Path | None, seed_override: i
                 pks: list[Any] = []
                 cached_rows: dict[Any, dict[str, Any]] = {}
 
-                rows_buffer = list(gen.rows(multiplier))
-                rows_buffer = expand_scd2(tbl, rows_buffer, ctx)
+                is_scd2 = str((tbl.history or {}).get("strategy", "")).lower() == "scd2"
+                if is_scd2:
+                    rows_iter: Any = expand_scd2(tbl, list(gen.rows(multiplier)), ctx)
+                else:
+                    # Stream: no full-table materialization for large fact tables.
+                    rows_iter = gen.rows(multiplier)
 
+                row_count = 0
                 batch: list[tuple] = []
-                for row in rows_buffer:
+                for row in rows_iter:
+                    row_count += 1
                     if needs_cache and pk_col is not None:
-                        pks.append(row[pk_col])
-                        if cache_cols:
-                            cached_rows[row[pk_col]] = {c: iso(row.get(c)) for c in cache_cols}
+                        # SCD2 history versions must NOT enter FK/parent pools:
+                        # children would reference non-current rows with synthetic keys.
+                        if not (is_scd2 and row.get("current_flag") == 0):
+                            pks.append(row[pk_col])
+                            if cache_cols:
+                                cached_rows[row[pk_col]] = {c: iso(row.get(c)) for c in cache_cols}
                     batch.append(tuple(iso(row.get(c)) for c in col_names))
                     if len(batch) >= 20000:
                         conn.executemany(insert_sql, batch)
@@ -2406,9 +2526,8 @@ def build(spec_path: Path, out_dir: Path, db_path: Path | None, seed_override: i
                     conn.executemany(insert_sql, batch)
                 if needs_cache:
                     ctx.cache[tbl.key] = {"pks": pks, "rows": cached_rows}
-                stats[tbl.key] = {"rows": len(rows_buffer), "by": "generator"}
-                log(f"  generated {tbl.key}: {len(rows_buffer)} rows")
-                del rows_buffer
+                stats[tbl.key] = {"rows": row_count, "by": "generator"}
+                log(f"  generated {tbl.key}: {row_count} rows")
 
             # --- phase 2: state machines ---
             history_counts = apply_state_machines(conn, spec, by_key, ctx, log)
@@ -2514,6 +2633,10 @@ def build(spec_path: Path, out_dir: Path, db_path: Path | None, seed_override: i
 
 
 def main(argv: list[str] | None = None) -> int:
+    if sys.version_info < (3, 9):
+        print(f"error: Python {sys.version.split()[0]} is too old; the engine requires >= 3.9.",
+              file=sys.stderr)
+        return 2
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")

@@ -30,7 +30,7 @@ The validator follows a no-flake policy: a check that can fire on a correct buil
 - every state-machine entity terminal (a real as-of snapshot has open pipeline)
 - timestamps beyond as_of beyond logged late arrivals; updated_at before created_at
 
-**Realism scorecard (x/y in the report)** — statistical signatures:
+**Realism scorecard (x/y in the report)** — statistical signatures (failed signatures count as warnings under `--strict`):
 
 - weekend share matches the configured weekday weights
 - zipf FK columns concentrate volume in the top decile of parents
@@ -44,7 +44,7 @@ The validator follows a no-flake policy: a check that can fire on a correct buil
 Controlled imperfections are features, not failures. The engine logs every injected defect to `meta_imperfection_log`; the validator reconciles both directions:
 
 - Forward: sampled log entries are probed in the data (orphaned rows exist, deleted xref rows are gone, duplicates exist).
-- Backward: every `pragma foreign_key_check` row is classified **logged** (within the orphan_fk log for that table), **derived-from-logged** (in a derivation-populated table, where source-layer defects legitimately propagate — warning, verify lineage), or **unexplained** (critical).
+- Backward: every `pragma foreign_key_check` row is classified per violating row — **logged** (the row's primary key appears in the imperfection log for that table under any type, since copy-injectors legitimately clone already-ghosted FKs), **derived-from-logged** (in a derivation-populated table, where source-layer defects legitimately propagate — warning, verify lineage), or **unexplained** (critical).
 
 Do not "fix" intentional orphans or recon breaks that reconcile to the log — they are the realism. Fix unexplained ones.
 
@@ -55,7 +55,7 @@ The report leads with a verdict, then: critical findings, warnings, failed reali
 ## Exit Codes
 
 - `0`: no critical findings (warnings allowed unless `--strict`)
-- `1`: critical findings (or any warning with `--strict`)
+- `1`: critical findings (or, with `--strict`, any warning or failed realism signature)
 - `2`: usage/configuration error
 
 `scripts/run_self_test.py` runs the spec validator, a double build across different `PYTHONHASHSEED` values (logical per-table hashes must match), strict database validation, and the profiler. Run it whenever engine behavior is in doubt.

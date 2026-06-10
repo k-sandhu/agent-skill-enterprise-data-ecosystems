@@ -1,6 +1,6 @@
 # Ecosystem Spec Language
 
-Reference for the JSON spec consumed by `scripts/build_sqlite_ecosystem.py`. The worked example at `examples/harborline-provisions/ecosystem_spec.json` demonstrates every feature — copy its patterns.
+Reference for the JSON spec consumed by `scripts/build_sqlite_ecosystem.py`. The worked example at `examples/harborline-provisions/ecosystem_spec.json` demonstrates most features — copy its patterns. Not shown there (documented below only): `scd2` history, `self_fk` hierarchies, `soft_delete`, `price_endings`, most `identifier` kinds.
 
 ## Pipeline
 
@@ -23,8 +23,8 @@ Builds are deterministic (same spec + seed = identical data, proven across `PYTH
   "organization": {"name", "archetype", "industry", "currency"},
   "platform": "sqlite",
   "seed": 7,
-  "scale": {"profile": "small|medium|large", "multiplier": 1.0},
-  "time": {"start_date", "end_date", "as_of_date"},          // ISO dates; as_of right-censors everything
+  "scale": {"profile": "small", "multiplier": 1.0},           // profile is descriptive metadata only; multiplier is the volume lever (also --scale-multiplier)
+  "time": {"start_date", "end_date", "as_of_date"},          // bare date/timestamp draws span start..min(end, as_of); only date_offset with clamp_as_of:false can land after as_of (deliberate future dates: due dates, expiry)
   "calendar": {
     "weekday_weights": [..7, Mon..Sun],                       // weekend dip
     "month_weights": [..12],                                   // seasonality
@@ -61,15 +61,21 @@ Any key starting with `_` (e.g. `_note`) is a comment, stripped before validatio
 - `source: "generator"` (default) — engine generates rows; needs `rows`.
 - `source: "derivation"` — populated by SQL in `derivations`; columns define DDL only (no `gen`).
 - `source: "state_machine"` — history table filled by a machine; first four columns must be entity pk, sequence, state, entered_at.
-- Layer rule: source/operational/transaction layers generate; stg/xref/core/warehouse/mart layers **derive** — that is what makes lineage real.
+- Layer rule (use these exact layer strings — the validator's vocabulary): `source`/`operational`/`transaction`/`event` layers generate; `staging`/`xref`/`canonical`/`warehouse_fact`/`warehouse_dimension`/`mart` layers **derive** — that is what makes lineage real. Other recognized layers: `app`, `control`, `dq`, `workflow`, `audit`, `integration`, `raw`.
+- Identifiers (table/column/key/index names) must match `[A-Za-z_][A-Za-z0-9_]*` — they are interpolated into SQL and the engine rejects anything else.
 
 **Rows per parent** (realistic skew — children counted per parent):
 
 ```jsonc
-"rows": {"per_parent": "erp.customer", "distribution": {"distribution": "lognormal", "median": 6, "sigma": 1.1}, "min": 0, "max": 60}
+"rows": {"per_parent": "erp.customer",
+         "distribution": {"distribution": "lognormal", "median": 9, "sigma": 0.7},
+         "scale_by": {"parent_column": "segment",                    // volume conditioned on a parent attribute
+                      "factors": {"national_chain": 9.0, "institution": 4.0}, "default": 1.0},
+         "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.9},  // heavy-tailed activity weight -> whales
+         "min": 0, "max": 420}
 ```
 
-Always set `max` (one hot draw can explode counts). Parent counts already scale with the multiplier; child counts are not re-scaled.
+Always set `max` (one hot draw can explode counts). Parent counts already scale with the multiplier; child counts are not re-scaled. `scale_by` + `per_parent_multiplier` are the customer-economics levers — without them every parent has the same expected volume, which fails the first segment cross-tab a reviewer runs.
 
 **Traits** auto-append standard column packs (explicit columns win over trait columns):
 
@@ -80,7 +86,7 @@ Always set `max` (one hot draw can explode counts). Parent counts already scale 
 | `soft_delete` | active_flag |
 | `effective_dated` | effective_start_date, effective_end_date, current_flag |
 
-**SCD2 history**: `"history": {"strategy": "scd2", "change_rate": 0.25, "max_versions": 3, "track": ["col"]}` on an effective-dated table emits predecessor versions with chained dates.
+**SCD2 history**: `"history": {"strategy": "scd2", "change_rate": 0.25, "max_versions": 3, "track": ["col"]}` on an effective-dated table emits predecessor versions with chained dates. History versions get synthetic surrogate keys and are excluded from FK/per_parent pools — `fk:` against an scd2 table always resolves to current versions.
 
 ## Generators — three tiers
 
@@ -98,12 +104,16 @@ Always set `max` (one hot draw can explode counts). Parent counts already scale 
 | notes / comment | domain text pool |
 | typed date / timestamp with no gen | calendar-weighted in-horizon value |
 
+Columns matching none of these do NOT error — they fall through to generic type-based fillers (string -> `"VAL-#####"` pattern, integer -> uniform 0..100, decimal -> lognormal money median 100, boolean -> 50/50). Treat any `VAL-####` values in profiling output as a missing `gen`.
+
 **Tier 2 — string shorthands** (most columns should use these):
 
 ```text
 "seq" | "seq:CUST-%06d"            sequence id with format
 "pattern:ORD-########"             # digit, @ upper, ? lower, * alnum; add "unique": true in object form
 "fk:erp.product@zipf"              FK pick (weightings: uniform | zipf | recency)
+"fk:erp.product@zipf(0.5)"         zipf with explicit exponent — default 1.1 is heavy; use ~0.5 for product
+                                   popularity so the top SKU stays ~2-4% of lines, not 20%
 "choice:NET30=0.6,NET45=0.3,COD=0.1"
 "int:lognormal(median=5,sigma=0.9,min=1,max=200)"
 "money:lognormal(median=120,sigma=0.8)"
@@ -121,7 +131,9 @@ Always set `max` (one hot draw can explode counts). Parent counts already scale 
 // Calendar-weighted date bounded by another column (THE pattern for activity dates):
 {"type": "date", "min": "parent.created_at"}                  // never before the parent existed; keeps weekday/seasonal shape
 
-// Sorted entity onboarding with pre-horizon backfill (tenured book; IDs correlate with dates):
+// Sorted entity onboarding with pre-horizon backfill (tenured book; IDs correlate with dates).
+// Only valid on fixed-count tables — NOT per_parent (row count unknown upfront); for child
+// entities use date_offset from parent.<col> or {"type": "timestamp", "min": "parent.<col>"}:
 {"type": "timestamp", "sorted": true, "backfill_share": 0.65, "backfill_start": "2019-01-01"}
 
 // Short process lags ONLY (ship after order). NEVER for long activity windows —
@@ -136,15 +148,23 @@ Always set `max` (one hot draw can explode counts). Parent counts already scale 
 // FK affinity: pick parents whose attribute matches a local column, with leakage:
 {"type": "fk", "ref": "wms.warehouse", "match": {"parent_column": "region", "local_column": "region", "leak_rate": 0.05}}
 
-// Denormalize a parent attribute through a FK (price snapshots, region copies):
+// Denormalize a parent attribute through a FK (price snapshots, region copies).
+// fk_copy's "column" (the local FK) must be declared BEFORE the fk_copy column:
 {"type": "fk_copy", "column": "product_id", "ref": "erp.product", "source_column": "list_price", "jitter": 0.05}
+
+// Text from templates over vocab pools and/or earlier columns ({pool_name} or {col.<name>}):
+{"type": "text_template", "templates": ["{protein_product}", "Called about {support_topic}."]}
+
+// choice object forms (weights optional): {"type": "choice", "values": ["a","b"], "weights": [0.8, 0.2]}
+// or values as [{"value": "a", "weight": 0.8}, ...]
+// company_name with "unique": true de-duplicates (city-suffix disambiguation), for entity name columns
 
 // Per-parent tables: "parent_key", {"type": "parent_copy", "source_column": "x"}, "child_index"
 // Self-referencing hierarchy: {"type": "self_fk", "root_share": 0.25}
 // Money with price endings: {"type": "money", "median": 42, "sigma": 0.7, "price_endings": [0.99, 0.49, 0.0]}
 ```
 
-Any column accepts `"null_rate": 0.07` (design-level missingness; logged imperfections are separate). Columns generate in listed order — `expr`/`copy`/`case` may only reference earlier columns.
+Any column accepts `"null_rate": 0.07` (design-level missingness; logged imperfections are separate). Columns generate in listed order — `expr`/`copy`/`case`/`fk_copy` may only reference earlier columns.
 
 **Price realism rule**: transactional amounts must be `fk_copy(price)` x integer quantity via `expr` — never direct continuous draws. Real amount columns repeat exact values; the validator checks duplicate mass.
 

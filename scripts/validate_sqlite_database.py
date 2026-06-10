@@ -158,25 +158,45 @@ class Validator:
 
     def check_foreign_keys(self) -> None:
         violations = self.q("pragma foreign_key_check")
-        by_table: dict[str, int] = {}
-        for row in violations:
-            by_table[row[0]] = by_table.get(row[0], 0) + 1
         if not violations:
             self.add("info", "I_FK", "foreign_key_check returned zero rows")
             return
-        for physical, count in sorted(by_table.items()):
-            logged = len(self.logged(("orphan_fk",), physical))
+        # Classify each violating ROW precisely: a violation is excused when its
+        # pk appears in the imperfection log for that table under ANY type —
+        # copy-injectors (duplicate_entity, restatement, webhook) legitimately
+        # clone rows whose FKs were already ghosted by orphan_fk.
+        logged_pks: dict[str, set] = {}
+        for e in self.imp_log:
+            logged_pks.setdefault(e["table"], set()).add(e["pk"])
+        by_table: dict[str, list] = {}
+        for row in violations:
+            by_table.setdefault(row[0], []).append(row[1])  # (table, rowid, parent, fkid)
+        for physical, rowids in sorted(by_table.items()):
             tspec = next((t for t in self.tables if t.physical == physical), None)
-            if count <= logged:
+            count = len(rowids)
+            if tspec is None or not tspec.primary_key or len(tspec.primary_key) != 1:
+                self.add("warning", "W_FK_UNRESOLVED",
+                         f"{physical}: {count} FK violations on a table without a single-column PK; "
+                         "cannot reconcile against the imperfection log")
+                continue
+            pk = tspec.primary_key[0]
+            excused = logged_pks.get(physical, set())
+            unexplained = 0
+            for rowid in rowids:
+                row = self.q(f'select cast("{pk}" as text) from "{physical}" where rowid = ?', (rowid,))
+                if not row or row[0][0] not in excused:
+                    unexplained += 1
+            if unexplained == 0:
                 self.add("info", "I_FK_LOGGED",
-                         f"{physical}: {count} FK violations, all within {logged} logged orphan_fk injections")
-            elif tspec is not None and tspec.source == "derivation":
+                         f"{physical}: {count} FK violations, every violating row is in the imperfection log")
+            elif tspec.source == "derivation":
                 self.add("warning", "W_FK_DERIVED",
-                         f"{physical}: {count} FK violations in a derived table "
-                         f"(propagated from logged source orphans is expected; verify lineage)")
+                         f"{physical}: {unexplained}/{count} FK violations not directly logged in a derived "
+                         "table (propagation from logged source defects is expected; verify lineage)")
             else:
                 self.add("critical", "C_FK_UNEXPLAINED",
-                         f"{physical}: {count} FK violations but only {logged} logged orphan_fk injections")
+                         f"{physical}: {unexplained}/{count} FK violations whose rows are absent "
+                         "from the imperfection log")
 
     def check_pii(self) -> None:
         problems = []
@@ -186,14 +206,15 @@ class Validator:
             for col in t.column_names:
                 low = col.lower()
                 if "email" in low:
-                    bad = self.q1(f'select count(*) from (select "{col}" v from "{t.physical}" '
+                    # trim(): the engine's PII-safe typo injector adds whitespace noise.
+                    bad = self.q1(f'select count(*) from (select trim("{col}") v from "{t.physical}" '
                                   f'where "{col}" is not null limit 2000) '
                                   "where v not like '%example.com' and v not like '%example.org' "
                                   "and v not like '%example.net' and v not like '%.test' and v not like '%.invalid'")
                     if bad:
                         problems.append(f"{t.key}.{col}: {bad} emails outside safe fictional domains")
                 elif "phone" in low or low == "fax" or low == "mobile":
-                    bad = self.q1(f'select count(*) from (select "{col}" v from "{t.physical}" '
+                    bad = self.q1(f'select count(*) from (select trim("{col}") v from "{t.physical}" '
                                   f'where "{col}" is not null limit 2000) where v not like \'%555-01%\'')
                     if bad:
                         problems.append(f"{t.key}.{col}: {bad} phones outside the 555-01xx fictional range")
@@ -244,8 +265,10 @@ class Validator:
             tspec = self.by_key.get(key)
             if tspec is None or not self.table_exists(tspec.physical):
                 continue
-            # Ranges are authored for multiplier 1.0; scale to the build's multiplier.
-            lo, hi = bounds[0] * multiplier * 0.8, bounds[1] * multiplier * 1.2
+            # Ranges are authored for multiplier 1.0; scale to the build's multiplier
+            # except for scale_exempt tables, which the engine never scales.
+            eff_mult = 1.0 if tspec.scale_exempt else multiplier
+            lo, hi = bounds[0] * eff_mult * 0.8, bounds[1] * eff_mult * 1.2
             n = self.q1(f'select count(*) from "{tspec.physical}"')
             if not (lo <= n <= hi):
                 self.add("warning", "W_ROW_RANGE",
@@ -262,7 +285,15 @@ class Validator:
             tspec = self.by_key.get(tkey)
             if tspec is None or not self.table_exists(tspec.physical):
                 continue
-            n_rows = self.q1(f'select count(*) from "{tspec.physical}"')
+            if str(imp.get("type")) == "out_of_order_events":
+                # The engine samples GROUPS (with >= 2 rows), not rows.
+                group_col = (imp.get("params") or {}).get("group_column")
+                if not group_col:
+                    continue
+                n_rows = self.q1(f'select count(*) from (select 1 from "{tspec.physical}" '
+                                 f'group by "{group_col}" having count(*) >= 2)')
+            else:
+                n_rows = self.q1(f'select count(*) from "{tspec.physical}"')
             expected = float(imp.get("rate", 0)) * max(n_rows, 1)
             if expected < 5:
                 self.add("info", "I_RATE_SMALL",
@@ -284,8 +315,10 @@ class Validator:
         for (itype, physical), entries in sorted(groups.items()):
             if not self.table_exists(physical):
                 continue
+            if itype == "out_of_order_events":
+                continue  # logs the group value, not a primary key — not pk-probeable
             tspec = next((t for t in self.tables if t.physical == physical), None)
-            if tspec is None or not tspec.primary_key:
+            if tspec is None or not tspec.primary_key or len(tspec.primary_key) != 1:
                 continue
             pk = tspec.primary_key[0]
             sample = entries[:20]

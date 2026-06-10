@@ -92,7 +92,7 @@ Match the user's requested depth:
 
 - `scripts/build_sqlite_ecosystem.py`: spec -> DDL artifacts + populated SQLite database + meta tables. Flags: `--plan`, `--out`, `--db`, `--seed`, `--scale-multiplier`, `--force`, `--schema-only`, `--quiet`.
 - `scripts/validate_ecosystem_spec.py`: collect-all spec diagnostics (errors + realism lints) before building.
-- `scripts/validate_sqlite_database.py`: integrity, grain, FK-vs-imperfection-log reconciliation, PII heuristics, realism scorecard. `--strict` fails on warnings.
+- `scripts/validate_sqlite_database.py`: integrity, grain, FK-vs-imperfection-log reconciliation, PII heuristics, realism scorecard. `--strict` fails on warnings and failed realism signatures.
 - `scripts/profile_sqlite_database.py`: per-table Markdown profile.
 - `scripts/run_self_test.py`: end-to-end toolchain proof including determinism across hash seeds.
 - `scripts/generate_schema_catalog.py`, `scripts/generate_ddl.py`, `scripts/generate_seed_plan.py`: documentation artifacts and non-SQLite DDL from the same spec.

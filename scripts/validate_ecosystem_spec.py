@@ -90,13 +90,20 @@ def lint(spec: dict[str, Any], tables: list) -> list[Diag]:
             warn("W_NO_SECURITY_MODEL", "/tables",
                  "sensitive-classified columns exist but no security/privacy tables are modeled")
 
+    import re as _re
     derivation_targets = set()
     for di, deriv in enumerate(spec.get("derivations", [])):
         sql = deriv.get("sql")
         sql_text = ("\n".join(sql) if isinstance(sql, list) else str(sql or "")).lower()
         for t in tables:
-            if t.source == "derivation" and (t.key.lower() in sql_text or t.physical in sql_text):
-                derivation_targets.add(t.key)
+            if t.source != "derivation":
+                continue
+            # Word-boundary match so 'stg.crm_account' doesn't count a reference
+            # to 'stg.crm_account_clean' as populating it.
+            for name in (t.key.lower(), t.physical):
+                if _re.search(rf"(?<![\w.]){_re.escape(name)}(?![\w])", sql_text):
+                    derivation_targets.add(t.key)
+                    break
     for ti, t in enumerate(tables):
         if t.source == "derivation" and t.key not in derivation_targets:
             warn("W_DERIVE_NO_SOURCE", f"/tables/{ti}",
