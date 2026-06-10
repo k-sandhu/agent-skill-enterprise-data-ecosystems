@@ -61,15 +61,15 @@
       "columns": [
         {"name": "account_id", "type": "integer"},
         {"name": "account_code", "type": "string", "gen": {"type": "pattern", "pattern": "ACCT-#####", "unique": true}},
-        {"name": "account_name", "type": "string", "gen": {"type": "company_name", "flavor": "restaurant", "unique": true}},
         {"name": "segment", "type": "string", "gen": "choice:independent=0.55,regional_chain=0.25,institution=0.12,national_chain=0.08"},
+        {"name": "account_name", "type": "string", "_note": "Chains draw from a small shared brand pool with numbered locations ('Cedar Point Cantina #3'); independents/institutions get unique one-off names.", "gen": {"type": "case", "on": "segment", "cases": {"regional_chain": {"type": "company_name", "flavor": "restaurant", "chain_pool": 14}, "national_chain": {"type": "company_name", "flavor": "restaurant", "chain_pool": 14}}, "default": {"type": "company_name", "flavor": "restaurant", "unique": true}}},
         {"name": "sales_region", "type": "string", "gen": "choice:Northeast=0.3,Southeast=0.27,Midwest=0.25,West=0.18"},
         {"name": "street_address", "type": "string"},
         {"name": "city", "type": "string"},
         {"name": "state", "type": "string"},
         {"name": "postal_code", "type": "string"},
         {"name": "phone", "type": "string"},
-        {"name": "email", "type": "string", "null_rate": 0.07},
+        {"name": "email", "type": "string", "null_rate": 0.07, "_note": "Role/proprietor addresses on the account's own fictional subdomain (orders@cedar-point-cantina.example.com) — all-personal emails on a B2B account master are a tell.", "gen": {"type": "business_email", "company_column": "account_name"}},
         {"name": "credit_terms", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"independent": {"type": "choice", "values": ["NET14", "NET30", "COD"], "weights": [0.3, 0.45, 0.25]}, "regional_chain": {"type": "choice", "values": ["NET30", "NET45"], "weights": [0.7, 0.3]}, "institution": "NET45", "national_chain": "NET60"}}},
         {"name": "status", "type": "string", "gen": "choice:active=0.84,inactive=0.12,prospect=0.04"},
         {"name": "created_at", "type": "timestamp", "_note": "sorted: account IDs correlate with onboarding order; backfill: 65% of accounts predate the data window (tenured book), so in-window volume grows ~7%/yr instead of ramping from zero.", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.65, "backfill_start": "2019-01-01"}}
