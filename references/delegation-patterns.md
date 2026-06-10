@@ -4,13 +4,7 @@ Use this reference when the runtime supports parallel workers, subagents, backgr
 
 Do not assume a specific product API. Treat "worker" as a generic delegated execution unit that can inspect files, create artifacts, run checks, and report results.
 
-## Contents
-
-- Decision Rule
-- Default Worker Roles
-- Parallelization Plan
-- Integration Rules
-- Safety Rules
+Since the skill ships a deterministic build engine, workers do **not** hand-write DDL, row generators, or validators — those are mechanical. Workers contribute the creative inputs: spec fragments, derivation SQL, realism review, and the optional dashboard. The main agent merges fragments into one spec and runs the toolchain.
 
 ## Decision Rule
 
@@ -18,16 +12,10 @@ Use parallel workers when all conditions are true:
 
 - The user has approved implementation, not just discussion.
 - The runtime exposes a way to run independent work in parallel.
-- Tasks have separable outputs or read-only validation responsibilities.
+- Tasks have separable outputs (disjoint spec domains, disjoint files) or read-only review responsibilities.
 - The main agent can integrate and verify the outputs.
 
-Do not use workers for:
-
-- the initial user interview
-- approval negotiation
-- final integration decisions
-- destructive changes
-- tasks whose outputs are tightly coupled and likely to conflict
+Do not use workers for: the initial user interview, approval negotiation, final spec merge, running builds, destructive changes, or tightly coupled outputs.
 
 If workers are unavailable, perform the same workflow sequentially.
 
@@ -35,119 +23,54 @@ If workers are unavailable, perform the same workflow sequentially.
 
 ### Ecosystem Architect
 
-Owns:
+Owns: archetype and operating model, source systems, domains, state machines (states, probabilities, dwell times), controls with expected break rates, imperfection scenario list, privacy/security expectations.
 
-- organization archetype
-- operating model
-- source systems
-- business domains
-- state machines
-- controls and reconciliation requirements
-- privacy/security/audit/governance expectations
+Output contract: an architecture brief the spec authors consume — domain list, application landscape, dataflows, control catalog draft, imperfection plan with rates.
 
-Output contract:
+### Spec Domain Author (one per business domain)
 
-- architecture assumptions
-- domain list
-- application landscape
-- critical dataflows
-- control catalog draft
-- expected imperfections
+Owns: the `tables`, `state_machines` entries, and column generators for one domain (e.g. order-to-cash, or claims), authored as a JSON fragment following `references/generator-spec.md` and the relevant industry reference's volumetrics.
 
-### SQLite Schema Builder
+Output contract: a valid JSON fragment (tables + machines + imperfections for the domain), the FK refs it expects other domains to provide, and assumed row volumes. Must use logical `schema.table` names and the agreed naming convention.
 
-Owns:
+### Derivation Author
 
-- SQLite naming convention
-- DDL
-- primary keys and foreign keys
-- indexes
-- raw, staging, core, xref, warehouse, mart, control, DQ, workflow, audit, privacy tables
+Owns: the SQL that populates staging, xref, canonical, warehouse, and mart/control/DQ views from the source tables — the lineage layer.
 
-Output contract:
+Output contract: `derivations` entries (logical names, list-of-lines SQL), each with an `expect.at_least_rows` floor where meaningful, plus the `validation.required_views` list.
 
-- `sqlite/01_sqlite_schema.sql`
-- `sqlite/02_sqlite_indexes.sql`
-- schema notes
-- known compromises caused by SQLite limitations
+### Realism Reviewer (read-only)
 
-### Data Generator
+Owns: adversarial review of the merged spec against `references/data-realism.md` and the industry reference — distribution parameters, skew, seasonality, imperfection rates, price quantization, lifecycle coverage. After the first build, reviews the validation report and profile for realism debt.
 
-Owns:
-
-- deterministic synthetic data script
-- dependency-order population
-- realistic distributions
-- state-machine event generation
-- roll-forward balances
-- controlled imperfections
-
-Output contract:
-
-- `scripts/generate_sqlite_data.py`
-- configurable scale parameters
-- record count summary
-- generation notes
-
-### Validation Reviewer
-
-Owns:
-
-- executable schema validation
-- executable data validation
-- referential integrity checks
-- reconciliation checks
-- realism checks
-- validation report
-
-Output contract:
-
-- `scripts/validate_sqlite_database.py`
-- `validation_report.md`
-- pass/fail summary
-- critical issues and suggested fixes
+Output contract: prioritized findings with exact spec paths and replacement values.
 
 ### Dashboard Builder
 
-Owns:
+Owns: optional local visualization (`app.py` or equivalent) connecting read-only to the built SQLite database; executive overview, domain analysis, controls/DQ/workflow exception views.
 
-- local visualization app
-- business analysis views
-- operational exception views
-- drill-down or SQL explorer
-- local run instructions
-
-Output contract:
-
-- `app.py` or equivalent local dashboard
-- dashboard sections
-- smoke-test notes
+Output contract: changed files, run command, smoke-test result.
 
 ## Parallelization Plan
 
-After approval, split work as:
-
-1. Main agent writes the ecosystem spec and artifact plan.
-2. Architect worker validates operating model and controls.
-3. Schema worker creates SQLite DDL and indexes.
-4. Data generator worker creates population script against the agreed schema.
-5. Validation worker creates validation scripts using the same schema contract.
-6. Dashboard worker creates visualization after table names and key metrics are stable.
-7. Main agent integrates outputs, resolves conflicts, runs the build, runs validation, and reports results.
+1. Main agent interviews, classifies the archetype, gets approval, and fixes the naming convention, time horizon, seed, and scale.
+2. Architect worker produces the brief.
+3. Spec domain authors run in parallel on disjoint domains; derivation author runs once source-table names are stable.
+4. Main agent merges fragments into one spec, resolves FK seams, runs `validate_ecosystem_spec.py` until clean, then `--plan`, then builds at reduced scale.
+5. Realism reviewer critiques the validation report and profile; main agent applies fixes and rebuilds.
+6. Full-scale build, strict validation, profile, dashboard (if requested), final summary.
 
 ## Integration Rules
 
-- Assign each worker a clear write scope.
-- Give every worker the same approved artifact plan and target database convention.
-- Require every worker to list changed files and assumptions.
-- Prefer append-only reports from validation workers.
-- The main agent owns final conflict resolution and end-to-end execution.
+- Assign each worker a clear write scope (files or spec domains); spec fragments must be syntactically valid JSON on their own.
+- Give every worker the same approved plan, naming convention, seed, time horizon, and scale profile.
+- Require every worker to list outputs, FK expectations, and assumptions.
+- The main agent owns the merged spec, conflict resolution, all toolchain runs, and the final summary.
 - Do not let a worker silently change the approved scope, naming convention, or scale profile.
 
 ## Safety Rules
 
-- Generate fictional data only.
-- Never use real PII, PHI, PCI, account numbers, member names, employer confidential data, or production extracts.
+- Generate fictional data only. Never use real PII, PHI, PCI, account numbers, member names, employer confidential data, or production extracts. Use the engine's safe generators; never bypass them with hand-rolled identifier code.
 - Keep local SQLite as the default build target unless the user explicitly chooses another platform.
-- Make destructive operations explicit: reset, overwrite, delete, or rebuild.
+- Make destructive operations explicit: reset, overwrite (`--force`), delete, or rebuild.
 - Validate generated data before presenting it as complete.

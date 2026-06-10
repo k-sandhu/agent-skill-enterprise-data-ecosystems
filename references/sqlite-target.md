@@ -1,100 +1,55 @@
 # SQLite Target
 
-Use SQLite as the default local database target for complete ecosystem packages unless the user explicitly chooses another platform.
+Use SQLite as the default local database target for complete ecosystem packages unless the user explicitly chooses another platform. The build engine (`scripts/build_sqlite_ecosystem.py`) owns naming, typing, DDL, and population — author the spec; do not hand-write DDL or loaders.
 
 ## Naming
 
-SQLite has no true schema namespaces. Convert logical schemas to table prefixes:
+SQLite has no true schema namespaces. The engine converts logical `schema.table` names to underscore-prefixed physical names automatically:
 
-- `raw_employer.contribution_line` -> `raw_employer_contribution_line`
-- `core.member` -> `core_member`
-- `wh.fact_contribution_line` -> `wh_fact_contribution_line`
-- `control.reconciliation_break` -> `control_reconciliation_break`
+- `raw.crm_account_extract` -> `raw_crm_account_extract`
+- `core.customer` -> `core_customer`
+- `wh.fact_order_line` -> `wh_fact_order_line`
 
-Use consistent prefixes:
+Author specs and derivation SQL with logical dotted names; the engine rewrites them. Use the layer prefixes from `references/common-layers.md` (`app_`, `raw_`, `stg_`, `xref_`, `mdm_`, `core_`, `wh_dim_`, `wh_fact_`, `mart_`, `control_`, `dq_`, `workflow_`, `document_`, `security_`, `privacy_`, `audit_`, `semantic_`, `integration_`). The `meta_` prefix is reserved for the engine (`meta_build_info`, `meta_table_stats`, `meta_derivation_stats`, `meta_imperfection_log`).
 
-- `app_`
-- `integration_`
-- `raw_`
-- `stg_`
-- `xref_`
-- `mdm_`
-- `core_`
-- `wh_dim_`
-- `wh_fact_`
-- `mart_`
-- `control_`
-- `dq_`
-- `workflow_`
-- `document_`
-- `security_`
-- `privacy_`
-- `audit_`
-- `semantic_`
+## Type Mapping (engine-applied)
 
-## Type Mapping
-
-- string/varchar -> `text`
-- integer -> `integer`
-- decimal/numeric -> `real`
+- string/text -> `text`
+- integer/bigint -> `integer`
+- decimal/number/float -> `real` (money rounded to 2 decimals; validators compare sums with count-scaled tolerance)
 - boolean -> `integer` with `0`/`1`
-- date -> ISO `text` in `YYYY-MM-DD`
-- timestamp -> ISO `text`
-- JSON/payload -> `text`
+- date -> ISO `text` `YYYY-MM-DD`; timestamp -> ISO `text` `YYYY-MM-DD HH:MM:SS`
+- json -> `text`
 
-## Required SQLite Files
+## Files the Engine Produces
 
-For a complete package, create:
+Under the `--out` directory:
 
-- `sqlite/01_sqlite_schema.sql`
-- `sqlite/02_sqlite_indexes.sql`
-- `sqlite/03_sqlite_reference_seed.sql`
-- `sqlite/04_sqlite_flow_views.sql`
+- `<org>.db` — populated database (built atomically via `<db>.building` then renamed)
+- `sqlite/01_schema.sql`, `sqlite/02_indexes.sql`, `sqlite/03_derivations.sql`, `sqlite/04_views.sql`
+- `build_summary.json` — per-table row counts, seed, multiplier, imperfection count, timing
 
-Optional but recommended:
-
-- `scripts/generate_sqlite_data.py`
-- `scripts/validate_sqlite_database.py`
-- `scripts/profile_sqlite_database.py`
-- `app.py`
-
-## Validation
-
-Always run:
-
-```text
-pragma integrity_check;
-pragma foreign_key_check;
-```
-
-Also validate:
-
-- required tables exist
-- required columns exist
-- expected row-count ranges
-- no duplicate natural keys for current records
-- no duplicate fact grains
-- crosswalk coverage
-- reconciliation breaks match expected tolerance and rates
-- DQ failures exist for controlled imperfections
-- no generated realistic PII such as SINs, real bank accounts, or real names
+Then produce with the other scripts: `validation_report.md` + `validation_results.json` (validator) and `profile.md` (profiler). Optional extras you may add per request: `app.py` local dashboard, README with run commands.
 
 ## Scale Profiles
 
-Small:
+Author specs at "small" base counts and scale with `--scale-multiplier` (per-parent children scale through their parents automatically; mark reference/dim tables `scale_exempt`):
 
-- 1k-5k primary entities
-- 10k-100k transaction/fact rows
-- suitable for fast tests
+| Profile | Primary entities | Transaction/event rows | Multiplier guide | Build time guide |
+| --- | --- | --- | --- | --- |
+| smoke | hundreds | 10k-60k | 0.2-0.3 | seconds — use while iterating |
+| small | 1k-5k | 100k-500k | 1.0 | well under a minute |
+| medium | 25k-100k | 500k-2M | 5-20 | a few minutes |
+| large | 250k+ | 5M+ | 50+ | only with explicit user buy-in |
 
-Medium:
+Run `--plan` first: it prints the per-table volume forecast so a surprise 10M-row table surfaces before the build, not after.
 
-- 25k-100k primary entities
-- 500k-2M transaction/fact rows
-- suitable for demos and dashboard testing
+## Validation
 
-Large:
+Always run `scripts/validate_sqlite_database.py` after building (see `references/executable-validation.md`). Foreign keys are declared in DDL but `pragma foreign_keys` stays off so controlled orphans can exist; the validator reconciles `pragma foreign_key_check` output against `meta_imperfection_log`.
 
-- 250k+ primary entities
-- 5M+ transaction/fact rows
-- use only when the user accepts larger files and slower validation
+## Known Environment Caveats
+
+- Requires Python >= 3.9 and SQLite >= 3.31 (checked at startup; versions recorded in `meta_build_info`).
+- On Windows, a `.db` open in another tool (DB browser, a previous validator) or being synced (OneDrive) can block the final atomic rename — close handles and prefer build output paths outside synced folders.
+- Keep `build/` outputs and `.db` files out of version control.

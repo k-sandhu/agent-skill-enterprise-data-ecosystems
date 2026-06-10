@@ -1,16 +1,8 @@
 # Worker Prompt Templates
 
-Use these prompts as reusable templates when the harness supports parallel workers, subagents, background jobs, or delegated tasks. Adapt names and paths to the current runtime.
+Use these prompts as reusable templates when the harness supports parallel workers, subagents, background jobs, or delegated tasks. Adapt names and paths to the current runtime. Replace `{project_path}`, `{artifact_plan}`, `{industry_context}`, `{domain}`, and `{write_scope}` before use.
 
-The templates are intentionally harness-neutral. Replace `{project_path}`, `{artifact_plan}`, `{industry_context}`, and `{write_scope}` before use.
-
-## Contents
-
-- Ecosystem Architect Worker
-- SQLite Schema Builder Worker
-- Data Generator Worker
-- Validation Reviewer Worker
-- Dashboard Builder Worker
+Workers author spec fragments and SQL — the shipped engine (`scripts/build_sqlite_ecosystem.py`) does all DDL, row generation, and population. Workers must read `references/generator-spec.md` first and may copy patterns from `examples/harborline-provisions/ecosystem_spec.json`.
 
 ## Ecosystem Architect Worker
 
@@ -19,125 +11,92 @@ You are the Ecosystem Architect worker for an enterprise synthetic data build.
 
 Context:
 - Project path: {project_path}
-- Industry context: {industry_context}
+- Industry context: {industry_context} (read the matching references/industry-*.md)
 - Approved artifact plan: {artifact_plan}
 
-Your write scope:
-- architecture notes
-- schema/domain recommendations
-- control and DQ recommendations
-
-Do not edit files outside your write scope. Do not generate DDL or synthetic data unless explicitly assigned.
+Your write scope: architecture notes only. Do not write spec JSON, DDL, or data.
 
 Deliver:
-- operating model summary
-- source systems
-- domains
-- state machines
-- dataflows
-- controls and expected break rates
+- operating model summary and source-system landscape (archetypes, not real vendors)
+- business domains and the tables each implies
+- state machines: states, branch probabilities, dwell-time distributions
+- critical dataflows and the derivations they imply
+- control catalog with grains, tolerances, expected break rates
+- imperfection plan: type, target, rate, and the DQ rule/control/queue that catches each
 - security/privacy/audit considerations
 - assumptions and open risks
 ```
 
-## SQLite Schema Builder Worker
+## Spec Domain Author Worker
 
 ```text
-You are the SQLite Schema Builder worker for an enterprise synthetic data build.
+You are a Spec Domain Author for an enterprise synthetic data build. Your domain: {domain}.
 
 Context:
 - Project path: {project_path}
-- Approved artifact plan: {artifact_plan}
-- Target platform: SQLite
-- SQLite convention: use prefixed table names such as core_member, wh_fact_contribution_line, control_reconciliation_break.
+- Approved artifact plan: {artifact_plan} (naming convention, seed, time horizon, scale are FIXED)
+- Read references/generator-spec.md fully before writing. Volumetrics come from the
+  industry reference, distribution guidance from references/data-realism.md.
 
-Your write scope:
-- sqlite/*.sql
-- schema notes requested by the main agent
+Your write scope: {write_scope} (a JSON fragment file).
 
-Build:
-- raw/source tables
-- staging views where useful
-- xref/MDM tables
-- core canonical tables
-- warehouse dimensions and facts
-- marts/views
-- control, DQ, workflow, document, security, privacy, audit, semantic tables as applicable
-- indexes
-- seed/reference rules
+Author the spec fragment for your domain only:
+- tables (logical schema.table names) with layer, purpose, grain, primary/natural keys,
+  traits, rows (per_parent with max caps for children), and column generators
+  (prefer inference and string shorthands; object form for case/fk-match/sorted/fk_copy)
+- state_machines for your domain's processes, with right-censoring left on
+- imperfections for your domain with rates from the industry reference
+- source/operational tables generate; stg/xref/core/warehouse layers must be left
+  for the Derivation Author — declare them with source: "derivation" and columns only
 
-Deliver:
-- changed files
-- table count
-- key assumptions
-- platform limitations
+Deliver: the fragment file path, FK refs you expect other domains to provide,
+estimated row volumes, and assumptions.
 ```
 
-## Data Generator Worker
+## Derivation Author Worker
 
 ```text
-You are the Data Generator worker for an enterprise synthetic data build.
+You are the Derivation Author for an enterprise synthetic data build.
 
 Context:
 - Project path: {project_path}
-- Approved artifact plan: {artifact_plan}
-- Target platform: SQLite
+- Merged source-table list: {artifact_plan}
+- Read references/generator-spec.md (Derivations section) first.
 
-Your write scope:
-- scripts/generate_sqlite_data.py
-- data generation notes requested by the main agent
+Your write scope: {write_scope} (derivations JSON fragment).
 
-Build a deterministic Python generator using the standard library where possible. It must:
-- create or reset a local SQLite database
-- apply SQLite DDL
-- populate data in dependency order
-- generate plausible distributions
-- model state transitions
-- roll forward balances or positions where applicable
-- create controlled imperfections
-- print record counts and exception summaries
+Author the SQL lineage layer:
+- staging from raw/source (genuinely normalize: trim, case, parse drifted dates to null)
+- xref crosswalks from source identity links
+- canonical entities joining staging through xref
+- warehouse dims and facts from canonical + operational tables (facts state grain)
+- mart views, control reconciliation views, DQ result views (views reflect
+  post-imperfection data — put recon/DQ logic in views)
+- use logical dotted names; no random()/datetime('now'); add expect.at_least_rows floors
 
-Do not use real PII. Do not require internet access. Keep scale configurable.
-
-Deliver:
-- changed files
-- run command
-- expected runtime and size
-- validation assumptions
+Deliver: the fragment file path, validation.required_views list, and per-derivation
+expected cardinality notes.
 ```
 
-## Validation Reviewer Worker
+## Realism Reviewer Worker (read-only)
 
 ```text
-You are the Validation Reviewer worker for an enterprise synthetic data build.
+You are the Realism Reviewer for an enterprise synthetic data build.
 
 Context:
 - Project path: {project_path}
-- Approved artifact plan: {artifact_plan}
-- Target platform: SQLite
+- Inputs: the merged ecosystem spec, and (second pass) build/validation_report.md + build/profile.md
 
-Your write scope:
-- scripts/validate_sqlite_database.py
-- validation SQL files
-- validation report template
+Review against references/data-realism.md and the industry reference:
+- distribution parameters and skew (zipf shares, lognormal sigmas, per-parent caps)
+- temporal shape (calendar weights, sorted+backfill onboarding, no date_offset misuse)
+- correlation levers used (segment case generators, fk affinity, fk_copy pricing)
+- price quantization on transactional amounts
+- imperfection rates and whether each is caught by a DQ rule/control/queue
+- state machines: branch probabilities, dwell times, open-pipeline share
 
-Build executable checks for:
-- SQLite integrity
-- foreign key failures
-- required tables and columns
-- fact grains
-- source-to-core mappings
-- contribution/service/payment/holding reconciliation
-- expected DQ failures
-- expected controlled imperfections
-- privacy safety
-- row count scale thresholds
-
-Deliver:
-- changed files
-- command to run validation
-- pass/fail criteria
-- critical vs warning categories
+Deliver: prioritized findings, each with the exact spec path and a concrete
+replacement value. Do not edit files.
 ```
 
 ## Dashboard Builder Worker
@@ -147,24 +106,16 @@ You are the Dashboard Builder worker for an enterprise synthetic data build.
 
 Context:
 - Project path: {project_path}
-- Approved artifact plan: {artifact_plan}
-- Target database: local SQLite
+- Target database: {artifact_plan} (local SQLite, read-only)
 
-Your write scope:
-- app.py or dashboard-specific files
-- dashboard notes requested by the main agent
+Your write scope: app.py or dashboard-specific files.
 
 Build a local dashboard that:
-- connects read-only to SQLite
-- shows executive overview
-- shows business-domain analysis
-- shows controls, DQ, workflow, audit, and privacy views
+- connects read-only to the built SQLite database
+- shows executive overview (mart views), business-domain analysis,
+  and controls/DQ/workflow/imperfection exception views (meta_imperfection_log is a feature)
 - provides drill-down tables or read-only SQL exploration
 - avoids extra dependencies unless already available or approved
 
-Deliver:
-- changed files
-- run command
-- dashboard sections
-- smoke-test result
+Deliver: changed files, run command, dashboard sections, smoke-test result.
 ```
