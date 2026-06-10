@@ -1,0 +1,1169 @@
+{
+  "_note": "Worked example: Meridian Freightways, a fictional asset-light regional freight brokerage / 3PL. Order intake lives in Atlas OMS (customer master), execution in LoadLine TMS (locations, lanes, carriers, shipments), PODs in HaulDoc DMS, carrier settlement in SettleTrack AP, and carrier status flows through the FreightPulse EDI gateway. The shipment lifecycle (booked -> picked_up -> in_transit -> delivered/exception -> pod_received) is a right-censored state machine; carrier invoices, POD documents, exception cases, and chained shipment legs are all DERIVED from machine outcomes so timestamps cohere by construction. Keys starting with '_' are comments and are stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Meridian Freightways",
+    "archetype": "freight_brokerage_3pl",
+    "industry": "Freight brokerage and third-party logistics",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 23,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "Freight weekday shape: pickups peak Mon-Wed, Saturday trickle, Sunday near zero. Month weights carry the Q4 peak-season ramp (Oct-Dec index ~1.2).",
+    "weekday_weights": [1.15, 1.15, 1.1, 1.05, 0.95, 0.25, 0.06],
+    "month_weights": [0.95, 0.94, 1.0, 0.99, 1.02, 1.03, 1.0, 1.02, 1.05, 1.18, 1.22, 1.18],
+    "holidays": ["2024-01-01", "2024-05-27", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-05-26", "2025-07-04", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.08,
+    "business_hours": [6, 19]
+  },
+  "vocab": {
+    "accessorial_note": [
+      "Driver held at consignee past free time, detention timer attached.",
+      "Lumper receipt scanned and attached.",
+      "Liftgate required at delivery, no dock available.",
+      "Redelivery after first attempt refused at gate.",
+      "Layover authorized by dispatch, receiver closed early.",
+      "Reweigh ordered at origin scale, certificate on file.",
+      "Detention at shipper, loading crew short-staffed.",
+      "Charge approved per customer routing guide.",
+      "Pallet exchange fee per facility policy.",
+      "After-hours delivery surcharge per appointment note."
+    ]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "Atlas OMS", "2": "LoadLine TMS", "3": "HaulDoc DMS", "4": "SettleTrack AP", "5": "FreightPulse EDI Gateway", "6": "CaseFlow Ops Workbench", "7": "Meridian Freight Warehouse", "8": "LaneSight BI"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "OMS", "2": "TMS", "3": "document_mgmt", "4": "settlement", "5": "integration", "6": "workflow", "7": "warehouse", "8": "BI"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "customer", "2": "shipment/lane/carrier", "3": "POD documents", "4": "carrier invoices", "5": "EDI messages", "6": "ops queues", "7": "reporting", "8": "dashboards"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.5,tier2=0.38,tier3=0.12"},
+        {"name": "contains_pii_flag", "type": "boolean", "gen": "bool:0.4"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Shipper customer master in the OMS. created_at is sorted so customer IDs correlate with onboarding order, and 62% of the book predates the data window so in-window volume grows ~8%/yr instead of ramping from zero. Vertical is drawn first so company-name flavor matches it.",
+      "schema": "oms", "name": "customer", "layer": "source",
+      "purpose": "Shipper customer accounts (manufacturers, retailers, food and consumer-goods companies).",
+      "source_system": "Atlas OMS",
+      "primary_key": ["customer_id"], "natural_key": ["customer_code"],
+      "rows": 620, "traits": ["audited"],
+      "indexes": [["segment"], ["region"]],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "customer_code", "type": "string", "gen": {"type": "pattern", "pattern": "CUST-#####", "unique": true}},
+        {"name": "industry_vertical", "type": "string", "gen": "choice:manufacturing=0.30,retail=0.24,food_beverage=0.20,consumer_goods=0.14,industrial_supply=0.12"},
+        {"name": "customer_name", "type": "string", "gen": {"type": "case", "on": "industry_vertical", "cases": {"manufacturing": {"type": "company_name", "flavor": "manufacturing", "unique": true}, "retail": {"type": "company_name", "flavor": "retail", "unique": true}, "food_beverage": {"type": "company_name", "flavor": "food", "unique": true}, "consumer_goods": {"type": "company_name", "flavor": "retail", "unique": true}, "industrial_supply": {"type": "company_name", "flavor": "manufacturing", "unique": true}}, "default": {"type": "company_name", "unique": true}}},
+        {"name": "segment", "type": "string", "gen": "choice:national_shipper=0.11,mid_market=0.30,smb=0.52,seasonal=0.07"},
+        {"name": "region", "type": "string", "gen": "choice:Midwest=0.30,Southeast=0.26,Northeast=0.24,South_Central=0.20"},
+        {"name": "credit_terms", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"national_shipper": "NET45", "mid_market": {"type": "choice", "values": ["NET30", "NET45"], "weights": [0.7, 0.3]}, "smb": {"type": "choice", "values": ["NET15", "NET30", "prepaid"], "weights": [0.25, 0.65, 0.1]}, "seasonal": "NET30"}}},
+        {"name": "status", "type": "string", "gen": "choice:active=0.85,inactive=0.15"},
+        {"name": "street_address", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "phone", "type": "string"},
+        {"name": "email", "type": "string", "null_rate": 0.06, "_note": "Role addresses on the shipper's own fictional subdomain (logistics@<company>.example.com) - all-personal emails on a B2B master is a tell.", "gen": {"type": "business_email", "company_column": "customer_name", "roles": ["logistics", "shipping", "ap", "dock"]}},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.62, "backfill_start": "2018-06-01"}}
+      ]
+    },
+    {
+      "schema": "tms", "name": "location", "layer": "source",
+      "purpose": "Network locations: shipper docks, consignee docks, crossdock terminals, DCs, ports.",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["location_id"], "natural_key": ["location_code"],
+      "rows": 240, "scale_exempt": true,
+      "columns": [
+        {"name": "location_id", "type": "integer"},
+        {"name": "location_code", "type": "string", "gen": {"type": "pattern", "pattern": "LOC-####", "unique": true}},
+        {"name": "location_type", "type": "string", "gen": "choice:shipper_dock=0.44,consignee_dock=0.30,distribution_center=0.12,terminal=0.09,port=0.05"},
+        {"name": "location_name", "type": "string", "gen": {"type": "case", "on": "location_type", "cases": {"shipper_dock": {"type": "company_name", "flavor": "manufacturing", "unique": true}, "consignee_dock": {"type": "company_name", "flavor": "retail", "unique": true}}, "default": {"type": "company_name", "flavor": "logistics", "unique": true}}},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "region", "type": "string", "gen": "choice:Midwest=0.30,Southeast=0.26,Northeast=0.24,South_Central=0.20"},
+        {"name": "dock_doors", "type": "integer", "gen": "int:uniform(2,36)"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.94"}
+      ]
+    },
+    {
+      "_note": "Lanes carry the rating engine: per-lane rate-per-mile draws a sell rate off distance, buy rates hang off the sell rate at ~85% (the broker margin), and LTL/intermodal rate columns are pre-computed so shipments can fk_copy the rate that matches their mode. Lane FK targets are role-filtered with fk-affinity matching (origins from shipper docks/DCs, destinations from consignee docks/DCs) with a small leak.",
+      "schema": "tms", "name": "lane", "layer": "source",
+      "purpose": "Origin-destination lanes with contracted sell rates and target buy rates.",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["lane_id"], "natural_key": ["lane_code"],
+      "rows": 580, "scale_exempt": true,
+      "columns": [
+        {"name": "lane_id", "type": "integer"},
+        {"name": "lane_code", "type": "string", "gen": {"type": "pattern", "pattern": "LN-#####", "unique": true}},
+        {"name": "origin_pool", "type": "string", "gen": "choice:shipper_dock=0.72,distribution_center=0.28"},
+        {"name": "origin_location_id", "type": "integer", "gen": {"type": "fk", "ref": "tms.location", "match": {"parent_column": "location_type", "local_column": "origin_pool", "leak_rate": 0.04}}},
+        {"name": "dest_pool", "type": "string", "gen": "choice:consignee_dock=0.78,distribution_center=0.22"},
+        {"name": "dest_location_id", "type": "integer", "gen": {"type": "fk", "ref": "tms.location", "match": {"parent_column": "location_type", "local_column": "dest_pool", "leak_rate": 0.04}}},
+        {"name": "distance_miles", "type": "integer", "gen": "int:lognormal(median=380,sigma=0.6,min=60,max=1400)"},
+        {"name": "rate_per_mile", "type": "decimal", "gen": {"type": "number", "distribution": "normal", "mean": 2.1, "stdev": 0.3, "min": 1.35, "max": 3.2, "decimals": 2}},
+        {"name": "sell_rate_full", "type": "decimal", "gen": "expr:round(95 + distance_miles * rate_per_mile, 2)"},
+        {"name": "buy_rate_full", "type": "decimal", "gen": "expr:round(sell_rate_full * 0.85, 2)"},
+        {"name": "buy_rate_ltl", "type": "decimal", "gen": "expr:round(sell_rate_full * 0.306, 2)"},
+        {"name": "buy_rate_im", "type": "decimal", "gen": "expr:round(sell_rate_full * 0.705, 2)"},
+        {"name": "cross_border_flag", "type": "boolean", "gen": "bool:0.05"}
+      ]
+    },
+    {
+      "_note": "Contracted carrier base. duplicate_entity later injects DBA-vs-legal-name doubles that core.carrier survivorship collapses (and the mdm_stewards queue works).",
+      "schema": "tms", "name": "carrier", "layer": "source",
+      "purpose": "Contracted motor carriers with tier, safety rating and quick-pay terms.",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["carrier_id"], "natural_key": ["carrier_code"],
+      "rows": 520, "scale_exempt": true, "traits": ["audited"],
+      "columns": [
+        {"name": "carrier_id", "type": "integer"},
+        {"name": "carrier_code", "type": "string", "gen": {"type": "pattern", "pattern": "@@@@", "unique": true}},
+        {"name": "carrier_name", "type": "string", "gen": {"type": "company_name", "flavor": "logistics", "unique": true}},
+        {"name": "mc_number", "type": "string", "gen": {"type": "pattern", "pattern": "MC-######", "unique": true}},
+        {"name": "carrier_tier", "type": "string", "gen": "choice:core=0.10,preferred=0.32,spot=0.58"},
+        {"name": "safety_rating", "type": "string", "gen": "choice:satisfactory=0.84,conditional=0.11,not_rated=0.05"},
+        {"name": "otp_target", "type": "decimal", "gen": {"type": "case", "on": "carrier_tier", "cases": {"core": 0.95, "preferred": 0.92, "spot": 0.87}}},
+        {"name": "quick_pay_flag", "type": "boolean", "gen": "bool:0.16"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.92"}
+      ]
+    },
+    {
+      "_note": "TMS bill-to mirror of the OMS customer, generated 1:1 with parent_copy so the two systems share entities coherently; the xref crosswalk then maps both, and post-derivation imperfections make the systems disagree realistically.",
+      "schema": "tms", "name": "billto_account", "layer": "source",
+      "purpose": "TMS billing account mirror of the OMS customer master, synced nightly.",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["billto_id"], "natural_key": ["billto_code"],
+      "rows": {"per_parent": "oms.customer", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
+      "traits": ["audited", "source_stamped"],
+      "columns": [
+        {"name": "billto_id", "type": "integer", "gen": "seq"},
+        {"name": "billto_code", "type": "string", "gen": {"type": "pattern", "pattern": "BT-######", "unique": true}},
+        {"name": "oms_customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "billto_name", "type": "string", "gen": {"type": "parent_copy", "source_column": "customer_name"}},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "region", "type": "string", "gen": {"type": "parent_copy", "source_column": "region"}},
+        {"name": "credit_terms", "type": "string", "gen": {"type": "parent_copy", "source_column": "credit_terms"}},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "days", "offset": {"distribution": "lognormal", "median": 2, "sigma": 0.8, "max": 45}}}
+      ]
+    },
+    {
+      "_note": "The operational core. Volume is conditioned on segment (national shippers tender ~8x what SMBs do after the base draw) plus a heavy-tailed per-customer multiplier so a whale tier emerges. Lane and carrier picks are zipf-weighted (top lanes/carriers carry most loads). Rating: sell = contracted lane rate x mode factor (exact repeats, like real contract rates); buy = mode-matched lane buy rate with +/-20% spot jitter, so margin averages ~15% and ~5% of loads ship at a loss. Lifecycle timestamps are stamped by the state machine.",
+      "schema": "tms", "name": "shipment", "layer": "transaction",
+      "purpose": "Shipment headers booked against a customer, lane and carrier.",
+      "grain": "one row per shipment",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["shipment_id"], "natural_key": ["shipment_number"],
+      "rows": {"per_parent": "oms.customer", "distribution": {"distribution": "lognormal", "median": 12, "sigma": 1.0}, "scale_by": {"parent_column": "segment", "factors": {"national_shipper": 5.0, "mid_market": 1.5, "smb": 0.6, "seasonal": 0.35}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.75}, "min": 0, "max": 900},
+      "traits": ["audited"],
+      "indexes": [["customer_id"], ["booked_date"], ["status"]],
+      "columns": [
+        {"name": "shipment_id", "type": "integer", "gen": "seq"},
+        {"name": "shipment_number", "type": "string", "gen": {"type": "pattern", "pattern": "SHP-#######", "unique": true}},
+        {"name": "customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "lane_id", "type": "integer", "_note": "zipf 1.1: top lane ~18% of loads, top decile of lanes carries most volume, long tail of one-off lanes.", "gen": "fk:tms.lane@zipf"},
+        {"name": "origin_location_id", "type": "integer", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "origin_location_id"}},
+        {"name": "dest_location_id", "type": "integer", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "dest_location_id"}},
+        {"name": "distance_miles", "type": "integer", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "distance_miles"}},
+        {"name": "cross_border_flag", "type": "boolean", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "cross_border_flag"}},
+        {"name": "mode", "type": "string", "gen": "choice:truckload=0.58,ltl=0.28,intermodal=0.14"},
+        {"name": "equipment_type", "type": "string", "gen": {"type": "case", "on": "mode", "cases": {"truckload": {"type": "choice", "values": ["dry_van", "reefer", "flatbed"], "weights": [0.62, 0.24, 0.14]}, "ltl": "dry_van", "intermodal": "container_53"}}},
+        {"name": "service_level", "type": "string", "gen": "choice:standard=0.80,expedited=0.13,guaranteed=0.07"},
+        {"name": "weight_lb", "type": "integer", "gen": {"type": "case", "on": "mode", "cases": {"truckload": {"type": "int", "distribution": "lognormal", "median": 26000, "sigma": 0.35, "min": 5000, "max": 45000}, "ltl": {"type": "int", "distribution": "lognormal", "median": 1800, "sigma": 0.8, "min": 150, "max": 12000}, "intermodal": {"type": "int", "distribution": "lognormal", "median": 30000, "sigma": 0.3, "min": 8000, "max": 44000}}}},
+        {"name": "carrier_id", "type": "integer", "_note": "zipf 1.1 over the carrier base: top 20 carriers haul roughly half the loads.", "gen": "fk:tms.carrier@zipf"},
+        {"name": "booked_date", "type": "date", "_note": "Calendar-weighted and bounded by the customer's onboarding date - weekday/Q4 shape AND no shipments before the customer existed.", "gen": {"type": "date", "min": "parent.created_at"}},
+        {"name": "pickup_appointment_date", "type": "date", "gen": {"type": "date_offset", "from": "booked_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 2, "sigma": 0.5, "min": 1, "max": 8}, "business_days": true, "clamp_as_of": false, "as": "date"}},
+        {"name": "planned_transit_days", "type": "integer", "gen": {"type": "case", "on": "service_level", "cases": {"guaranteed": {"type": "choice", "values": [2, 3], "weights": [0.7, 0.3]}, "expedited": {"type": "choice", "values": [1, 2], "weights": [0.35, 0.65]}, "standard": {"type": "choice", "values": [2, 3, 4, 5, 7], "weights": [0.16, 0.34, 0.28, 0.15, 0.07]}}}},
+        {"name": "fuel_pct", "type": "decimal", "_note": "Quantized weekly-index values, not a continuous draw - fuel surcharge tables move in steps.", "gen": {"type": "choice", "values": [0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.2, 0.21, 0.22], "weights": [0.06, 0.09, 0.12, 0.14, 0.16, 0.14, 0.12, 0.08, 0.05, 0.03, 0.01]}},
+        {"name": "lane_sell_base", "type": "decimal", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "sell_rate_full"}},
+        {"name": "mode_factor", "type": "decimal", "gen": {"type": "case", "on": "mode", "cases": {"ltl": 0.36, "intermodal": 0.82}, "default": 1.0}},
+        {"name": "sell_linehaul", "type": "decimal", "_note": "Contract rate x mode factor: exact values repeat per lane+mode, which is what real contracted amount columns look like (duplicate-mass realism check).", "gen": "expr:round(lane_sell_base * mode_factor, 2)"},
+        {"name": "quote_buy_tl", "type": "decimal", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "buy_rate_full", "jitter": 0.2}},
+        {"name": "quote_buy_ltl", "type": "decimal", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "buy_rate_ltl", "jitter": 0.2}},
+        {"name": "quote_buy_im", "type": "decimal", "gen": {"type": "fk_copy", "column": "lane_id", "ref": "tms.lane", "source_column": "buy_rate_im", "jitter": 0.18}},
+        {"name": "buy_linehaul", "type": "decimal", "_note": "Spot-market buy: the mode-matched lane buy quote with +/-20% jitter. Margin = 1 - buy/sell averages ~15%; ~5% of loads go out at a loss.", "gen": {"type": "case", "on": "mode", "cases": {"ltl": {"type": "copy", "column": "quote_buy_ltl"}, "intermodal": {"type": "copy", "column": "quote_buy_im"}}, "default": {"type": "copy", "column": "quote_buy_tl"}}},
+        {"name": "pro_number", "type": "string", "gen": {"type": "pattern", "pattern": "PRO-########", "unique": true}},
+        {"name": "status", "type": "string", "gen": "const:booked"},
+        {"name": "picked_up_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "in_transit_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "delivered_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "exception_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "returned_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "pod_received_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "cancelled_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "tms", "name": "shipment_event", "layer": "event",
+      "purpose": "Shipment milestone history emitted by the lifecycle state machine.",
+      "grain": "one row per shipment per state entered",
+      "source": "state_machine",
+      "primary_key": ["shipment_id", "event_seq"],
+      "columns": [
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Accessorials hit ~34% of shipments (poisson 0.42). Amounts are conditioned on charge type and land on whole/half dollars like real tariff tables; detention rows carry a dwell-minutes reading above the 120-minute free time. manual_override later flags ~7% as analyst-added/waived, which DQ-002 catches.",
+      "schema": "tms", "name": "accessorial_event", "layer": "transaction",
+      "purpose": "Accessorial charge events captured against shipments (detention, lumper, liftgate...).",
+      "grain": "one row per accessorial charge event",
+      "source_system": "LoadLine TMS",
+      "primary_key": ["accessorial_id"],
+      "indexes": [["shipment_id"]],
+      "rows": {"per_parent": "tms.shipment", "distribution": {"distribution": "poisson", "lam": 0.42}, "min": 0, "max": 4},
+      "columns": [
+        {"name": "accessorial_id", "type": "integer", "gen": "seq"},
+        {"name": "shipment_id", "type": "integer", "gen": "parent_key"},
+        {"name": "accessorial_type", "type": "string", "gen": "choice:detention=0.34,lumper=0.22,liftgate=0.16,redelivery=0.12,layover=0.09,reweigh=0.07"},
+        {"name": "event_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.booked_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 3, "sigma": 0.5, "min": 1, "max": 14}, "as": "date"}},
+        {"name": "dwell_minutes", "type": "integer", "nullable": true, "gen": {"type": "case", "on": "accessorial_type", "cases": {"detention": {"type": "int", "distribution": "lognormal", "median": 215, "sigma": 0.35, "min": 130, "max": 600}}}},
+        {"name": "charge_amount", "type": "decimal", "gen": {"type": "case", "on": "accessorial_type", "cases": {"detention": {"type": "money", "median": 110, "sigma": 0.5, "price_endings": [0.0, 0.0, 0.5]}, "lumper": {"type": "money", "median": 140, "sigma": 0.45, "price_endings": [0.0, 0.0, 0.5]}, "liftgate": {"type": "money", "median": 55, "sigma": 0.25, "price_endings": [0.0]}, "redelivery": {"type": "money", "median": 90, "sigma": 0.4, "price_endings": [0.0]}, "layover": {"type": "money", "median": 175, "sigma": 0.4, "price_endings": [0.0]}, "reweigh": {"type": "money", "median": 35, "sigma": 0.3, "price_endings": [0.0]}}}},
+        {"name": "charge_note", "type": "string", "null_rate": 0.55, "gen": "text:accessorial_note"},
+        {"name": "override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "_note": "EDI 214/210/204 traffic per shipment. This is where the integration imperfections live: late-arriving partner statuses (restating OTP), duplicate gateway deliveries (DQ-006), and PRO-unmapped orphans (DQ-007).",
+      "schema": "integration", "name": "edi_message", "layer": "integration",
+      "purpose": "Inbound EDI messages from carriers and trading partners.",
+      "grain": "one row per received EDI message",
+      "source_system": "FreightPulse EDI Gateway",
+      "primary_key": ["message_id"],
+      "indexes": [["shipment_id"]],
+      "rows": {"per_parent": "tms.shipment", "distribution": {"distribution": "poisson", "lam": 1.6}, "min": 0, "max": 6},
+      "traits": ["source_stamped"],
+      "columns": [
+        {"name": "message_id", "type": "integer", "gen": "seq"},
+        {"name": "shipment_id", "type": "integer", "gen": "parent_key"},
+        {"name": "msg_seq", "type": "integer", "gen": "child_index"},
+        {"name": "message_type", "type": "string", "gen": "choice:X12_214=0.66,X12_210=0.16,X12_204=0.18"},
+        {"name": "status_code", "type": "string", "nullable": true, "gen": {"type": "case", "on": "message_type", "cases": {"X12_214": {"type": "choice", "values": ["AF", "X6", "X1", "CD", "SD"], "weights": [0.26, 0.22, 0.2, 0.18, 0.14]}}}},
+        {"name": "partner_ref", "type": "string", "gen": "pattern:ISA-########"},
+        {"name": "message_ts", "type": "timestamp", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "hours", "offset": {"distribution": "lognormal", "median": 56, "sigma": 0.8, "min": 1, "max": 300}}}
+      ]
+    },
+    {
+      "_note": "Generator-fed ops queues for everything the imperfections produce downstream: carrier invoice mismatches, missing PODs, unmapped EDI, accessorial disputes, duplicate carriers. Runs through the case lifecycle machine (right-censored: recent items legitimately sit open/triaged).",
+      "schema": "ops", "name": "work_item", "layer": "workflow",
+      "purpose": "Operational work queues (settlement desk, billing ops, integration support, MDM stewards).",
+      "source_system": "CaseFlow Ops Workbench",
+      "primary_key": ["work_item_id"], "natural_key": ["work_item_number"],
+      "rows": 420, "traits": ["audited"],
+      "columns": [
+        {"name": "work_item_id", "type": "integer"},
+        {"name": "work_item_number", "type": "string", "gen": {"type": "pattern", "pattern": "WI-######", "unique": true}},
+        {"name": "item_type", "type": "string", "gen": "choice:carrier_invoice_review=0.30,pod_chase=0.25,edi_unmapped=0.18,accessorial_dispute=0.15,carrier_duplicate_review=0.12"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "item_type", "cases": {"carrier_invoice_review": "settlement_desk", "pod_chase": "billing_ops", "edi_unmapped": "integration_support", "accessorial_dispute": "settlement_desk", "carrier_duplicate_review": "mdm_stewards"}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.32,medium=0.48,high=0.20"},
+        {"name": "related_ref", "type": "string", "gen": "pattern:REF-#######"},
+        {"name": "detail_note", "type": "string", "null_rate": 0.45, "gen": "text:exception_note"},
+        {"name": "status", "type": "string", "gen": "const:open"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "ops", "name": "work_item_event", "layer": "workflow",
+      "purpose": "Work item status history from the case lifecycle machine.",
+      "grain": "one row per work item per state entered",
+      "source": "state_machine",
+      "primary_key": ["work_item_id", "event_seq"],
+      "columns": [
+        {"name": "work_item_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "carrier invoice PRO matches a shipment", "2": "accessorial charge has supporting event", "3": "TMS billto mapped in xref", "4": "raw customer extract date parses", "5": "POD has signature", "6": "no duplicate EDI deliveries", "7": "EDI message maps to a shipment", "8": "xref mapping not expired while active"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "settlement.carrier_invoice", "2": "tms.accessorial_event", "3": "xref.entity_identifier", "4": "raw.oms_customer_extract", "5": "dms.pod_document", "6": "integration.edi_message", "7": "integration.edi_message", "8": "xref.entity_identifier"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "warning", "3": "error", "4": "warning", "5": "warning", "6": "warning", "7": "error", "8": "warning"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "control", "name": "recon_control", "layer": "control",
+      "purpose": "Reconciliation control catalog; open breaks come from the control_recon_shipment_carrier_invoice view.",
+      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "columns": [
+        {"name": "control_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "delivered shipments reconcile to carrier invoices", "2": "carrier invoice header equals line sum", "3": "POD on file within 5 days of delivery"}}},
+        {"name": "source_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "tms.shipment", "2": "settlement.carrier_invoice", "3": "tms.shipment"}}},
+        {"name": "target_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "settlement.carrier_invoice_line", "2": "settlement.carrier_invoice_line", "3": "dms.pod_document"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "2% or 10 units", "2": "0.01", "3": "0 after 5 business days"}}},
+        {"name": "frequency", "type": "string", "gen": "const:daily"},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "high", "2": "high", "3": "medium"}}}
+      ]
+    },
+    {
+      "_note": "Everything below is populated by SQL derivations - real lineage, not parallel-faked data.",
+      "schema": "raw", "name": "oms_customer_extract", "layer": "raw",
+      "purpose": "Nightly OMS customer extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["customer_id"],
+      "columns": [
+        {"name": "customer_id", "type": "string"},
+        {"name": "customer_code", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "industry_vertical", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "source_created_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "oms_customer", "layer": "staging",
+      "purpose": "Cleaned OMS customers; normalizes raw extract dates (drift rows parse to NULL and feed DQ-004).",
+      "source": "derivation", "primary_key": ["customer_id"],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "customer_code", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "industry_vertical", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "created_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "xref", "name": "entity_identifier", "layer": "xref",
+      "purpose": "Source-system identifier crosswalk for canonical customers (Atlas OMS + LoadLine TMS).",
+      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "columns": [
+        {"name": "entity_identifier_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_entity_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "customer", "layer": "canonical",
+      "purpose": "Canonical customer joining staged OMS data to the TMS billto through the crosswalk.",
+      "source": "derivation", "primary_key": ["customer_uid"],
+      "columns": [
+        {"name": "customer_uid", "type": "integer"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "industry_vertical", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "billto_id", "type": "integer", "nullable": true}
+      ]
+    },
+    {
+      "schema": "core", "name": "carrier", "layer": "canonical",
+      "purpose": "Canonical carrier: survivorship collapses duplicate-onboarded carriers to the oldest record per SCAC.",
+      "source": "derivation", "primary_key": ["carrier_uid"],
+      "columns": [
+        {"name": "carrier_uid", "type": "integer"},
+        {"name": "carrier_code", "type": "string"},
+        {"name": "carrier_name", "type": "string"},
+        {"name": "carrier_tier", "type": "string"},
+        {"name": "safety_rating", "type": "string"},
+        {"name": "quick_pay_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "_note": "Legs are DERIVED from machine outcomes: leg counts follow the 0.55/0.30/0.10/0.05 industry split (intermodal forced multi-leg), intermediate stops chain through real crossdock terminals (leg n dest = leg n+1 origin), and the picked_up->delivered window is split into travel segments separated by lognormal-shaped terminal dwells. In-flight shipments get projected ETAs (planned/in_transit legs).",
+      "schema": "tms", "name": "shipment_leg", "layer": "operational",
+      "purpose": "Executed/planned legs per shipment, chained through crossdock terminals.",
+      "grain": "one row per shipment per leg sequence",
+      "source": "derivation", "primary_key": ["leg_id"],
+      "natural_key": ["shipment_id", "leg_seq"],
+      "indexes": [["shipment_id"]],
+      "columns": [
+        {"name": "leg_id", "type": "integer"},
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "leg_seq", "type": "integer"},
+        {"name": "carrier_id", "type": "integer"},
+        {"name": "origin_location_id", "type": "integer"},
+        {"name": "dest_location_id", "type": "integer"},
+        {"name": "leg_distance_miles", "type": "integer"},
+        {"name": "depart_at", "type": "timestamp"},
+        {"name": "arrive_at", "type": "timestamp"},
+        {"name": "dwell_hours_after", "type": "decimal"},
+        {"name": "leg_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "dms", "name": "pod_document", "layer": "operational",
+      "purpose": "Proof-of-delivery document metadata, one per shipment with a received POD; capture method correlates with POD lag (fast PODs come from the driver app).",
+      "grain": "one row per received POD document",
+      "source": "derivation", "primary_key": ["pod_doc_id"],
+      "indexes": [["shipment_id"]],
+      "columns": [
+        {"name": "pod_doc_id", "type": "integer"},
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "doc_type", "type": "string"},
+        {"name": "capture_method", "type": "string"},
+        {"name": "received_at", "type": "timestamp"},
+        {"name": "signed_by", "type": "string", "nullable": true},
+        {"name": "scan_quality", "type": "string"},
+        {"name": "page_count", "type": "integer"},
+        {"name": "doc_uri", "type": "string"}
+      ]
+    },
+    {
+      "schema": "ops", "name": "exception_case", "layer": "workflow",
+      "purpose": "Exception cases opened 1:1 from shipments that hit the exception state; status and resolution timestamps cohere with the shipment outcome (recovered -> resolved, returned -> closed, in-flight -> investigating/escalated).",
+      "grain": "one row per shipment exception",
+      "source": "derivation", "primary_key": ["case_id"],
+      "natural_key": ["case_number"],
+      "indexes": [["shipment_id"]],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string"},
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "carrier_id", "type": "integer"},
+        {"name": "exception_reason", "type": "string"},
+        {"name": "opened_at", "type": "timestamp"},
+        {"name": "status", "type": "string"},
+        {"name": "assigned_to", "type": "string"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Carrier invoices derive from delivered shipments with a 3-25 day submission lag (right-censored: recent deliveries are legitimately uninvoiced). ~27% carry a deliberate rate variance and route to exception_review, ~1.2% of shipments are never billed (the missing-invoice recon slice). PRO typos and line restatements are injected post-derivation.",
+      "schema": "settlement", "name": "carrier_invoice", "layer": "transaction",
+      "purpose": "Carrier freight invoices received for delivered shipments.",
+      "grain": "one row per carrier invoice (1:1 with billed shipment)",
+      "source": "derivation", "primary_key": ["carrier_invoice_id"],
+      "natural_key": ["invoice_number"],
+      "indexes": [["carrier_id"], ["shipment_id"], ["match_status"]],
+      "columns": [
+        {"name": "carrier_invoice_id", "type": "integer"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "carrier_id", "type": "integer"},
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "pro_number", "type": "string"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "total_amount", "type": "decimal"},
+        {"name": "match_status", "type": "string"},
+        {"name": "pay_status", "type": "string"},
+        {"name": "paid_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "settlement", "name": "carrier_invoice_line", "layer": "transaction",
+      "purpose": "Carrier invoice charge lines: linehaul (with rate variance vs rated), fuel surcharge, accessorial passthroughs.",
+      "grain": "one row per carrier invoice charge line",
+      "source": "derivation", "primary_key": ["line_id"],
+      "indexes": [["carrier_invoice_id"]],
+      "columns": [
+        {"name": "line_id", "type": "integer"},
+        {"name": "carrier_invoice_id", "type": "integer"},
+        {"name": "charge_type", "type": "string"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "rated_amount", "type": "decimal"},
+        {"name": "variance_amount", "type": "decimal"},
+        {"name": "line_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_customer", "layer": "warehouse_dimension",
+      "purpose": "Customer dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["customer_key"],
+      "columns": [
+        {"name": "customer_key", "type": "integer"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "industry_vertical", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_carrier", "layer": "warehouse_dimension",
+      "purpose": "Carrier dimension from the canonical (deduped) layer.",
+      "source": "derivation", "primary_key": ["carrier_key"],
+      "columns": [
+        {"name": "carrier_key", "type": "integer"},
+        {"name": "carrier_name", "type": "string"},
+        {"name": "carrier_tier", "type": "string"},
+        {"name": "safety_rating", "type": "string"},
+        {"name": "quick_pay_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_lane", "layer": "warehouse_dimension",
+      "purpose": "Lane dimension with origin/destination geography.",
+      "source": "derivation", "primary_key": ["lane_key"],
+      "columns": [
+        {"name": "lane_key", "type": "integer"},
+        {"name": "lane_code", "type": "string"},
+        {"name": "origin_city", "type": "string"},
+        {"name": "origin_state", "type": "string"},
+        {"name": "dest_city", "type": "string"},
+        {"name": "dest_state", "type": "string"},
+        {"name": "distance_miles", "type": "integer"},
+        {"name": "cross_border_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_shipment", "layer": "warehouse_fact",
+      "purpose": "Shipment fact with revenue/cost/margin economics, OTP flags, exception flag and POD lag.",
+      "grain": "one row per shipment",
+      "source": "derivation", "primary_key": ["shipment_id"],
+      "indexes": [["booked_date"], ["customer_key"], ["carrier_key"]],
+      "columns": [
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "shipment_number", "type": "string"},
+        {"name": "booked_date", "type": "date"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "carrier_key", "type": "integer"},
+        {"name": "lane_key", "type": "integer"},
+        {"name": "mode", "type": "string"},
+        {"name": "service_level", "type": "string"},
+        {"name": "shipment_status", "type": "string"},
+        {"name": "distance_miles", "type": "integer"},
+        {"name": "weight_lb", "type": "integer"},
+        {"name": "leg_count", "type": "integer"},
+        {"name": "sell_linehaul", "type": "decimal"},
+        {"name": "fuel_surcharge_revenue", "type": "decimal"},
+        {"name": "accessorial_revenue", "type": "decimal"},
+        {"name": "total_revenue", "type": "decimal"},
+        {"name": "carrier_linehaul_cost", "type": "decimal"},
+        {"name": "fuel_surcharge_cost", "type": "decimal"},
+        {"name": "accessorial_cost", "type": "decimal"},
+        {"name": "total_cost", "type": "decimal"},
+        {"name": "margin_amount", "type": "decimal"},
+        {"name": "margin_pct", "type": "decimal"},
+        {"name": "planned_delivery_date", "type": "date"},
+        {"name": "transit_days", "type": "decimal", "nullable": true},
+        {"name": "on_time_pickup_flag", "type": "boolean", "nullable": true},
+        {"name": "on_time_delivery_flag", "type": "boolean", "nullable": true},
+        {"name": "delivered_flag", "type": "boolean"},
+        {"name": "exception_flag", "type": "boolean"},
+        {"name": "pod_lag_hours", "type": "decimal", "nullable": true},
+        {"name": "accessorial_count", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_carrier_settlement_line", "layer": "warehouse_fact",
+      "purpose": "Carrier settlement line fact as loaded to the warehouse (nightly snapshot: post-load line restatements deliberately lag here and surface in the recon view first).",
+      "grain": "one row per carrier invoice line",
+      "source": "derivation", "primary_key": ["line_key"],
+      "indexes": [["invoice_date"], ["carrier_key"]],
+      "columns": [
+        {"name": "line_key", "type": "integer"},
+        {"name": "carrier_invoice_id", "type": "integer"},
+        {"name": "shipment_id", "type": "integer"},
+        {"name": "carrier_key", "type": "integer"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "charge_type", "type": "string"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "rated_amount", "type": "decimal"},
+        {"name": "variance_amount", "type": "decimal"},
+        {"name": "match_status", "type": "string"}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "_note": "Right-censored shipment lifecycle. Residual probabilities leave open pipeline (stuck bookings, in-transit loads, unresolved exceptions, delivered-no-POD). Exception recovery dwell (3.5d) makes exception shipments mostly late, which is what drags OTP from ~88% to ~84%.",
+      "name": "shipment_lifecycle",
+      "table": "tms.shipment",
+      "status_column": "status",
+      "start_column": "booked_date",
+      "entry_state": "booked",
+      "states": ["booked", "picked_up", "in_transit", "exception", "returned", "delivered", "pod_received", "cancelled"],
+      "transitions": [
+        {"from": "booked", "to": "picked_up", "probability": 0.965, "dwell": {"distribution": "lognormal", "median": 1.1, "sigma": 0.5, "unit": "days"}},
+        {"from": "booked", "to": "cancelled", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 0.9, "sigma": 0.7, "unit": "days"}},
+        {"from": "picked_up", "to": "in_transit", "probability": 0.995, "dwell": {"distribution": "lognormal", "median": 3.5, "sigma": 0.4, "unit": "hours"}},
+        {"from": "in_transit", "to": "delivered", "probability": 0.885, "dwell": {"distribution": "lognormal", "median": 1.9, "sigma": 0.55, "unit": "days"}},
+        {"from": "in_transit", "to": "exception", "probability": 0.095, "dwell": {"distribution": "lognormal", "median": 1.0, "sigma": 0.6, "unit": "days"}},
+        {"from": "exception", "to": "delivered", "probability": 0.86, "dwell": {"distribution": "lognormal", "median": 3.5, "sigma": 0.6, "unit": "days"}},
+        {"from": "exception", "to": "returned", "probability": 0.07, "dwell": {"distribution": "lognormal", "median": 3.2, "sigma": 0.5, "unit": "days"}},
+        {"from": "delivered", "to": "pod_received", "probability": 0.94, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 1.3, "unit": "hours"}}
+      ],
+      "timestamp_columns": {
+        "picked_up": "picked_up_at",
+        "in_transit": "in_transit_at",
+        "delivered": "delivered_at",
+        "exception": "exception_at",
+        "returned": "returned_at",
+        "pod_received": "pod_received_at",
+        "cancelled": "cancelled_at"
+      },
+      "history_table": "tms.shipment_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "name": "work_item_lifecycle",
+      "table": "ops.work_item",
+      "status_column": "status",
+      "start_column": "created_at",
+      "entry_state": "open",
+      "states": ["open", "triaged", "in_review", "escalated", "resolved"],
+      "transitions": [
+        {"from": "open", "to": "triaged", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 0.6, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "in_review", "probability": 0.96, "dwell": {"distribution": "lognormal", "median": 1.2, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_review", "to": "resolved", "probability": 0.78, "dwell": {"distribution": "lognormal", "median": 3.0, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_review", "to": "escalated", "probability": 0.14, "dwell": {"distribution": "lognormal", "median": 5.0, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.82, "dwell": {"distribution": "lognormal", "median": 6.0, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "resolved": "resolved_at"},
+      "history_table": "ops.work_item_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_oms_customer_extract",
+      "_note": "Raw landing copy with US-format dates; format_drift later pads a slice of these, which the staging parse turns into NULLs that DQ-004 catches.",
+      "sql": [
+        "insert into raw.oms_customer_extract",
+        "select cast(customer_id as text), customer_code, customer_name, segment, industry_vertical, region, city, state, status,",
+        "       strftime('%m/%d/%Y', created_at), 'BATCH-NIGHTLY-OMS'",
+        "from oms.customer;"
+      ]
+    },
+    {
+      "name": "stg_oms_customer",
+      "sql": [
+        "insert into stg.oms_customer",
+        "select cast(customer_id as integer), customer_code, trim(customer_name), lower(segment), industry_vertical, region, city, state, lower(status),",
+        "       case when source_created_date like '__/__/____'",
+        "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
+        "            else null end",
+        "from raw.oms_customer_extract;"
+      ]
+    },
+    {
+      "name": "xref_entity_identifier",
+      "_note": "A crosswalk that maps a single system is not a crosswalk - both OMS and TMS identifiers are mapped. missing_xref/stale_mapping imperfections hit this table post-derivation.",
+      "sql": [
+        "insert into xref.entity_identifier",
+        "select row_number() over (order by c.customer_id), 'customer', c.customer_id,",
+        "       'Atlas OMS', 'customer', cast(c.customer_id as text), date(c.created_at), null, 1",
+        "from oms.customer c;",
+        "insert into xref.entity_identifier",
+        "select 100000 + row_number() over (order by b.billto_id), 'customer', b.oms_customer_id,",
+        "       'LoadLine TMS', 'billto_account', cast(b.billto_id as text), date(b.created_at), null, 1",
+        "from tms.billto_account b;"
+      ]
+    },
+    {
+      "name": "core_customer",
+      "sql": [
+        "insert into core.customer",
+        "select s.customer_id, s.customer_name, s.segment, s.industry_vertical, s.region, s.city, s.state, s.status,",
+        "       (select cast(x.source_record_id as integer) from xref.entity_identifier x",
+        "         where x.canonical_entity_id = s.customer_id and x.source_system = 'LoadLine TMS'",
+        "           and x.active_flag = 1 limit 1)",
+        "from stg.oms_customer s;"
+      ]
+    },
+    {
+      "name": "core_carrier",
+      "_note": "Survivorship: the duplicate-onboarded carriers injected pre-derivation share a SCAC, so min(carrier_id) per SCAC collapses them to the original record.",
+      "sql": [
+        "insert into core.carrier",
+        "select c.carrier_id, c.carrier_code, c.carrier_name, c.carrier_tier, c.safety_rating, c.quick_pay_flag",
+        "from tms.carrier c",
+        "where c.carrier_id = (select min(c2.carrier_id) from tms.carrier c2 where c2.carrier_code = c.carrier_code);"
+      ]
+    },
+    {
+      "name": "tms_shipment_leg",
+      "expect": {"at_least_rows": 1000},
+      "_note": "Chained legs: leg counts from a deterministic 0.55/0.30/0.10/0.05 split (intermodal forced multi-leg); intermediate stops walk real terminals so leg n dest = leg n+1 origin; the picked_up->delivered window is split into equal travel segments separated by terminal dwells drawn from 16 lognormal(median 9h, p90 ~28h) quantile values, squeezed to at most 55% of the window so travel time never goes negative. Undelivered shipments use the planned-transit ETA and get planned/in_transit leg statuses.",
+      "sql": [
+        "insert into tms.shipment_leg",
+        "with term as (",
+        "  select location_id, row_number() over (order by location_id) - 1 as rk",
+        "  from tms.location where location_type = 'terminal'",
+        "),",
+        "tc as (select count(*) as cnt from term),",
+        "base as (",
+        "  select s.shipment_id, s.carrier_id, s.origin_location_id, s.dest_location_id, s.distance_miles,",
+        "         s.picked_up_at, s.delivered_at,",
+        "         min(4, (case when (s.shipment_id * 13) % 20 < 11 then 1 when (s.shipment_id * 13) % 20 < 17 then 2",
+        "                      when (s.shipment_id * 13) % 20 < 19 then 3 else 4 end)",
+        "                + (case when s.mode = 'intermodal' and (s.shipment_id * 13) % 20 < 11 then 1 else 0 end)) as n_legs,",
+        "         (julianday(coalesce(s.delivered_at, datetime(s.picked_up_at, '+' || (s.planned_transit_days * 24) || ' hours')))",
+        "          - julianday(s.picked_up_at)) * 24.0 as window_hours",
+        "  from tms.shipment s",
+        "  where s.picked_up_at is not null",
+        "),",
+        "seqs as (select 1 as n union all select 2 union all select 3 union all select 4),",
+        "legs as (",
+        "  select b.*, q.n as leg_seq,",
+        "         case when q.n < b.n_legs then",
+        "           case ((b.shipment_id * 31 + q.n * 7) % 16)",
+        "             when 0 then 1.9 when 1 then 2.9 when 2 then 3.8 when 3 then 4.7 when 4 then 5.5 when 5 then 6.4",
+        "             when 6 then 7.4 when 7 then 8.4 when 8 then 9.6 when 9 then 11.0 when 10 then 12.7 when 11 then 14.7",
+        "             when 12 then 17.4 when 13 then 21.2 when 14 then 27.6 else 43.8 end",
+        "         else 0.0 end as dwell_raw",
+        "  from base b join seqs q on q.n <= b.n_legs",
+        "),",
+        "agg as (",
+        "  select l.*,",
+        "         sum(dwell_raw) over (partition by shipment_id) as dwell_tot,",
+        "         coalesce(sum(dwell_raw) over (partition by shipment_id order by leg_seq",
+        "                  rows between unbounded preceding and 1 preceding), 0) as dwell_before",
+        "  from legs l",
+        "),",
+        "calc as (",
+        "  select a.*,",
+        "         case when a.dwell_tot > 0.55 * a.window_hours and a.dwell_tot > 0",
+        "              then (0.55 * a.window_hours) / a.dwell_tot else 1.0 end as squeeze,",
+        "         (a.window_hours - min(a.dwell_tot, 0.55 * a.window_hours)) / a.n_legs as travel_leg_hours",
+        "  from agg a",
+        ")",
+        "select row_number() over (order by c.shipment_id, c.leg_seq) as leg_id,",
+        "       c.shipment_id, c.leg_seq, c.carrier_id,",
+        "       case when c.leg_seq = 1 then c.origin_location_id else t1.location_id end,",
+        "       case when c.leg_seq = c.n_legs then c.dest_location_id else t2.location_id end,",
+        "       cast(round(1.0 * c.distance_miles / c.n_legs, 0) as integer),",
+        "       datetime(c.picked_up_at, '+' || cast(round(((c.leg_seq - 1) * c.travel_leg_hours + c.dwell_before * c.squeeze) * 60.0) as integer) || ' minutes'),",
+        "       case when c.leg_seq = c.n_legs and c.delivered_at is not null then c.delivered_at",
+        "            else datetime(c.picked_up_at, '+' || cast(round((c.leg_seq * c.travel_leg_hours + c.dwell_before * c.squeeze) * 60.0) as integer) || ' minutes') end,",
+        "       case when c.leg_seq < c.n_legs then round(c.dwell_raw * c.squeeze, 2) else 0.0 end,",
+        "       case when c.delivered_at is not null then 'completed'",
+        "            when datetime(c.picked_up_at, '+' || cast(round(((c.leg_seq - 1) * c.travel_leg_hours + c.dwell_before * c.squeeze) * 60.0) as integer) || ' minutes') > '2025-12-31 23:59:59' then 'planned'",
+        "            else 'in_transit' end",
+        "from calc c",
+        "cross join tc",
+        "left join term t1 on c.leg_seq > 1 and t1.rk = (c.shipment_id * 3 + (c.leg_seq - 1)) % tc.cnt",
+        "left join term t2 on c.leg_seq < c.n_legs and t2.rk = (c.shipment_id * 3 + c.leg_seq) % tc.cnt;"
+      ]
+    },
+    {
+      "name": "dms_pod_document",
+      "expect": {"at_least_rows": 500},
+      "_note": "POD lag itself comes from the state machine's delivered->pod_received dwell (lognormal median 9h, p99 ~ a week). Capture method is derived FROM the lag, so driver-app PODs are fast and email scans are the slow tail - a correlation reviewers actually check.",
+      "sql": [
+        "insert into dms.pod_document",
+        "select row_number() over (order by s.shipment_id),",
+        "       s.shipment_id, 'proof_of_delivery',",
+        "       case when (julianday(s.pod_received_at) - julianday(s.delivered_at)) * 24.0 < 14 then 'driver_app'",
+        "            when (julianday(s.pod_received_at) - julianday(s.delivered_at)) * 24.0 < 48 then 'carrier_portal'",
+        "            else 'email_scan' end,",
+        "       s.pod_received_at,",
+        "       case s.shipment_id % 11 when 0 then 'R. Okafor' when 1 then 'M. Delgado' when 2 then 'S. Winters'",
+        "            when 3 then 'T. Brannigan' when 4 then 'L. Fontaine' when 5 then 'D. Kowalski' when 6 then 'J. Mercado'",
+        "            when 7 then 'A. Hollis' when 8 then 'K. Vance' when 9 then 'P. Okonkwo' else 'G. Marchetti' end,",
+        "       case when (s.shipment_id * 3) % 20 < 14 then 'clear' when (s.shipment_id * 3) % 20 < 18 then 'fair' else 'poor' end,",
+        "       1 + (case when s.shipment_id % 4 = 0 then 1 else 0 end) + (case when s.shipment_id % 9 = 0 then 1 else 0 end),",
+        "       'dms://pod/' || s.shipment_number",
+        "from tms.shipment s",
+        "where s.pod_received_at is not null;"
+      ]
+    },
+    {
+      "name": "ops_exception_case",
+      "expect": {"at_least_rows": 100},
+      "_note": "One case per shipment that entered the exception state; customs_hold reasons only occur on cross-border lanes; case status follows the shipment outcome so status-vs-timestamp coherence holds.",
+      "sql": [
+        "insert into ops.exception_case",
+        "select s.shipment_id,",
+        "       'EXC-' || printf('%06d', s.shipment_id),",
+        "       s.shipment_id, s.customer_id, s.carrier_id,",
+        "       case when s.cross_border_flag = 1 and s.shipment_id % 5 = 0 then 'customs_hold'",
+        "            when (s.shipment_id * 17) % 20 < 4 then 'weather_delay'",
+        "            when (s.shipment_id * 17) % 20 < 8 then 'equipment_breakdown'",
+        "            when (s.shipment_id * 17) % 20 < 11 then 'receiver_refused'",
+        "            when (s.shipment_id * 17) % 20 < 14 then 'damage_reported'",
+        "            when (s.shipment_id * 17) % 20 < 17 then 'address_correction'",
+        "            else 'missed_appointment' end,",
+        "       min(datetime(s.exception_at, '+' || ((s.shipment_id * 7) % 240 + 10) || ' minutes'), '2025-12-31 23:59:59'),",
+        "       case when s.delivered_at is not null and s.shipment_id % 17 = 0 then 'closed_with_credit'",
+        "            when s.delivered_at is not null then 'resolved'",
+        "            when s.returned_at is not null then 'closed_returned'",
+        "            when julianday('2025-12-31') - julianday(s.exception_at) > 30 then 'escalated'",
+        "            else 'investigating' end,",
+        "       case s.shipment_id % 6 when 0 then 'dana.whitfield' when 1 then 'marcus.webb' when 2 then 'priya.raman'",
+        "            when 3 then 'jordan.beck' when 4 then 'elena.vargas' else 'tomas.keller' end,",
+        "       case when s.delivered_at is not null then min(datetime(s.delivered_at, '+' || ((s.shipment_id * 13) % 360 + 30) || ' minutes'), '2025-12-31 23:59:59')",
+        "            when s.returned_at is not null then min(datetime(s.returned_at, '+' || ((s.shipment_id * 13) % 360 + 30) || ' minutes'), '2025-12-31 23:59:59')",
+        "            else null end",
+        "from tms.shipment s",
+        "where s.exception_at is not null;"
+      ]
+    },
+    {
+      "name": "settlement_carrier_invoice",
+      "expect": {"at_least_rows": 1000},
+      "_note": "Submission lag = 16 lognormal(median 9d, max 25d) quantile values keyed off shipment_id; invoices that would land after the as-of date do not exist yet (right-censoring). The variance multiplier v drives match_status: exact -> auto_matched (~72%), off-rate -> exception_review. shipment_id % 83 = 0 loads are never billed - the deliberate missing-invoice recon slice.",
+      "sql": [
+        "insert into settlement.carrier_invoice",
+        "with base as (",
+        "  select s.shipment_id, s.carrier_id, s.pro_number, s.buy_linehaul, s.fuel_pct, s.delivered_at,",
+        "         date(s.delivered_at, '+' || (case ((s.shipment_id * 19) % 16)",
+        "            when 0 then 3 when 1 then 4 when 2 then 5 when 3 then 6 when 4 then 7 when 5 then 7",
+        "            when 6 then 8 when 7 then 9 when 8 then 9 when 9 then 10 when 10 then 11 when 11 then 12",
+        "            when 12 then 14 when 13 then 16 when 14 then 19 else 25 end) || ' days') as invoice_date,",
+        "         case when (s.shipment_id * 7) % 100 < 70 then 1.0",
+        "              when (s.shipment_id * 7) % 100 < 96 then 1.0 + ((s.shipment_id % 11) - 5) * 0.002",
+        "              else 1.0 + ((s.shipment_id % 13) - 6) * 0.01 end as v",
+        "  from tms.shipment s",
+        "  where s.delivered_at is not null and s.shipment_id % 83 <> 0",
+        "),",
+        "acc as (select shipment_id, round(sum(charge_amount), 2) as amt from tms.accessorial_event group by shipment_id),",
+        "enr as (",
+        "  select b.*, coalesce(a.amt, 0) as acc_amt, c.quick_pay_flag,",
+        "         julianday('2025-12-31') - julianday(b.invoice_date) as age_days",
+        "  from base b",
+        "  left join acc a on a.shipment_id = b.shipment_id",
+        "  join tms.carrier c on c.carrier_id = b.carrier_id",
+        "  where b.invoice_date <= '2025-12-31'",
+        ")",
+        "select e.shipment_id,",
+        "       'CINV-' || printf('%07d', e.shipment_id),",
+        "       e.carrier_id, e.shipment_id, e.pro_number, e.invoice_date,",
+        "       round(round(e.buy_linehaul * e.v, 2) + round(e.buy_linehaul * e.fuel_pct, 2) + e.acc_amt, 2),",
+        "       case when e.v = 1.0 then 'auto_matched' else 'exception_review' end,",
+        "       case when e.v <> 1.0 and e.age_days > 45 then 'paid'",
+        "            when e.v <> 1.0 and e.age_days > 18 then 'approved'",
+        "            when e.v <> 1.0 then 'pending_review'",
+        "            when e.quick_pay_flag = 1 and e.age_days > 7 then 'paid'",
+        "            when e.quick_pay_flag = 0 and e.age_days > 32 then 'paid'",
+        "            when e.age_days > 5 then 'approved'",
+        "            else 'received' end,",
+        "       case when (e.v <> 1.0 and e.age_days > 45)",
+        "              or (e.v = 1.0 and ((e.quick_pay_flag = 1 and e.age_days > 7) or (e.quick_pay_flag = 0 and e.age_days > 32)))",
+        "            then date(e.invoice_date, '+' || (case when e.quick_pay_flag = 1 then 7 else 30 end) || ' days')",
+        "            else null end",
+        "from enr e;"
+      ]
+    },
+    {
+      "name": "settlement_carrier_invoice_line",
+      "expect": {"at_least_rows": 2000},
+      "_note": "Linehaul line re-derives the same deterministic variance multiplier so header total = line sum exactly (until restatement pairs are injected post-derivation, which is what makes CTL-002 break). Accessorial passthroughs carry the event amount.",
+      "sql": [
+        "insert into settlement.carrier_invoice_line",
+        "select i.carrier_invoice_id * 10 + 1, i.carrier_invoice_id, 'linehaul',",
+        "       round(s.buy_linehaul * (case when (s.shipment_id * 7) % 100 < 70 then 1.0",
+        "             when (s.shipment_id * 7) % 100 < 96 then 1.0 + ((s.shipment_id % 11) - 5) * 0.002",
+        "             else 1.0 + ((s.shipment_id % 13) - 6) * 0.01 end), 2),",
+        "       s.buy_linehaul,",
+        "       round(round(s.buy_linehaul * (case when (s.shipment_id * 7) % 100 < 70 then 1.0",
+        "             when (s.shipment_id * 7) % 100 < 96 then 1.0 + ((s.shipment_id % 11) - 5) * 0.002",
+        "             else 1.0 + ((s.shipment_id % 13) - 6) * 0.01 end), 2) - s.buy_linehaul, 2),",
+        "       null",
+        "from settlement.carrier_invoice i join tms.shipment s on s.shipment_id = i.shipment_id;",
+        "insert into settlement.carrier_invoice_line",
+        "select i.carrier_invoice_id * 10 + 2, i.carrier_invoice_id, 'fuel_surcharge',",
+        "       round(s.buy_linehaul * s.fuel_pct, 2), round(s.buy_linehaul * s.fuel_pct, 2), 0.0, null",
+        "from settlement.carrier_invoice i join tms.shipment s on s.shipment_id = i.shipment_id;",
+        "insert into settlement.carrier_invoice_line",
+        "select i.carrier_invoice_id * 10 + 2 + a.rn, i.carrier_invoice_id, 'accessorial_' || a.accessorial_type,",
+        "       a.charge_amount, a.charge_amount, 0.0, null",
+        "from settlement.carrier_invoice i",
+        "join (select shipment_id, accessorial_type, charge_amount,",
+        "             row_number() over (partition by shipment_id order by accessorial_id) as rn",
+        "      from tms.accessorial_event) a on a.shipment_id = i.shipment_id;"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_customer",
+      "sql": [
+        "insert into wh.dim_customer",
+        "select customer_uid, customer_name, segment, industry_vertical, region, status from core.customer;"
+      ]
+    },
+    {
+      "name": "wh_dim_carrier",
+      "sql": [
+        "insert into wh.dim_carrier",
+        "select carrier_uid, carrier_name, carrier_tier, safety_rating, quick_pay_flag from core.carrier;"
+      ]
+    },
+    {
+      "name": "wh_dim_lane",
+      "sql": [
+        "insert into wh.dim_lane",
+        "select l.lane_id, l.lane_code, o.city, o.state, d.city, d.state, l.distance_miles, l.cross_border_flag",
+        "from tms.lane l",
+        "join tms.location o on o.location_id = l.origin_location_id",
+        "join tms.location d on d.location_id = l.dest_location_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_shipment",
+      "expect": {"at_least_rows": 1000},
+      "_note": "On-time delivery = delivered on/before pickup appointment + planned transit days (the certified appointment-based definition). Customer-side accessorial billing carries an 18% margin over the carrier passthrough.",
+      "sql": [
+        "insert into wh.fact_shipment",
+        "with acc as (select shipment_id, count(*) as n_acc, round(sum(charge_amount), 2) as amt",
+        "             from tms.accessorial_event group by shipment_id),",
+        "lg as (select shipment_id, count(*) as n from tms.shipment_leg group by shipment_id),",
+        "m as (",
+        "  select s.*, coalesce(a.amt, 0) as acc_amt, coalesce(a.n_acc, 0) as n_acc, coalesce(l.n, 0) as n_legs,",
+        "         round(s.sell_linehaul * s.fuel_pct, 2) as fuel_rev,",
+        "         round(coalesce(a.amt, 0) * 1.18, 2) as acc_rev,",
+        "         round(s.buy_linehaul * s.fuel_pct, 2) as fuel_cost",
+        "  from tms.shipment s",
+        "  left join acc a on a.shipment_id = s.shipment_id",
+        "  left join lg l on l.shipment_id = s.shipment_id",
+        ")",
+        "select shipment_id, shipment_number, booked_date, customer_id, carrier_id, lane_id, mode, service_level, status,",
+        "       distance_miles, weight_lb, n_legs,",
+        "       sell_linehaul, fuel_rev, acc_rev,",
+        "       round(sell_linehaul + fuel_rev + acc_rev, 2),",
+        "       buy_linehaul, fuel_cost, acc_amt,",
+        "       round(buy_linehaul + fuel_cost + acc_amt, 2),",
+        "       round(sell_linehaul + fuel_rev + acc_rev - buy_linehaul - fuel_cost - acc_amt, 2),",
+        "       round((sell_linehaul + fuel_rev + acc_rev - buy_linehaul - fuel_cost - acc_amt)",
+        "             / (sell_linehaul + fuel_rev + acc_rev), 4),",
+        "       date(pickup_appointment_date, '+' || planned_transit_days || ' days'),",
+        "       case when delivered_at is not null then round(julianday(delivered_at) - julianday(picked_up_at), 2) end,",
+        "       case when picked_up_at is null then null",
+        "            when date(picked_up_at) <= pickup_appointment_date then 1 else 0 end,",
+        "       case when delivered_at is null then null",
+        "            when date(delivered_at) <= date(pickup_appointment_date, '+' || planned_transit_days || ' days') then 1 else 0 end,",
+        "       case when delivered_at is not null then 1 else 0 end,",
+        "       case when exception_at is not null then 1 else 0 end,",
+        "       case when pod_received_at is not null then round((julianday(pod_received_at) - julianday(delivered_at)) * 24, 1) end,",
+        "       n_acc",
+        "from m;"
+      ]
+    },
+    {
+      "name": "wh_fact_carrier_settlement_line",
+      "expect": {"at_least_rows": 2000},
+      "sql": [
+        "insert into wh.fact_carrier_settlement_line",
+        "select l.line_id, l.carrier_invoice_id, i.shipment_id, i.carrier_id, i.invoice_date,",
+        "       l.charge_type, l.billed_amount, l.rated_amount, round(l.billed_amount - l.rated_amount, 2), i.match_status",
+        "from settlement.carrier_invoice_line l",
+        "join settlement.carrier_invoice i on i.carrier_invoice_id = l.carrier_invoice_id;"
+      ]
+    },
+    {
+      "name": "mart_on_time_performance",
+      "_note": "The on-time-performance mart: monthly OTP by carrier tier with exception rates. A view, so it reflects post-imperfection data.",
+      "sql": [
+        "create view mart_on_time_performance as",
+        "select strftime('%Y-%m', f.booked_date) as month_key, c.carrier_tier,",
+        "       count(*) as shipments,",
+        "       sum(f.delivered_flag) as delivered,",
+        "       sum(coalesce(f.on_time_delivery_flag, 0)) as delivered_on_time,",
+        "       round(1.0 * sum(coalesce(f.on_time_delivery_flag, 0)) / nullif(sum(f.delivered_flag), 0), 4) as otp_pct,",
+        "       round(1.0 * sum(coalesce(f.on_time_pickup_flag, 0)) / nullif(sum(case when f.on_time_pickup_flag is not null then 1 else 0 end), 0), 4) as pickup_otp_pct,",
+        "       round(avg(f.transit_days), 2) as avg_transit_days,",
+        "       sum(f.exception_flag) as exceptions,",
+        "       round(1.0 * sum(f.exception_flag) / count(*), 4) as exception_rate",
+        "from wh.fact_shipment f",
+        "join wh.dim_carrier c on c.carrier_key = f.carrier_key",
+        "where f.shipment_status <> 'cancelled'",
+        "group by 1, 2;"
+      ]
+    },
+    {
+      "name": "mart_carrier_scorecard",
+      "sql": [
+        "create view mart_carrier_scorecard as",
+        "select c.carrier_key, c.carrier_name, c.carrier_tier,",
+        "       count(*) as loads,",
+        "       round(1.0 * sum(coalesce(f.on_time_delivery_flag, 0)) / nullif(sum(f.delivered_flag), 0), 4) as otp_pct,",
+        "       round(1.0 * sum(f.exception_flag) / count(*), 4) as exception_rate,",
+        "       round(avg(f.margin_pct), 4) as avg_margin_pct,",
+        "       round(1.0 * sum(f.accessorial_count) / count(*), 3) as accessorials_per_load,",
+        "       round(avg(f.pod_lag_hours), 1) as avg_pod_lag_hours,",
+        "       i.invoice_exception_rate",
+        "from wh.fact_shipment f",
+        "join wh.dim_carrier c on c.carrier_key = f.carrier_key",
+        "left join (select carrier_id,",
+        "                  round(1.0 * sum(case when match_status = 'exception_review' then 1 else 0 end) / count(*), 4) as invoice_exception_rate",
+        "           from settlement.carrier_invoice group by carrier_id) i on i.carrier_id = c.carrier_key",
+        "where f.shipment_status <> 'cancelled'",
+        "group by c.carrier_key, c.carrier_name, c.carrier_tier, i.invoice_exception_rate",
+        "having count(*) >= 10;"
+      ]
+    },
+    {
+      "name": "control_recon_shipment_carrier_invoice",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation imperfections. Breaks: never-billed delivered loads (the %83 slice, after the 35-day submission window), header-vs-line mismatches (restatement pairs), and billed-vs-rated variance beyond 2%/10-unit tolerance (the deliberate off-rate slice plus larger restatements).",
+      "sql": [
+        "create view control_recon_shipment_carrier_invoice as",
+        "with rated as (",
+        "  select s.shipment_id, s.shipment_number, date(s.delivered_at) as delivered_on,",
+        "         round(s.buy_linehaul + round(s.buy_linehaul * s.fuel_pct, 2) + coalesce(a.amt, 0), 2) as rated_cost",
+        "  from tms.shipment s",
+        "  left join (select shipment_id, round(sum(charge_amount), 2) as amt",
+        "             from tms.accessorial_event group by shipment_id) a on a.shipment_id = s.shipment_id",
+        "  where s.delivered_at is not null",
+        "),",
+        "inv as (",
+        "  select i.shipment_id, i.total_amount as header_total, round(sum(l.billed_amount), 2) as line_total",
+        "  from settlement.carrier_invoice i",
+        "  join settlement.carrier_invoice_line l on l.carrier_invoice_id = i.carrier_invoice_id",
+        "  group by i.shipment_id, i.total_amount",
+        ")",
+        "select r.shipment_id, r.shipment_number, r.delivered_on, r.rated_cost, i.header_total, i.line_total,",
+        "       round(coalesce(i.line_total, 0) - r.rated_cost, 2) as break_amount,",
+        "       case when i.shipment_id is null then 'missing_carrier_invoice'",
+        "            when abs(i.header_total - i.line_total) > 0.01 then 'header_line_mismatch'",
+        "            else 'amount_variance' end as break_type",
+        "from rated r",
+        "left join inv i on i.shipment_id = r.shipment_id",
+        "where (i.shipment_id is null and r.delivered_on <= date('2025-12-31', '-35 day'))",
+        "   or abs(i.header_total - i.line_total) > 0.01",
+        "   or abs(i.line_total - r.rated_cost) > max(10.0, 0.02 * r.rated_cost);"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'carrier invoice PRO does not match any shipment' as issue, cast(c.carrier_invoice_id as text) as entity_id",
+        "from settlement.carrier_invoice c",
+        "where not exists (select 1 from tms.shipment s where s.pro_number = c.pro_number)",
+        "union all",
+        "select 'DQ-002', 'accessorial charge manually overridden without supporting event', cast(accessorial_id as text)",
+        "from tms.accessorial_event where override_flag = 1",
+        "union all",
+        "select 'DQ-003', 'TMS billto account missing active xref mapping', cast(b.billto_id as text)",
+        "from tms.billto_account b",
+        "where not exists (select 1 from xref.entity_identifier x",
+        "                  where x.source_system = 'LoadLine TMS' and x.source_record_id = cast(b.billto_id as text)",
+        "                    and x.active_flag = 1)",
+        "union all",
+        "select 'DQ-004', 'unparseable raw customer extract date', r.customer_id",
+        "from raw.oms_customer_extract r where r.source_created_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-005', 'POD document missing signature', cast(pod_doc_id as text)",
+        "from dms.pod_document where signed_by is null",
+        "union all",
+        "select 'DQ-006', 'duplicate EDI message delivery', cast(e.message_id as text)",
+        "from integration.edi_message e",
+        "where exists (select 1 from integration.edi_message e2",
+        "              where e2.shipment_id = e.shipment_id and e2.message_type = e.message_type",
+        "                and e2.msg_seq = e.msg_seq and e2.message_id <> e.message_id)",
+        "union all",
+        "select 'DQ-007', 'EDI message references unknown shipment', cast(e.message_id as text)",
+        "from integration.edi_message e",
+        "where e.shipment_id is not null",
+        "  and not exists (select 1 from tms.shipment s where s.shipment_id = e.shipment_id)",
+        "union all",
+        "select 'DQ-008', 'expired xref mapping still flagged active', cast(x.entity_identifier_id as text)",
+        "from xref.entity_identifier x",
+        "where x.active_flag = 1 and x.valid_to is not null and x.valid_to < '2025-12-31';"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "carrier_duplicate_records", "type": "duplicate_entity", "table": "tms.carrier", "rate": 0.012, "stage": "pre_derivation", "params": {"fuzz_columns": ["carrier_name"]}, "scenario": "Carriers onboarded twice (DBA vs legal name); core.carrier survivorship collapses them and the mdm_stewards queue reviews them."},
+    {"name": "edi_late_arrivals", "type": "late_arrival", "table": "integration.edi_message", "rate": 0.05, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 2, "sigma": 0.8}}, "scenario": "Partner EDI 214 statuses arrive days late; on-time metrics restate."},
+    {"name": "edi_orphan_shipment_refs", "type": "orphan_fk", "table": "integration.edi_message", "rate": 0.012, "stage": "pre_derivation", "params": {"column": "shipment_id"}, "scenario": "Carrier PRO never mapped to a shipment; orphan events route to the integration_support queue (DQ-007)."},
+    {"name": "edi_duplicate_messages", "type": "duplicate_webhook", "table": "integration.edi_message", "rate": 0.02, "stage": "pre_derivation", "scenario": "Gateway retries deliver the same message twice (DQ-006)."},
+    {"name": "accessorial_manual_overrides", "type": "manual_override", "table": "tms.accessorial_event", "rate": 0.07, "stage": "pre_derivation", "params": {"column": "override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Billing analysts add/waive accessorials by hand; DQ-002 flags charges without supporting events."},
+    {"name": "raw_customer_date_drift", "type": "format_drift", "table": "raw.oms_customer_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_created_date", "format": "padded"}, "scenario": "Legacy extract job pads dates after a patch; staging parses them to NULL (DQ-004)."},
+    {"name": "lost_customer_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.025, "stage": "post_derivation", "scenario": "Mappings lost in the 2024 integration migration; DQ-003 coverage check catches the TMS side."},
+    {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired mappings never re-pointed (DQ-008)."},
+    {"name": "stg_name_survivorship_conflicts", "type": "conflicting_source_values", "table": "stg.oms_customer", "rate": 0.02, "stage": "post_derivation", "params": {"column": "customer_name"}, "scenario": "OMS and TMS disagree on customer names after staging survivorship; data_correction work for the stewards."},
+    {"name": "carrier_invoice_pro_typos", "type": "typo", "table": "settlement.carrier_invoice", "rate": 0.02, "stage": "post_derivation", "params": {"column": "pro_number"}, "scenario": "PRO numbers hand-keyed in the carrier portal; auto-match fails and DQ-001 fires into the settlement_desk queue."},
+    {"name": "carrier_invoice_line_restatements", "type": "restatement_reversal", "table": "settlement.carrier_invoice_line", "rate": 0.012, "stage": "post_derivation", "params": {"amount_columns": ["billed_amount"], "reason_column": "line_note"}, "scenario": "Re-rated invoices land as reversal + restated line pairs; these create the header-vs-line and rated-variance recon breaks."},
+    {"name": "pod_missing_signatures", "type": "null_field", "table": "dms.pod_document", "rate": 0.07, "stage": "post_derivation", "params": {"column": "signed_by"}, "scenario": "Driver app captures without signatures; DQ-005 feeds the pod_chase queue."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Delivered shipments reconcile to carrier invoices", "source_dataset": "tms.shipment", "target_dataset": "settlement.carrier_invoice_line", "grain": "shipment_id", "tolerance": "2% or 10 units", "frequency": "daily", "owner": "settlement_desk", "severity": "high", "expected_break_rate": "~4-5% open (never-billed slice + off-rate variance + restatements)", "break_view": "control_recon_shipment_carrier_invoice"},
+    {"rule_id": "CTL-002", "rule_name": "Carrier invoice header equals line sum", "source_dataset": "settlement.carrier_invoice", "target_dataset": "settlement.carrier_invoice_line", "grain": "carrier_invoice_id", "tolerance": "0.01", "frequency": "daily", "owner": "settlement_desk", "severity": "high", "expected_break_rate": "~1.2% (line restatement pairs)", "break_view": "control_recon_shipment_carrier_invoice"},
+    {"rule_id": "CTL-003", "rule_name": "POD on file within 5 days of delivery", "source_dataset": "tms.shipment", "target_dataset": "dms.pod_document", "grain": "shipment_id", "tolerance": "0 after 5 business days", "frequency": "daily", "owner": "billing_ops", "severity": "medium", "expected_break_rate": "~6% of delivered (machine residual: POD never received)", "break_view": "dq_rule_result_current"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "settlement.carrier_invoice", "rule_type": "fk_exists", "condition": "PRO number matches a shipment", "severity": "error", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-002", "dataset": "tms.accessorial_event", "rule_type": "supported_charge", "condition": "no manual override without supporting event", "severity": "warning", "expected_failure_rate": 0.07},
+    {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every TMS billto mapped", "severity": "error", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-004", "dataset": "raw.oms_customer_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-005", "dataset": "dms.pod_document", "rule_type": "required_field", "condition": "POD carries a signature", "severity": "warning", "expected_failure_rate": 0.07},
+    {"rule_id": "DQ-006", "dataset": "integration.edi_message", "rule_type": "uniqueness", "condition": "no duplicate message deliveries", "severity": "warning", "expected_failure_rate": 0.04},
+    {"rule_id": "DQ-007", "dataset": "integration.edi_message", "rule_type": "fk_exists", "condition": "message maps to a shipment", "severity": "error", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-008", "dataset": "xref.entity_identifier", "rule_type": "validity", "condition": "active mappings are not expired", "severity": "warning", "expected_failure_rate": 0.02}
+  ],
+  "dataflows": [
+    {"name": "customer_mastering", "sequence": "oms.customer -> raw extract -> staging -> xref -> core.customer -> wh.dim_customer"},
+    {"name": "shipment_lifecycle", "sequence": "tms.shipment -> state machine -> tms.shipment_event -> tms.shipment_leg -> wh.fact_shipment -> mart_on_time_performance"},
+    {"name": "pod_to_billing", "sequence": "delivered -> pod_received (machine) -> dms.pod_document -> pod_chase queue when missing"},
+    {"name": "carrier_settlement", "sequence": "delivered shipment -> settlement.carrier_invoice/line -> match status -> recon view -> settlement_desk queue"}
+  ],
+  "validation": {
+    "required_views": [
+      "mart_on_time_performance",
+      "mart_carrier_scorecard",
+      "control_recon_shipment_carrier_invoice",
+      "dq_rule_result_current"
+    ],
+    "expected_row_ranges": {
+      "oms.customer": [540, 700],
+      "tms.shipment": [13000, 36000],
+      "tms.shipment_event": [55000, 185000],
+      "settlement.carrier_invoice": [9000, 32000],
+      "wh.fact_shipment": [13000, 36000]
+    }
+  }
+}

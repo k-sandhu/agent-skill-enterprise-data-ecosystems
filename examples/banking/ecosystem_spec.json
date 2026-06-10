@@ -1,0 +1,937 @@
+{
+  "_note": "Worked example: Bluestone Mutual Bank, a fictional regional retail/commercial bank. Four source systems (CoreVault Banking, PayStream Hub, CardLink Processor, Sentinel AML) feed a raw->stg->xref->core derived flow, a payment lifecycle state machine, an AML alert funnel, a GL daily summary, a window-sum balance roll-forward, and a transactions-vs-GL reconciliation. Keys starting with '_' are comments stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Bluestone Mutual Bank",
+    "archetype": "regional_retail_commercial_bank",
+    "industry": "Retail and commercial banking",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 13,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "Card-dominated consumer shape: near-flat week with a Fri/Sat lift (card auths peak Friday-Saturday). The weekend dip on ACH/wire comes from business-day posting logic in the core.posted_transaction derivation, not from the calendar — both channels draw from the same calendar but only payments get posted on business days.",
+    "weekday_weights": [1.0, 0.99, 1.0, 1.04, 1.12, 1.06, 0.94],
+    "month_weights": [0.92, 0.95, 1.0, 1.02, 1.0, 0.99, 1.0, 1.0, 0.98, 1.02, 1.08, 1.27],
+    "holidays": ["2024-01-01", "2024-05-27", "2024-07-04", "2024-09-02", "2024-11-28", "2024-12-25", "2025-01-01", "2025-05-26", "2025-07-04", "2025-09-01", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.05,
+    "business_hours": [8, 20]
+  },
+  "vocab": {
+    "biller_name": ["Granite Power & Light", "Northwind Gas Cooperative", "CityWater Utility Services", "Summit Wireless", "Cobalt Cable & Internet", "Beacon Mutual Insurance", "Stonebridge Property Management", "Evergreen Auto Finance", "Pinnacle Card Services", "Harborview Mortgage Servicing", "Lakeshore Fitness Collective", "Silver Spruce Streaming"],
+    "payment_memo": ["payroll direct deposit", "monthly utility payment", "insurance premium", "rent payment", "invoice settlement", "loan installment", "subscription renewal", "vendor payment", "estimated tax payment", "transfer to savings"],
+    "gl_name_pool": ["Interest income - consumer loans", "Interest expense - deposits", "Fee income - service charges", "Operating expense - personnel", "Operating expense - occupancy", "Loan loss provision", "Interchange income", "Wire fee income", "FX revaluation", "Regulatory assessment expense", "Marketing expense", "Technology expense"]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "CoreVault Banking", "2": "PayStream Hub", "3": "CardLink Processor", "4": "Sentinel AML", "5": "LedgerPrime GL", "6": "FlowGate Integration", "7": "Bluestone Data Warehouse", "8": "Compass BI Portal"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "core_banking", "2": "payment_hub", "3": "card_processor", "4": "aml_case_mgmt", "5": "general_ledger", "6": "integration", "7": "warehouse", "8": "BI"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "party/account/deposits", "2": "payments", "3": "cards", "4": "aml", "5": "ledger", "6": "integration", "7": "reporting", "8": "dashboards"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.6,tier2=0.3,tier3=0.1"},
+        {"name": "contains_pii_flag", "type": "boolean", "gen": "bool:0.6"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "schema": "corebank", "name": "branch", "layer": "source",
+      "purpose": "Branch network.",
+      "source_system": "CoreVault Banking",
+      "primary_key": ["branch_id"], "rows": 24, "scale_exempt": true,
+      "columns": [
+        {"name": "branch_id", "type": "integer"},
+        {"name": "branch_code", "type": "string", "gen": {"type": "pattern", "pattern": "BR-###", "unique": true}},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "branch_name", "type": "string", "_note": "city is drawn first so branch names stay coherent with their place.", "gen": {"type": "text_template", "templates": ["{col.city} Main Branch", "{col.city} Downtown Branch", "{col.city} Plaza Branch"]}},
+        {"name": "region", "type": "string", "gen": "choice:Northeast=0.35,Southeast=0.25,Midwest=0.22,West=0.18"},
+        {"name": "branch_manager", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "corebank", "name": "product", "layer": "source",
+      "purpose": "Deposit, CD, and loan product catalog.",
+      "source_system": "CoreVault Banking",
+      "primary_key": ["product_id"], "rows": 14, "scale_exempt": true,
+      "columns": [
+        {"name": "product_id", "type": "integer"},
+        {"name": "product_code", "type": "string", "gen": {"type": "case", "on": "product_id", "cases": {"1": "CHK-BASIC", "2": "CHK-PLUS", "3": "CHK-STUDENT", "4": "CHK-BIZ", "5": "SAV-CORE", "6": "SAV-HY", "7": "SAV-YOUTH", "8": "MMA-PREM", "9": "CD-6M", "10": "CD-12M", "11": "LN-AUTO", "12": "LN-PERSONAL", "13": "LN-HELOC", "14": "LN-BIZTERM"}}},
+        {"name": "product_name", "type": "string", "gen": {"type": "case", "on": "product_id", "cases": {"1": "Basic Checking", "2": "Plus Interest Checking", "3": "Student Checking", "4": "Business Checking", "5": "Core Savings", "6": "High-Yield Savings", "7": "Youth Savings", "8": "Premier Money Market", "9": "6-Month Certificate", "10": "12-Month Certificate", "11": "Auto Loan", "12": "Personal Loan", "13": "Home Equity Line", "14": "Business Term Loan"}}},
+        {"name": "product_type", "type": "string", "_note": "Drives fk affinity matching from corebank.account.account_type.", "gen": {"type": "case", "on": "product_id", "cases": {"1": "checking", "2": "checking", "3": "checking", "4": "checking", "5": "savings", "6": "savings", "7": "savings", "8": "savings", "9": "cd", "10": "cd", "11": "loan", "12": "loan", "13": "loan", "14": "loan"}}},
+        {"name": "monthly_fee", "type": "decimal", "gen": {"type": "case", "on": "product_type", "cases": {"checking": {"type": "choice", "values": [0.0, 4.95, 9.95], "weights": [0.45, 0.35, 0.2]}}, "default": 0.0}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.93"}
+      ]
+    },
+    {
+      "_note": "Customer master. created_at is sorted with 72% backfill so customer IDs correlate with onboarding order and the book is tenured (in-window volume grows ~5%/yr instead of ramping from zero).",
+      "schema": "corebank", "name": "customer", "layer": "source",
+      "purpose": "Core banking customer master (retail, small business, commercial).",
+      "source_system": "CoreVault Banking",
+      "primary_key": ["customer_id"], "natural_key": ["customer_no"],
+      "rows": 1600, "traits": ["audited"],
+      "indexes": [["segment"], ["kyc_status"]],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "customer_no", "type": "string", "gen": {"type": "pattern", "pattern": "CU-#######", "unique": true}},
+        {"name": "segment", "type": "string", "gen": "choice:retail=0.84,small_business=0.11,commercial=0.05"},
+        {"name": "customer_name", "type": "string", "_note": "Retail customers are persons, businesses get company names — one global generator here is a tell.", "gen": {"type": "case", "on": "segment", "cases": {"retail": {"type": "person_full"}, "small_business": {"type": "company_name", "flavor": "generic"}, "commercial": {"type": "company_name", "flavor": "manufacturing"}}}},
+        {"name": "branch_id", "type": "integer", "gen": "fk:corebank.branch@zipf"},
+        {"name": "risk_rating", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"retail": {"type": "choice", "values": ["low", "medium", "high"], "weights": [0.8, 0.17, 0.03]}, "small_business": {"type": "choice", "values": ["low", "medium", "high"], "weights": [0.6, 0.3, 0.1]}, "commercial": {"type": "choice", "values": ["low", "medium", "high"], "weights": [0.5, 0.38, 0.12]}}}},
+        {"name": "kyc_status", "type": "string", "gen": "choice:verified=0.92,pending_refresh=0.05,remediation=0.03"},
+        {"name": "email", "type": "string"},
+        {"name": "phone", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.72, "backfill_start": "2016-01-01"}}
+      ]
+    },
+    {
+      "_note": "Accounts open within ~a year of the customer relationship via date_offset from parent.created_at — long activity windows must NOT use date_offset, but onboarding lags are exactly what it is for.",
+      "schema": "corebank", "name": "account", "layer": "source",
+      "purpose": "Deposit, CD, and loan accounts.",
+      "source_system": "CoreVault Banking",
+      "primary_key": ["account_id"], "natural_key": ["account_no"],
+      "rows": {"per_parent": "corebank.customer", "distribution": {"distribution": "lognormal", "median": 1.5, "sigma": 0.55}, "min": 1, "max": 6},
+      "traits": ["audited"],
+      "foreign_keys": [{"columns": ["customer_id"], "ref": "corebank.customer"}],
+      "indexes": [["account_type"], ["status"]],
+      "columns": [
+        {"name": "account_id", "type": "integer", "gen": "seq"},
+        {"name": "account_no", "type": "string", "gen": {"type": "pattern", "pattern": "DDA-########", "unique": true}},
+        {"name": "customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "account_type", "type": "string", "gen": "choice:checking=0.46,savings=0.32,loan=0.16,cd=0.06"},
+        {"name": "product_id", "type": "integer", "_note": "Affinity match on product_type with a 2% leak — the leak feeds DQ-001 (account/product type mismatch).", "gen": {"type": "fk", "ref": "corebank.product", "match": {"parent_column": "product_type", "local_column": "account_type", "leak_rate": 0.02}}},
+        {"name": "iban", "type": "string", "gen": "identifier:iban"},
+        {"name": "customer_since", "type": "timestamp", "gen": {"type": "parent_copy", "source_column": "created_at"}},
+        {"name": "opened_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "days", "offset": {"distribution": "lognormal", "median": 20, "sigma": 1.2, "min": 0, "max": 150}, "as": "date"}},
+        {"name": "status", "type": "string", "gen": "choice:open=0.90,dormant=0.07,closed=0.03"},
+        {"name": "activity_tier", "type": "string", "_note": "Volume lever for per_parent scale_by: accounts onboarded late in the horizon get proportionally less activity, so per-parent draws don't dump a full two-year volume into the final weeks (the classic as_of pile-up artifact). parent_copy values arrive ISO-serialized, so plain string comparison buckets the date.", "gen": {"type": "expression", "expression": "status if customer_since < '2025-04-01' else ('onboarding' if customer_since >= '2025-10-01' else 'ramping')"}},
+        {"name": "interest_rate", "type": "decimal", "gen": {"type": "case", "on": "account_type", "cases": {"savings": {"type": "number", "distribution": "uniform", "min": 0.5, "max": 4.5, "decimals": 2}, "cd": {"type": "number", "distribution": "uniform", "min": 3.5, "max": 5.25, "decimals": 2}, "loan": {"type": "number", "distribution": "uniform", "min": 6.5, "max": 12.99, "decimals": 2}}, "default": 0.0}}
+      ]
+    },
+    {
+      "schema": "cardlink", "name": "merchant", "layer": "source",
+      "purpose": "Card-accepting merchants seen by the processor.",
+      "source_system": "CardLink Processor",
+      "primary_key": ["merchant_id"],
+      "rows": 650,
+      "columns": [
+        {"name": "merchant_id", "type": "integer"},
+        {"name": "merchant_ref", "type": "string", "gen": {"type": "pattern", "pattern": "MID-########", "unique": true}},
+        {"name": "merchant_name", "type": "string", "gen": {"type": "company_name", "flavor": "retail"}},
+        {"name": "mcc", "type": "string", "gen": "choice:5411=0.18,5812=0.16,5541=0.12,5999=0.10,5311=0.08,5912=0.07,4121=0.06,4899=0.05,7011=0.05,5732=0.04,5942=0.03,8011=0.03,4111=0.03"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Cards exist mostly on checking accounts (scale_by on account_type); card_status is conditioned on the parent account status so closed accounts carry closed cards.",
+      "schema": "cardlink", "name": "card", "layer": "source",
+      "purpose": "Debit cards issued against deposit accounts.",
+      "source_system": "CardLink Processor",
+      "primary_key": ["card_id"],
+      "rows": {"per_parent": "corebank.account", "distribution": {"distribution": "poisson", "lam": 0.9}, "scale_by": {"parent_column": "account_type", "factors": {"checking": 1.4, "savings": 0.18, "loan": 0.05, "cd": 0.02}, "default": 1.0}, "min": 0, "max": 3},
+      "foreign_keys": [{"columns": ["account_id"], "ref": "corebank.account"}],
+      "columns": [
+        {"name": "card_id", "type": "integer", "gen": "seq"},
+        {"name": "account_id", "type": "integer", "gen": "parent_key"},
+        {"name": "account_status", "type": "string", "gen": {"type": "parent_copy", "source_column": "status"}},
+        {"name": "card_number", "type": "string", "gen": "identifier:masked_card"},
+        {"name": "network", "type": "string", "gen": "choice:NOVA=0.58,ZENITH=0.42"},
+        {"name": "card_status", "type": "string", "gen": {"type": "case", "on": "account_status", "cases": {"open": {"type": "choice", "values": ["active", "inactive", "blocked", "expired"], "weights": [0.82, 0.08, 0.03, 0.07]}, "dormant": {"type": "choice", "values": ["inactive", "expired"], "weights": [0.82, 0.18]}, "closed": "closed"}}},
+        {"name": "account_opened_date", "type": "date", "gen": {"type": "parent_copy", "source_column": "opened_date"}},
+        {"name": "usage_tier", "type": "string", "_note": "Same vintage-tier trick as corebank.account.activity_tier: cards on recently opened accounts spend at a ramp rate, not a two-year rate.", "gen": {"type": "expression", "expression": "card_status if account_opened_date < '2025-04-01' else ('new_issue' if account_opened_date >= '2025-10-01' else 'ramping')"}},
+        {"name": "activated_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.opened_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 12, "sigma": 1.0, "min": 0, "max": 90}, "as": "date"}}
+      ]
+    },
+    {
+      "_note": "The big card fact. txn_date is a calendar-weighted date bounded by card activation; auth_ts is derived from it via auto_created_at so date and timestamp agree. Volume conditioned on card_status plus a heavy-tailed per-card multiplier (spender whales).",
+      "schema": "cardlink", "name": "card_transaction", "layer": "transaction",
+      "purpose": "Card authorizations from the processor; approved ones post to accounts.",
+      "grain": "one row per card authorization attempt",
+      "source_system": "CardLink Processor",
+      "primary_key": ["card_txn_id"],
+      "rows": {"per_parent": "cardlink.card", "distribution": {"distribution": "lognormal", "median": 21, "sigma": 0.95}, "scale_by": {"parent_column": "usage_tier", "factors": {"active": 1.0, "inactive": 0.06, "blocked": 0.03, "expired": 0.1, "closed": 0.0, "ramping": 0.25, "new_issue": 0.05}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.75}, "min": 0, "max": 450},
+      "traits": ["source_stamped"],
+      "foreign_keys": [{"columns": ["account_id"], "ref": "corebank.account"}],
+      "indexes": [["txn_date"], ["account_id"], ["auth_status"]],
+      "columns": [
+        {"name": "card_txn_id", "type": "integer", "gen": "seq"},
+        {"name": "card_id", "type": "integer", "gen": "parent_key"},
+        {"name": "account_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "account_id"}},
+        {"name": "merchant_id", "type": "integer", "_note": "zipf 1.1: genuinely hot merchants — top 1% of merchants carry ~35-40% of card volume, matching the industry reference.", "gen": "fk:cardlink.merchant@zipf"},
+        {"name": "txn_date", "type": "date", "gen": {"type": "date", "min": "parent.activated_date"}},
+        {"name": "auth_ts", "type": "timestamp", "gen": {"type": "auto_created_at"}},
+        {"name": "amount", "type": "decimal", "_note": "price_endings give retail price points (x.99/x.49) — real card amount columns repeat exact values.", "gen": {"type": "money", "median": 32, "sigma": 1.1, "min": 1, "max": 2500, "price_endings": [0.99, 0.49, 0.95, 0.0, 0.25]}},
+        {"name": "auth_status", "type": "string", "gen": "choice:approved=0.952,declined=0.048"},
+        {"name": "decline_reason", "type": "string", "nullable": true, "gen": {"type": "case", "on": "auth_status", "cases": {"declined": {"type": "choice", "values": ["insufficient_funds", "suspected_fraud", "expired_card", "limit_exceeded"], "weights": [0.42, 0.24, 0.12, 0.22]}}}}
+      ]
+    },
+    {
+      "_note": "ACH and wire instructions. Amount realism: lognormal draw quantized by a recurring-payment rounding unit via an expression — recurring payroll/bill amounts repeat exactly (duplicate mass), wires snap to 100/1000. Payment-type mix is conditioned on segment so commercial customers dominate wire value.",
+      "schema": "paystream", "name": "payment_instruction", "layer": "transaction",
+      "purpose": "ACH and wire payment instructions flowing through the payment hub.",
+      "grain": "one row per payment instruction",
+      "source_system": "PayStream Hub",
+      "primary_key": ["instruction_id"], "natural_key": ["payment_ref"],
+      "rows": {"per_parent": "corebank.account", "distribution": {"distribution": "lognormal", "median": 4, "sigma": 0.8}, "scale_by": {"parent_column": "activity_tier", "factors": {"open": 1.0, "dormant": 0.05, "closed": 0.02, "ramping": 0.3, "onboarding": 0.1}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.8}, "min": 0, "max": 240},
+      "foreign_keys": [{"columns": ["account_id"], "ref": "corebank.account"}],
+      "indexes": [["initiated_date"], ["status"], ["payment_type"]],
+      "columns": [
+        {"name": "instruction_id", "type": "integer", "gen": "seq"},
+        {"name": "payment_ref", "type": "string", "gen": {"type": "pattern", "pattern": "PAY-########", "unique": true}},
+        {"name": "account_id", "type": "integer", "gen": "parent_key"},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "account_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "account_type"}},
+        {"name": "payment_type", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"retail": {"type": "choice", "values": ["ach_credit", "ach_debit", "wire_out", "wire_in"], "weights": [0.40, 0.47, 0.08, 0.05]}, "small_business": {"type": "choice", "values": ["ach_credit", "ach_debit", "wire_out", "wire_in"], "weights": [0.30, 0.38, 0.19, 0.13]}, "commercial": {"type": "choice", "values": ["ach_credit", "ach_debit", "wire_out", "wire_in"], "weights": [0.18, 0.25, 0.33, 0.24]}}}},
+        {"name": "direction", "type": "string", "gen": {"type": "case", "on": "payment_type", "cases": {"ach_credit": "credit", "wire_in": "credit", "ach_debit": "debit", "wire_out": "debit"}}},
+        {"name": "amount_raw", "type": "decimal", "gen": {"type": "case", "on": "payment_type", "cases": {"ach_credit": {"type": "money", "median": 1450, "sigma": 0.75, "min": 25, "max": 25000}, "ach_debit": {"type": "money", "median": 165, "sigma": 1.05, "min": 5, "max": 20000}, "wire_out": {"type": "money", "median": 9800, "sigma": 1.25, "min": 200, "max": 900000}, "wire_in": {"type": "money", "median": 12500, "sigma": 1.25, "min": 200, "max": 1200000}}}},
+        {"name": "rounding_unit", "type": "decimal", "_note": "Recurring-payment quantum: 0.01 = exact-cents one-offs; 5/25/100/1000 = recurring payroll, bills, and round wires.", "gen": {"type": "case", "on": "payment_type", "cases": {"ach_credit": {"type": "choice", "values": [0.01, 25, 100], "weights": [0.4, 0.38, 0.22]}, "ach_debit": {"type": "choice", "values": [0.01, 5, 25], "weights": [0.45, 0.3, 0.25]}, "wire_out": {"type": "choice", "values": [0.01, 100, 1000], "weights": [0.3, 0.4, 0.3]}, "wire_in": {"type": "choice", "values": [0.01, 100, 1000], "weights": [0.35, 0.35, 0.3]}}}},
+        {"name": "is_wire", "type": "integer", "gen": {"type": "case", "on": "payment_type", "cases": {"wire_out": 1, "wire_in": 1}, "default": 0}},
+        {"name": "wire_scale", "type": "decimal", "_note": "Wires are commercial-dominated in VALUE: retail wires are small one-offs, commercial wires are large. Applied only to wires in the amount expression so ACH payroll/bill amounts stay segment-neutral.", "gen": {"type": "case", "on": "segment", "cases": {"retail": 0.32, "small_business": 0.9, "commercial": 2.6}, "default": 1.0}},
+        {"name": "amount", "type": "decimal", "gen": "expr:round(round((amount_raw * (wire_scale if is_wire == 1 else 1)) / rounding_unit) * rounding_unit, 2)"},
+        {"name": "counterparty_name", "type": "string", "gen": {"type": "case", "on": "payment_type", "cases": {"ach_credit": {"type": "company_name", "flavor": "generic"}, "ach_debit": {"type": "lorem_note", "pool": "biller_name"}, "wire_out": {"type": "company_name", "flavor": "finance"}, "wire_in": {"type": "company_name", "flavor": "finance"}}}},
+        {"name": "counterparty_routing", "type": "string", "gen": "identifier:aba_routing"},
+        {"name": "counterparty_account", "type": "string", "gen": "pattern:EXT-##########"},
+        {"name": "channel", "type": "string", "gen": "choice:mobile=0.44,online=0.38,branch=0.13,phone=0.05"},
+        {"name": "initiated_date", "type": "date", "gen": {"type": "date", "min": "parent.opened_date"}},
+        {"name": "initiated_at", "type": "timestamp", "gen": {"type": "auto_created_at"}},
+        {"name": "status", "type": "string", "gen": "const:initiated"},
+        {"name": "screened_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "posted_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "returned_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "rejected_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "memo", "type": "string", "null_rate": 0.65, "gen": "text:payment_memo"}
+      ]
+    },
+    {
+      "schema": "paystream", "name": "payment_event", "layer": "event",
+      "purpose": "Payment lifecycle history emitted by the state machine (CDC-style).",
+      "grain": "one row per instruction per state entered",
+      "source": "state_machine",
+      "primary_key": ["instruction_id", "event_seq"],
+      "columns": [
+        {"name": "instruction_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "aml", "name": "monitoring_rule", "layer": "source",
+      "purpose": "AML transaction monitoring rule catalog.",
+      "source_system": "Sentinel AML",
+      "primary_key": ["rule_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "AML-R1", "2": "AML-R2", "3": "AML-R3", "4": "AML-R4", "5": "AML-R5", "6": "AML-R6", "7": "AML-R7", "8": "AML-R8"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "structuring below reporting threshold", "2": "rapid movement of funds", "3": "high-risk geography wire", "4": "large cash-equivalent activity", "5": "dormant account sudden activity", "6": "velocity spike vs customer baseline", "7": "round-amount wire pattern", "8": "watchlist near-match"}}},
+        {"name": "threshold_amount", "type": "integer", "gen": {"type": "case", "on": "rule_id", "cases": {"1": 9000, "2": 25000, "3": 5000, "4": 10000, "5": 2500, "6": 15000, "7": 50000, "8": 0}}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.9"}
+      ]
+    },
+    {
+      "_note": "Alerts fire on a small share of payment instructions (~1.5%), skewed toward wires via scale_by — generated next morning by the overnight batch (date_offset +1 day from initiation).",
+      "schema": "aml", "name": "alert", "layer": "workflow",
+      "purpose": "AML monitoring alerts feeding the triage/case/SAR funnel.",
+      "grain": "one row per alert",
+      "source_system": "Sentinel AML",
+      "primary_key": ["alert_id"], "natural_key": ["alert_ref"],
+      "rows": {"per_parent": "paystream.payment_instruction", "distribution": {"distribution": "poisson", "lam": 0.02}, "scale_by": {"parent_column": "payment_type", "factors": {"wire_out": 3.5, "wire_in": 2.5, "ach_debit": 0.6, "ach_credit": 0.35}, "default": 1.0}, "min": 0, "max": 1},
+      "foreign_keys": [{"columns": ["instruction_id"], "ref": "paystream.payment_instruction"}],
+      "indexes": [["status"], ["account_id"]],
+      "columns": [
+        {"name": "alert_id", "type": "integer", "gen": "seq"},
+        {"name": "alert_ref", "type": "string", "gen": {"type": "pattern", "pattern": "AML-######", "unique": true}},
+        {"name": "instruction_id", "type": "integer", "gen": "parent_key"},
+        {"name": "account_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "account_id"}},
+        {"name": "payment_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "payment_type"}},
+        {"name": "amount", "type": "decimal", "gen": {"type": "parent_copy", "source_column": "amount"}},
+        {"name": "rule_id", "type": "integer", "gen": "fk:aml.monitoring_rule@zipf(0.7)"},
+        {"name": "risk_score", "type": "integer", "gen": "int:lognormal(median=55,sigma=0.35,min=10,max=99)"},
+        {"name": "generated_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.initiated_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 1, "sigma": 0.3, "min": 1, "max": 3}, "as": "date"}},
+        {"name": "generated_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "generated_date", "max": "generated_date", "business_hours": false}},
+        {"name": "status", "type": "string", "gen": "const:generated"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "escalated_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "closed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "sar_filed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "analyst_override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "aml", "name": "alert_event", "layer": "workflow",
+      "purpose": "Alert review history emitted by the state machine.",
+      "grain": "one row per alert per state entered",
+      "source": "state_machine",
+      "primary_key": ["alert_id", "event_seq"],
+      "columns": [
+        {"name": "alert_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "ledger", "name": "gl_account", "layer": "source",
+      "purpose": "Chart of accounts: clearing/settlement accounts that tie to transactions plus income/expense accounts.",
+      "source_system": "CoreVault Banking",
+      "primary_key": ["gl_account_id"], "rows": 40, "scale_exempt": true,
+      "columns": [
+        {"name": "gl_account_id", "type": "integer"},
+        {"name": "gl_code", "type": "string", "gen": {"type": "case", "on": "gl_account_id", "cases": {"1": "1010", "2": "1310", "3": "1320", "4": "1330", "5": "2010", "6": "2990"}, "default": {"type": "pattern", "pattern": "6###", "unique": true}}},
+        {"name": "gl_name", "type": "string", "gen": {"type": "case", "on": "gl_account_id", "cases": {"1": "Cash and due from banks", "2": "Card settlement clearing", "3": "ACH settlement clearing", "4": "Wire clearing", "5": "Customer deposits", "6": "Suspense - unapplied items"}, "default": {"type": "lorem_note", "pool": "gl_name_pool"}}},
+        {"name": "account_class", "type": "string", "gen": {"type": "case", "on": "gl_account_id", "cases": {"1": "asset", "2": "asset", "3": "asset", "4": "asset", "5": "liability", "6": "liability"}, "default": {"type": "choice", "values": ["income", "expense", "asset", "liability"], "weights": [0.4, 0.45, 0.1, 0.05]}}},
+        {"name": "is_suspense", "type": "boolean", "gen": {"type": "case", "on": "gl_account_id", "cases": {"6": 1}, "default": 0}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "file_load", "layer": "integration",
+      "purpose": "Settlement and statement file load log (batch exchange with networks).",
+      "primary_key": ["load_id"], "rows": 600,
+      "columns": [
+        {"name": "load_id", "type": "integer"},
+        {"name": "file_type", "type": "string", "gen": "choice:card_settlement=0.35,ach_inbound=0.25,statement_cycle=0.18,wire_advice=0.12,ach_return=0.10"},
+        {"name": "business_date", "type": "date"},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:loaded=0.91,partial=0.05,failed=0.04"},
+        {"name": "rows_loaded", "type": "integer", "gen": "int:lognormal(median=3500,sigma=1.0,min=0,max=200000)"},
+        {"name": "error_note", "type": "string", "null_rate": 0.88, "gen": "text:exception_note"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 7, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "account product type mismatch", "2": "customer missing Sentinel AML party mapping", "3": "unparseable raw extract date", "4": "card transaction references unknown merchant", "5": "expired identifier mapping still flagged active", "6": "payment lifecycle events out of sequence", "7": "verified customer missing contact email"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "core account", "2": "xref entity_identifier", "3": "raw customer extract", "4": "cardlink card_transaction", "5": "xref entity_identifier", "6": "paystream payment_event", "7": "corebank customer"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "warning", "4": "error", "5": "warning", "6": "error", "7": "warning"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "control", "name": "recon_control", "layer": "control",
+      "purpose": "Reconciliation control register; break details come from the control views.",
+      "primary_key": ["control_id"], "rows": 4, "scale_exempt": true,
+      "columns": [
+        {"name": "control_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Posted transactions to GL deposits movement", "2": "Account balance roll-forward equation", "3": "Card settlement file to posted card volume", "4": "AML alert to case linkage completeness"}}},
+        {"name": "grain_desc", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "business_date", "2": "account x posting_date", "3": "settlement batch x day", "4": "alert"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.02", "3": "10.00", "4": "count"}}},
+        {"name": "frequency", "type": "string", "gen": "const:daily"},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_txn_vs_gl", "2": "wh fact_account_balance", "3": "integration file_load", "4": "mart_aml_funnel"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "_note": "Everything below is populated by SQL derivations — real lineage from the source tables above.",
+      "schema": "raw", "name": "corebank_customer_extract", "layer": "raw",
+      "purpose": "Nightly fixed-width core extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["customer_id"],
+      "columns": [
+        {"name": "customer_id", "type": "string"},
+        {"name": "customer_no", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "kyc_status", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "source_created_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "corebank_customer", "layer": "staging",
+      "purpose": "Cleaned core customers; normalizes raw extract dates and casing.",
+      "source": "derivation", "primary_key": ["customer_id"],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "customer_no", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "kyc_status", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "onboarded_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "xref", "name": "entity_identifier", "layer": "xref",
+      "purpose": "Identifier crosswalk: CoreVault customer IDs and Sentinel AML party references for canonical customers.",
+      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "indexes": [["canonical_entity_id"], ["source_system"]],
+      "columns": [
+        {"name": "entity_identifier_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_entity_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "customer", "layer": "canonical",
+      "purpose": "Canonical customer joining staging and the crosswalk.",
+      "source": "derivation", "primary_key": ["customer_uid"],
+      "columns": [
+        {"name": "customer_uid", "type": "integer"},
+        {"name": "customer_no", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "kyc_status", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "onboarded_date", "type": "date", "nullable": true},
+        {"name": "sentinel_party_ref", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "core", "name": "account", "layer": "canonical",
+      "purpose": "Canonical account enriched with product attributes.",
+      "source": "derivation", "primary_key": ["account_uid"],
+      "indexes": [["customer_uid"]],
+      "columns": [
+        {"name": "account_uid", "type": "integer"},
+        {"name": "account_no", "type": "string"},
+        {"name": "iban", "type": "string"},
+        {"name": "customer_uid", "type": "integer"},
+        {"name": "segment", "type": "string"},
+        {"name": "account_type", "type": "string"},
+        {"name": "product_id", "type": "integer"},
+        {"name": "product_code", "type": "string"},
+        {"name": "product_type", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "opened_date", "type": "date"}
+      ]
+    },
+    {
+      "_note": "The posting ledger: approved card transactions, posted ACH/wire payments (business-day adjusted), and payment returns. The restatement_reversal imperfection lands here post-derivation, creating the transactions-vs-GL recon breaks.",
+      "schema": "core", "name": "posted_transaction", "layer": "canonical",
+      "purpose": "Canonical posted transactions across card, ACH, and wire channels.",
+      "grain": "one row per posted transaction, return, or reversal on an account",
+      "source": "derivation", "primary_key": ["txn_id"],
+      "indexes": [["txn_date"], ["account_id", "txn_date"], ["channel"]],
+      "columns": [
+        {"name": "txn_id", "type": "integer"},
+        {"name": "account_id", "type": "integer"},
+        {"name": "txn_date", "type": "date"},
+        {"name": "channel", "type": "string"},
+        {"name": "txn_type", "type": "string"},
+        {"name": "direction", "type": "string"},
+        {"name": "amount", "type": "decimal"},
+        {"name": "counterparty", "type": "string", "nullable": true},
+        {"name": "description", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "ledger", "name": "gl_daily_summary", "layer": "canonical",
+      "purpose": "Daily GL movement by account: double-entry summary derived from posted transactions (deposits GL vs channel clearing GLs).",
+      "grain": "one row per gl_code per business date with activity",
+      "source": "derivation", "primary_key": ["gl_summary_id"],
+      "indexes": [["business_date"], ["gl_code"]],
+      "columns": [
+        {"name": "gl_summary_id", "type": "integer"},
+        {"name": "business_date", "type": "date"},
+        {"name": "gl_code", "type": "string"},
+        {"name": "total_debit", "type": "decimal"},
+        {"name": "total_credit", "type": "decimal"},
+        {"name": "entry_count", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "aml", "name": "case_file", "layer": "workflow",
+      "purpose": "Investigation cases opened from escalated alerts (every case references an alert by construction).",
+      "grain": "one row per escalated alert",
+      "source": "derivation", "primary_key": ["case_id"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_ref", "type": "string"},
+        {"name": "alert_id", "type": "integer"},
+        {"name": "account_id", "type": "integer"},
+        {"name": "opened_date", "type": "date"},
+        {"name": "status", "type": "string"},
+        {"name": "sar_filed_date", "type": "date", "nullable": true},
+        {"name": "investigator", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_customer", "layer": "warehouse_dimension",
+      "purpose": "Customer dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["customer_key"],
+      "columns": [
+        {"name": "customer_key", "type": "integer"},
+        {"name": "customer_no", "type": "string"},
+        {"name": "customer_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "kyc_status", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_account", "layer": "warehouse_dimension",
+      "purpose": "Account dimension.",
+      "source": "derivation", "primary_key": ["account_key"],
+      "columns": [
+        {"name": "account_key", "type": "integer"},
+        {"name": "account_no", "type": "string"},
+        {"name": "account_type", "type": "string"},
+        {"name": "product_code", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_merchant", "layer": "warehouse_dimension",
+      "purpose": "Merchant dimension.",
+      "source": "derivation", "primary_key": ["merchant_key"],
+      "columns": [
+        {"name": "merchant_key", "type": "integer"},
+        {"name": "merchant_ref", "type": "string"},
+        {"name": "merchant_name", "type": "string"},
+        {"name": "mcc", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_transaction", "layer": "warehouse_fact",
+      "purpose": "Posted transaction fact.",
+      "grain": "one row per posted transaction",
+      "source": "derivation", "primary_key": ["txn_id"],
+      "indexes": [["txn_date"], ["account_key"], ["customer_key"]],
+      "columns": [
+        {"name": "txn_id", "type": "integer"},
+        {"name": "account_key", "type": "integer"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "txn_date", "type": "date"},
+        {"name": "channel", "type": "string"},
+        {"name": "txn_type", "type": "string"},
+        {"name": "direction", "type": "string"},
+        {"name": "amount", "type": "decimal"},
+        {"name": "counterparty", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Balance roll-forward derived via SQL window sums over the posting ledger — opening + credits - debits = closing holds per account per day by construction, with a deterministic per-account opening anchor.",
+      "schema": "wh", "name": "fact_account_balance", "layer": "warehouse_fact",
+      "purpose": "Daily account balance roll-forward.",
+      "grain": "one row per account per posting date with activity (sparse roll-forward)",
+      "source": "derivation", "primary_key": ["balance_id"],
+      "indexes": [["account_key", "posting_date"]],
+      "columns": [
+        {"name": "balance_id", "type": "integer"},
+        {"name": "account_key", "type": "integer"},
+        {"name": "posting_date", "type": "date"},
+        {"name": "opening_balance", "type": "decimal"},
+        {"name": "total_credits", "type": "decimal"},
+        {"name": "total_debits", "type": "decimal"},
+        {"name": "closing_balance", "type": "decimal"}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "_note": "Payment lifecycle: initiated -> screened -> posted | returned, with a screening-hold detour and right-censoring so instructions near the as_of date legitimately sit mid-pipeline.",
+      "name": "payment_lifecycle",
+      "table": "paystream.payment_instruction",
+      "status_column": "status",
+      "start_column": "initiated_at",
+      "entry_state": "initiated",
+      "states": ["initiated", "screened", "screening_hold", "posted", "returned", "rejected"],
+      "transitions": [
+        {"from": "initiated", "to": "screened", "probability": 0.983, "dwell": {"distribution": "lognormal", "median": 25, "sigma": 0.9, "unit": "minutes"}},
+        {"from": "initiated", "to": "rejected", "probability": 0.012, "dwell": {"distribution": "lognormal", "median": 45, "sigma": 0.7, "unit": "minutes"}},
+        {"from": "initiated", "to": "screening_hold", "probability": 0.005, "dwell": {"distribution": "lognormal", "median": 30, "sigma": 0.6, "unit": "minutes"}},
+        {"from": "screening_hold", "to": "screened", "probability": 0.9, "dwell": {"distribution": "lognormal", "median": 26, "sigma": 0.9, "unit": "hours"}},
+        {"from": "screening_hold", "to": "rejected", "probability": 0.1, "dwell": {"distribution": "lognormal", "median": 30, "sigma": 0.7, "unit": "hours"}},
+        {"from": "screened", "to": "posted", "probability": 0.995, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 0.7, "unit": "hours"}},
+        {"from": "posted", "to": "returned", "probability": 0.012, "dwell": {"distribution": "lognormal", "median": 2.2, "sigma": 0.6, "unit": "days"}}
+      ],
+      "timestamp_columns": {"screened": "screened_at", "posted": "posted_at", "returned": "returned_at", "rejected": "rejected_at"},
+      "history_table": "paystream.payment_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "_note": "AML funnel: ~87% of triaged alerts close as false positives; escalations become cases (derived aml.case_file); ~15% of investigations file a SAR. Both terminal closes stamp the same closed_at column.",
+      "name": "aml_alert_review",
+      "table": "aml.alert",
+      "status_column": "status",
+      "start_column": "generated_at",
+      "entry_state": "generated",
+      "states": ["generated", "triaged", "closed_false_positive", "escalated", "investigating", "closed_no_action", "sar_filed"],
+      "transitions": [
+        {"from": "generated", "to": "triaged", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "closed_false_positive", "probability": 0.87, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
+        {"from": "triaged", "to": "escalated", "probability": 0.13, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "investigating", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.6, "unit": "days"}},
+        {"from": "investigating", "to": "closed_no_action", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 18, "sigma": 0.8, "unit": "days"}},
+        {"from": "investigating", "to": "sar_filed", "probability": 0.15, "dwell": {"distribution": "lognormal", "median": 28, "sigma": 0.6, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "escalated": "escalated_at", "closed_false_positive": "closed_at", "closed_no_action": "closed_at", "sar_filed": "sar_filed_at"},
+      "history_table": "aml.alert_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_corebank_customer_extract",
+      "_note": "Raw landing copy with US-format dates; the format_drift imperfection later pads a slice of these, which DQ-003 catches at query time.",
+      "sql": [
+        "insert into raw.corebank_customer_extract",
+        "select cast(customer_id as text), customer_no, customer_name, segment, kyc_status, city, state,",
+        "       strftime('%m/%d/%Y', created_at), 'EOD-CORE-EXTRACT'",
+        "from corebank.customer;"
+      ]
+    },
+    {
+      "name": "stg_corebank_customer",
+      "sql": [
+        "insert into stg.corebank_customer",
+        "select cast(customer_id as integer), customer_no, trim(customer_name), lower(segment), kyc_status, city, state,",
+        "       case when source_created_date like '__/__/____'",
+        "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
+        "            else null end",
+        "from raw.corebank_customer_extract;"
+      ]
+    },
+    {
+      "name": "xref_entity_identifier",
+      "_note": "Two source systems per canonical customer: the CoreVault customer ID and the Sentinel AML party reference. missing_xref and stale_mapping imperfections degrade this table post-derivation.",
+      "sql": [
+        "insert into xref.entity_identifier",
+        "select row_number() over (order by customer_id), 'customer', customer_id,",
+        "       'CoreVault Banking', 'customer', cast(customer_id as text), date(created_at), null, 1",
+        "from corebank.customer;",
+        "insert into xref.entity_identifier",
+        "select 500000 + row_number() over (order by customer_id), 'customer', customer_id,",
+        "       'Sentinel AML', 'party', 'PTY-' || printf('%07d', customer_id), date(created_at), null, 1",
+        "from corebank.customer;"
+      ]
+    },
+    {
+      "name": "core_customer",
+      "sql": [
+        "insert into core.customer",
+        "select s.customer_id, s.customer_no, s.customer_name, s.segment, s.kyc_status, s.city, s.state, s.onboarded_date,",
+        "       (select x.source_record_id from xref.entity_identifier x",
+        "         where x.canonical_entity_id = s.customer_id and x.source_system = 'Sentinel AML'",
+        "           and x.active_flag = 1 limit 1)",
+        "from stg.corebank_customer s;"
+      ]
+    },
+    {
+      "name": "core_account",
+      "sql": [
+        "insert into core.account",
+        "select a.account_id, a.account_no, a.iban, a.customer_id, a.segment, a.account_type,",
+        "       a.product_id, p.product_code, p.product_type, a.status, a.opened_date",
+        "from corebank.account a",
+        "left join corebank.product p on p.product_id = a.product_id;"
+      ]
+    },
+    {
+      "name": "core_posted_transaction",
+      "expect": {"at_least_rows": 10000},
+      "_note": "Card auths post on transaction date (consumer spend runs 7 days a week); ACH/wire post on the next business day — that derivation step is what creates the weekend dip on human channels while card volume stays flat. Returns reverse the original with direction flipped and the original amount (return amount = original amount invariant).",
+      "sql": [
+        "insert into core.posted_transaction",
+        "select c.card_txn_id, c.account_id, c.txn_date, 'card', 'card_purchase', 'debit', c.amount,",
+        "       coalesce(m.merchant_name, 'UNKNOWN MERCHANT'), null",
+        "from cardlink.card_transaction c",
+        "left join cardlink.merchant m on m.merchant_id = c.merchant_id",
+        "where c.auth_status = 'approved';",
+        "insert into core.posted_transaction",
+        "select 20000000 + p.instruction_id, p.account_id,",
+        "       case cast(strftime('%w', p.posted_at) as integer)",
+        "            when 0 then date(p.posted_at, '+1 day')",
+        "            when 6 then date(p.posted_at, '+2 days')",
+        "            else date(p.posted_at) end,",
+        "       case when p.payment_type like 'wire%' then 'wire' else 'ach' end,",
+        "       p.payment_type, p.direction, p.amount, p.counterparty_name, p.memo",
+        "from paystream.payment_instruction p",
+        "where p.posted_at is not null;",
+        "insert into core.posted_transaction",
+        "select 40000000 + p.instruction_id, p.account_id,",
+        "       case cast(strftime('%w', p.returned_at) as integer)",
+        "            when 0 then date(p.returned_at, '+1 day')",
+        "            when 6 then date(p.returned_at, '+2 days')",
+        "            else date(p.returned_at) end,",
+        "       case when p.payment_type like 'wire%' then 'wire' else 'ach' end,",
+        "       p.payment_type || '_return',",
+        "       case p.direction when 'debit' then 'credit' else 'debit' end,",
+        "       p.amount, p.counterparty_name, 'returned: insufficient funds or closed account'",
+        "from paystream.payment_instruction p",
+        "where p.returned_at is not null;"
+      ]
+    },
+    {
+      "name": "ledger_gl_daily_summary",
+      "_note": "Double-entry by construction: every transaction moves the customer deposits GL (2010) against its channel clearing GL (1310/1320/1330), so total debits = total credits per business date.",
+      "sql": [
+        "insert into ledger.gl_daily_summary",
+        "select row_number() over (order by business_date, gl_code), business_date, gl_code,",
+        "       round(sum(debit_amount), 2), round(sum(credit_amount), 2), count(*)",
+        "from (",
+        "  select t.txn_date as business_date, '2010' as gl_code,",
+        "         case when t.direction = 'debit' then t.amount else 0 end as debit_amount,",
+        "         case when t.direction = 'credit' then t.amount else 0 end as credit_amount",
+        "  from core.posted_transaction t",
+        "  union all",
+        "  select t.txn_date,",
+        "         case t.channel when 'card' then '1310' when 'ach' then '1320' else '1330' end,",
+        "         case when t.direction = 'credit' then t.amount else 0 end,",
+        "         case when t.direction = 'debit' then t.amount else 0 end",
+        "  from core.posted_transaction t",
+        ")",
+        "group by business_date, gl_code;"
+      ]
+    },
+    {
+      "name": "aml_case_file",
+      "sql": [
+        "insert into aml.case_file",
+        "select a.alert_id, 'CASE-' || printf('%05d', a.alert_id), a.alert_id, a.account_id,",
+        "       date(a.escalated_at),",
+        "       case a.status when 'sar_filed' then 'sar_filed'",
+        "            when 'closed_no_action' then 'closed_no_action'",
+        "            else 'open' end,",
+        "       date(a.sar_filed_at), a.assigned_to",
+        "from aml.alert a",
+        "where a.escalated_at is not null;"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_customer",
+      "sql": [
+        "insert into wh.dim_customer",
+        "select customer_uid, customer_no, customer_name, segment, kyc_status, city, state from core.customer;"
+      ]
+    },
+    {
+      "name": "wh_dim_account",
+      "sql": [
+        "insert into wh.dim_account",
+        "select account_uid, account_no, account_type, product_code, segment, status from core.account;"
+      ]
+    },
+    {
+      "name": "wh_dim_merchant",
+      "sql": [
+        "insert into wh.dim_merchant",
+        "select merchant_id, merchant_ref, merchant_name, mcc, city, state from cardlink.merchant;"
+      ]
+    },
+    {
+      "name": "wh_fact_transaction",
+      "expect": {"at_least_rows": 10000},
+      "sql": [
+        "insert into wh.fact_transaction",
+        "select t.txn_id, t.account_id, a.customer_id, t.txn_date, t.channel, t.txn_type,",
+        "       t.direction, t.amount, t.counterparty",
+        "from core.posted_transaction t",
+        "join corebank.account a on a.account_id = t.account_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_account_balance",
+      "expect": {"at_least_rows": 5000},
+      "_note": "Window-sum roll-forward: opening + credits - debits = closing per account per posting day, anchored to a deterministic per-account opening balance (no random()).",
+      "sql": [
+        "insert into wh.fact_account_balance",
+        "with day_totals as (",
+        "  select account_id, txn_date,",
+        "         round(sum(case when direction = 'credit' then amount else 0 end), 2) as credits,",
+        "         round(sum(case when direction = 'debit' then amount else 0 end), 2) as debits",
+        "  from core.posted_transaction",
+        "  group by account_id, txn_date",
+        "),",
+        "runs as (",
+        "  select account_id, txn_date, credits, debits,",
+        "         sum(credits - debits) over (partition by account_id order by txn_date",
+        "             rows between unbounded preceding and current row) as run_net",
+        "  from day_totals",
+        ")",
+        "select row_number() over (order by account_id, txn_date),",
+        "       account_id, txn_date,",
+        "       round(1500.0 + (account_id * 263) % 17500 + run_net - credits + debits, 2),",
+        "       credits, debits,",
+        "       round(1500.0 + (account_id * 263) % 17500 + run_net, 2)",
+        "from runs;"
+      ]
+    },
+    {
+      "name": "mart_txn_channel_daily",
+      "sql": [
+        "create view mart_txn_channel_daily as",
+        "select txn_date, channel, count(*) as txn_count,",
+        "       round(sum(amount), 2) as total_amount,",
+        "       round(avg(amount), 2) as avg_amount",
+        "from core.posted_transaction",
+        "group by txn_date, channel;"
+      ]
+    },
+    {
+      "name": "mart_aml_funnel",
+      "sql": [
+        "create view mart_aml_funnel as",
+        "select a.status, count(*) as alerts,",
+        "       sum(a.analyst_override_flag) as analyst_overrides,",
+        "       round(avg(a.risk_score), 1) as avg_risk_score,",
+        "       sum(case when c.case_id is not null then 1 else 0 end) as linked_cases",
+        "from aml.alert a",
+        "left join aml.case_file c on c.alert_id = a.alert_id",
+        "group by a.status;"
+      ]
+    },
+    {
+      "name": "control_recon_txn_vs_gl",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation imperfections: the GL summary was built before the restatement_reversal pairs landed in core.posted_transaction, so the affected dates break.",
+      "sql": [
+        "create view control_recon_txn_vs_gl as",
+        "select g.business_date,",
+        "       round(t.txn_debits, 2) as txn_debits, round(t.txn_credits, 2) as txn_credits,",
+        "       round(g.total_debit, 2) as gl_debits, round(g.total_credit, 2) as gl_credits,",
+        "       round((t.txn_debits - g.total_debit) + (t.txn_credits - g.total_credit), 2) as break_amount",
+        "from ledger.gl_daily_summary g",
+        "join (select txn_date,",
+        "             sum(case when direction = 'debit' then amount else 0 end) as txn_debits,",
+        "             sum(case when direction = 'credit' then amount else 0 end) as txn_credits",
+        "      from core.posted_transaction group by txn_date) t",
+        "  on t.txn_date = g.business_date",
+        "where g.gl_code = '2010'",
+        "  and (abs(t.txn_debits - g.total_debit) > 0.01 or abs(t.txn_credits - g.total_credit) > 0.01);"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'account product type mismatch' as issue, cast(account_uid as text) as entity_id",
+        "from core.account where product_type is not null and account_type <> product_type",
+        "union all",
+        "select 'DQ-002', 'customer missing Sentinel party mapping', cast(c.customer_id as text)",
+        "from corebank.customer c",
+        "where not exists (select 1 from xref.entity_identifier x",
+        "                  where x.canonical_entity_id = c.customer_id",
+        "                    and x.source_system = 'Sentinel AML' and x.active_flag = 1)",
+        "union all",
+        "select 'DQ-003', 'unparseable raw extract date', customer_id",
+        "from raw.corebank_customer_extract where source_created_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-004', 'card transaction references unknown merchant', cast(c.card_txn_id as text)",
+        "from cardlink.card_transaction c",
+        "where c.merchant_id is not null",
+        "  and not exists (select 1 from cardlink.merchant m where m.merchant_id = c.merchant_id)",
+        "union all",
+        "select 'DQ-005', 'expired identifier mapping still flagged active', cast(x.entity_identifier_id as text)",
+        "from xref.entity_identifier x",
+        "where x.valid_to is not null and x.valid_to < '2025-12-31' and x.active_flag = 1",
+        "union all",
+        "select 'DQ-006', 'payment lifecycle events out of sequence', cast(e1.instruction_id as text)",
+        "from paystream.payment_event e1",
+        "join paystream.payment_event e2",
+        "  on e2.instruction_id = e1.instruction_id and e2.event_seq = e1.event_seq + 1",
+        " and e2.entered_at < e1.entered_at",
+        "union all",
+        "select 'DQ-007', 'verified customer missing contact email', cast(customer_id as text)",
+        "from corebank.customer where kyc_status = 'verified' and (email is null or email = '');"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "customer_name_typos", "type": "typo", "table": "corebank.customer", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "customer_name"}, "scenario": "Branch staff hand-key names at onboarding; typos accumulate and feed the MDM match queue."},
+    {"name": "dup_customer_onboarding", "type": "duplicate_entity", "table": "corebank.customer", "rate": 0.01, "stage": "pre_derivation", "params": {"fuzz_columns": ["customer_name", "phone"]}, "scenario": "Same person onboarded twice via branch and mobile channels — split customer view and duplicate AML alerting downstream."},
+    {"name": "customer_email_nulls", "type": "null_field", "table": "corebank.customer", "rate": 0.04, "stage": "pre_derivation", "params": {"column": "email"}, "scenario": "Contact email never captured for a slice of the book; DQ-007 counts the gap."},
+    {"name": "settlement_late_arrival", "type": "late_arrival", "table": "cardlink.card_transaction", "rate": 0.015, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 2, "sigma": 0.6}}, "scenario": "Card settlement files arrive T+2 instead of T+1 — recon timing noise on daily card volume."},
+    {"name": "ghost_merchants", "type": "orphan_fk", "table": "cardlink.card_transaction", "rate": 0.004, "stage": "pre_derivation", "params": {"column": "merchant_id"}, "scenario": "Merchant IDs missing from the processor's merchant master; DQ-004 catches them and the posting ledger shows UNKNOWN MERCHANT."},
+    {"name": "payment_event_disorder", "type": "out_of_order_events", "table": "paystream.payment_event", "rate": 0.004, "stage": "pre_derivation", "params": {"sequence_column": "event_seq", "group_column": "instruction_id"}, "scenario": "Payment hub CDC events land out of sequence; DQ-006 flags status regressions."},
+    {"name": "duplicate_file_loads", "type": "duplicate_webhook", "table": "integration.file_load", "rate": 0.012, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate settlement file loads."},
+    {"name": "alert_disposition_overrides", "type": "manual_override", "table": "aml.alert", "rate": 0.04, "stage": "pre_derivation", "params": {"column": "analyst_override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Analysts override model dispositions with supervisor sign-off; visible in mart_aml_funnel."},
+    {"name": "missing_party_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Mappings lost in the Sentinel AML re-platforming; DQ-002 reports customers without an active party mapping."},
+    {"name": "stale_party_xref", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired identifier mappings never re-pointed after the core conversion; DQ-005 catches active rows with past valid_to."},
+    {"name": "raw_extract_date_drift", "type": "format_drift", "table": "raw.corebank_customer_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_created_date", "format": "padded"}, "scenario": "Legacy fixed-width extract job pads dates after a patch; DQ-003 counts unparseable rows."},
+    {"name": "gl_restatements", "type": "restatement_reversal", "table": "core.posted_transaction", "rate": 0.0015, "stage": "post_derivation", "params": {"amount_columns": ["amount"], "reason_column": "description"}, "scenario": "Manual fee reversals posted after the GL summary ran — these create the control_recon_txn_vs_gl breaks."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Posted transactions tie to GL deposits movement", "source_dataset": "core.posted_transaction", "target_dataset": "ledger.gl_daily_summary", "grain": "business_date", "tolerance": "0.01", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "~10-15% of dates break (late restatement reversals)", "break_view": "control_recon_txn_vs_gl"},
+    {"rule_id": "CTL-002", "rule_name": "Balance roll-forward equation holds", "source_dataset": "wh.fact_account_balance", "target_dataset": "wh.fact_account_balance", "grain": "account x posting_date", "tolerance": "0.02", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "0 (holds by construction via window sums)"},
+    {"rule_id": "CTL-003", "rule_name": "Every AML case references an alert", "source_dataset": "aml.case_file", "target_dataset": "aml.alert", "grain": "case", "tolerance": "count", "frequency": "daily", "owner": "financial_crimes", "severity": "high", "expected_break_rate": "0 (cases derive from escalated alerts)"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "core.account", "rule_type": "consistency", "condition": "account_type matches product_type", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-002", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every customer has an active Sentinel AML party mapping", "severity": "error", "expected_failure_rate": 0.015},
+    {"rule_id": "DQ-003", "dataset": "raw.corebank_customer_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-004", "dataset": "cardlink.card_transaction", "rule_type": "fk_exists", "condition": "merchant exists in merchant master", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-005", "dataset": "xref.entity_identifier", "rule_type": "validity", "condition": "active mappings have no past valid_to", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-006", "dataset": "paystream.payment_event", "rule_type": "sequence", "condition": "entered_at monotonic per instruction", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-007", "dataset": "corebank.customer", "rule_type": "required_field", "condition": "verified customers have contact email", "severity": "warning", "expected_failure_rate": 0.04}
+  ],
+  "dataflows": [
+    {"name": "customer_mastering", "sequence": "corebank.customer -> raw extract -> staging -> xref -> core.customer -> wh.dim_customer"},
+    {"name": "payment_lifecycle", "sequence": "paystream.payment_instruction -> state machine -> paystream.payment_event -> core.posted_transaction (business-day posting) -> wh.fact_transaction"},
+    {"name": "card_clearing", "sequence": "cardlink.card_transaction (auth) -> core.posted_transaction (approved only) -> ledger.gl_daily_summary -> control_recon_txn_vs_gl"},
+    {"name": "balance_rollforward", "sequence": "core.posted_transaction -> window sums -> wh.fact_account_balance (opening + credits - debits = closing)"},
+    {"name": "aml_funnel", "sequence": "paystream.payment_instruction -> aml.alert -> state machine -> aml.case_file -> SAR filings"}
+  ],
+  "validation": {
+    "required_views": ["mart_txn_channel_daily", "mart_aml_funnel", "control_recon_txn_vs_gl", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "corebank.customer": [1450, 1800],
+      "corebank.account": [2100, 3500],
+      "cardlink.card_transaction": [30000, 95000],
+      "paystream.payment_instruction": [11000, 34000],
+      "wh.fact_transaction": [40000, 120000]
+    }
+  }
+}

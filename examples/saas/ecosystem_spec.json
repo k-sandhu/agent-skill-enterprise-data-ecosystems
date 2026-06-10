@@ -1,0 +1,1126 @@
+{
+  "_note": "Worked example: Cloudvane Systems, a fictional multi-tenant B2B SaaS vendor (seat + usage pricing). Demonstrates the SaaS realism musts: tenant size segments driving user counts and usage volume via scale_by, MRR quantized from plan price-per-seat x integer seats, a trial->active->dunning->churn subscription machine with trial-to-paid conversion visible in the data, invoices DERIVED from subscriptions + metered usage, a support triage machine, and entitlement/audit layers. Keys starting with '_' are comments and are stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Cloudvane Systems",
+    "archetype": "b2b_saas",
+    "industry": "B2B SaaS",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 11,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "B2B weekly shape with a Monday support peak and a quiet weekend; January/September signup waves and a December trough; 18% YoY growth.",
+    "weekday_weights": [1.12, 1.06, 1.04, 1.0, 0.9, 0.22, 0.18],
+    "month_weights": [1.12, 1.02, 1.05, 1.0, 1.0, 0.97, 0.93, 0.96, 1.1, 1.05, 1.0, 0.78],
+    "holidays": ["2024-01-01", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-07-04", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.18,
+    "business_hours": [8, 18]
+  },
+  "vocab": {
+    "workspace_word": ["Marketing", "Sales Ops", "Product Analytics", "Engineering", "Customer Success", "Finance", "Growth Experiments", "Executive Dashboards", "Support Insights", "Onboarding", "Data Science", "Revenue Reporting", "Churn Watch", "Quarterly Planning", "Demand Gen", "Partner Portal", "Compliance", "Internal Tools"]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 7, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "Atriumly App Platform", "2": "KeystoneID Identity", "3": "LedgerPilot Billing", "4": "HelpDeck Support", "5": "PayFennec Processor", "6": "Cloudvane Data Warehouse", "7": "FlowMesh Integration Bus"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "product app", "2": "identity provider", "3": "billing platform", "4": "support ticketing", "5": "payment processor", "6": "warehouse", "7": "integration"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "tenant/product/usage", "2": "identity/authn", "3": "subscription/billing/entitlement", "4": "support", "5": "payment transactions (external)", "6": "reporting", "7": "integration"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.55,tier2=0.3,tier3=0.15"},
+        {"name": "contains_pii_flag", "type": "boolean", "gen": "bool:0.6"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Every signup ever, including dead trials. created_at is sorted with 55% pre-window backfill: tenant IDs correlate with signup order and the paying book is tenured rather than ramping from zero. Lifecycle truth lives in the subscription machine; core.tenant derives a status FROM subscription states so the two can never disagree.",
+      "schema": "app", "name": "tenant", "layer": "source",
+      "purpose": "Tenant master in the product app database: one row per organization that ever signed up.",
+      "source_system": "Atriumly App Platform",
+      "primary_key": ["tenant_id"], "natural_key": ["tenant_code"],
+      "rows": 1800, "traits": ["audited"],
+      "indexes": [["segment"], ["region"]],
+      "columns": [
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "tenant_code", "type": "string", "gen": {"type": "pattern", "pattern": "TEN-#####", "unique": true}},
+        {"name": "segment", "type": "string", "_note": "Drawn first: every volume and dollar lever downstream conditions on it.", "gen": "choice:smb=0.62,mid_market=0.28,enterprise=0.10"},
+        {"name": "tenant_name", "type": "string", "gen": {"type": "company_name", "flavor": "tech", "unique": true}},
+        {"name": "region", "type": "string", "gen": "choice:na=0.55,emea=0.27,apac=0.18"},
+        {"name": "signup_channel", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"smb": {"type": "choice", "values": ["self_serve", "sales_assisted"], "weights": [0.85, 0.15]}, "mid_market": {"type": "choice", "values": ["self_serve", "sales_assisted"], "weights": [0.4, 0.6]}, "enterprise": {"type": "choice", "values": ["self_serve", "sales_assisted"], "weights": [0.05, 0.95]}}}},
+        {"name": "contact_email", "type": "string", "null_rate": 0.04, "_note": "Role addresses on the tenant's own fictional example.com subdomain.", "gen": {"type": "business_email", "company_column": "tenant_name"}},
+        {"name": "contact_phone", "type": "string", "gen": "phone"},
+        {"name": "created_at", "type": "timestamp", "_note": "sorted + backfill: IDs correlate with signup dates; 55% of tenants predate the window (company founded 2021).", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.55, "backfill_start": "2021-06-01"}}
+      ]
+    },
+    {
+      "schema": "app", "name": "feature", "layer": "source",
+      "purpose": "Product feature catalog with plan-rank gating and metered flags.",
+      "source_system": "Atriumly App Platform",
+      "primary_key": ["feature_id"], "rows": 18, "scale_exempt": true,
+      "columns": [
+        {"name": "feature_id", "type": "integer"},
+        {"name": "feature_code", "type": "string", "gen": {"type": "case", "on": "feature_id", "cases": {"1": "FT-DASH", "2": "FT-RPTS", "3": "FT-EXPT", "4": "FT-API", "5": "FT-IMPT", "6": "FT-WHKS", "7": "FT-AUDL", "8": "FT-SSOE", "9": "FT-ROLE", "10": "FT-FLOW", "11": "FT-EMBD", "12": "FT-DWHS", "13": "FT-SBOX", "14": "FT-ALRT", "15": "FT-MOBL", "16": "FT-NTFY", "17": "FT-PRIQ", "18": "FT-CDOM"}}},
+        {"name": "feature_name", "type": "string", "gen": {"type": "case", "on": "feature_id", "cases": {"1": "Dashboards", "2": "Saved Reports", "3": "Scheduled Exports", "4": "REST API", "5": "Bulk Import", "6": "Outbound Webhooks", "7": "Audit Log", "8": "SSO Enforcement", "9": "Custom Roles", "10": "Workflow Automations", "11": "Embedded Analytics", "12": "Warehouse Sync", "13": "Sandbox Environments", "14": "Anomaly Alerts", "15": "Mobile App", "16": "Chat Notifications", "17": "Priority Queue", "18": "Custom Domains"}}},
+        {"name": "product_area", "type": "string", "gen": {"type": "case", "on": "feature_id", "cases": {"1": "platform", "2": "analytics", "3": "analytics", "4": "api", "5": "platform", "6": "integrations", "7": "admin", "8": "admin", "9": "admin", "10": "platform", "11": "analytics", "12": "integrations", "13": "api", "14": "analytics", "15": "platform", "16": "integrations", "17": "api", "18": "admin"}}},
+        {"name": "min_plan_rank", "type": "integer", "_note": "Entitlements derive from plan_rank >= min_plan_rank.", "gen": {"type": "case", "on": "feature_id", "cases": {"1": 1, "2": 1, "3": 2, "4": 1, "5": 2, "6": 2, "7": 3, "8": 3, "9": 3, "10": 2, "11": 3, "12": 3, "13": 4, "14": 2, "15": 1, "16": 1, "17": 4, "18": 2}}},
+        {"name": "is_metered", "type": "boolean", "gen": {"type": "case", "on": "feature_id", "cases": {"3": 1, "4": 1, "5": 1, "6": 1, "10": 1, "11": 1, "12": 1, "17": 1}, "default": 0}}
+      ]
+    },
+    {
+      "schema": "app", "name": "workspace", "layer": "operational",
+      "purpose": "Workspaces created inside each tenant.",
+      "source_system": "Atriumly App Platform",
+      "primary_key": ["workspace_id"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8}, "scale_by": {"parent_column": "segment", "factors": {"smb": 1.0, "mid_market": 2.5, "enterprise": 6.0}, "default": 1.0}, "min": 1, "max": 60},
+      "columns": [
+        {"name": "workspace_id", "type": "integer", "gen": "seq"},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "workspace_name", "type": "string", "_note": "Real workspace names repeat across tenants ('Marketing', 'Sales Ops') — unique names everywhere would be a tell.", "gen": {"type": "text_template", "templates": ["{workspace_word}"]}},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "is_archived", "type": "boolean", "gen": "bool:0.12"}
+      ]
+    },
+    {
+      "_note": "Identity provider users, 1+ per tenant. Volume scales with the tenant's size segment (enterprise ~8x smb), which is what makes the seat true-up control meaningful.",
+      "schema": "idp", "name": "user", "layer": "source",
+      "purpose": "IdP user directory: provisioned identities per tenant.",
+      "source_system": "KeystoneID Identity",
+      "primary_key": ["user_id"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "lognormal", "median": 6, "sigma": 0.8}, "scale_by": {"parent_column": "segment", "factors": {"smb": 1.0, "mid_market": 3.0, "enterprise": 8.0}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.5}, "min": 1, "max": 350},
+      "indexes": [["tenant_id"]],
+      "columns": [
+        {"name": "user_id", "type": "integer", "gen": "seq"},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "email", "type": "string"},
+        {"name": "first_name", "type": "string"},
+        {"name": "last_name", "type": "string"},
+        {"name": "idp_role", "type": "string", "gen": "choice:member=0.74,admin=0.08,billing_admin=0.04,viewer=0.14"},
+        {"name": "status", "type": "string", "_note": "12% deactivated but still provisioned — feeds the seat true-up control.", "gen": "choice:active=0.81,invited=0.07,deactivated=0.12"},
+        {"name": "mfa_enabled", "type": "boolean", "gen": "bool:0.64"},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "last_login_at", "type": "timestamp", "nullable": true, "null_rate": 0.15, "gen": {"type": "timestamp", "min": "parent.created_at"}}
+      ]
+    },
+    {
+      "schema": "idp", "name": "sso_connection", "layer": "source",
+      "purpose": "SAML/OIDC connections; concentrated in enterprise tenants.",
+      "source_system": "KeystoneID Identity",
+      "primary_key": ["sso_connection_id"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "poisson", "lam": 0.25}, "scale_by": {"parent_column": "segment", "factors": {"smb": 0.2, "mid_market": 3.0, "enterprise": 8.0}, "default": 1.0}, "min": 0, "max": 3},
+      "columns": [
+        {"name": "sso_connection_id", "type": "integer", "gen": "seq"},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "protocol", "type": "string", "gen": "choice:saml=0.62,oidc=0.38"},
+        {"name": "idp_vendor", "type": "string", "gen": "choice:FederateHub=0.4,AuthGrove=0.3,SignumID=0.2,KeystoneID Native=0.1"},
+        {"name": "sso_domain", "type": "string", "gen": "pattern:idp-#####.example.com"},
+        {"name": "status", "type": "string", "gen": "choice:active=0.88,disabled=0.12"},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}}
+      ]
+    },
+    {
+      "_note": "The big event table. business_hours:false gives the automated 7-day feel (SDKs, scheduled jobs, global users) while weekday_weights still shape weekly volume. scale_by segment + heavy-tailed per_parent_multiplier produce usage whales: top 5% of tenants carry ~half the event volume. user_id has a deliberate 0.4% cross-tenant leak that the tenant-isolation DQ rule (DQ-008) catches.",
+      "schema": "app", "name": "usage_event", "layer": "event",
+      "purpose": "Product usage events from the metering pipeline.",
+      "grain": "one row per product usage event",
+      "source_system": "Atriumly App Platform",
+      "primary_key": ["event_id"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "lognormal", "median": 12, "sigma": 1.0}, "scale_by": {"parent_column": "segment", "factors": {"smb": 1.0, "mid_market": 4.5, "enterprise": 13.0}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.9}, "min": 0, "max": 5000},
+      "indexes": [["event_at"]],
+      "columns": [
+        {"name": "event_id", "type": "integer", "gen": "seq"},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "user_id", "type": "integer", "null_rate": 0.06, "_note": "fk affinity match on tenant keeps tenant isolation; leak_rate 0.004 is the deliberate isolation defect for DQ-008.", "gen": {"type": "fk", "ref": "idp.user", "match": {"parent_column": "tenant_id", "local_column": "tenant_id", "leak_rate": 0.004}}},
+        {"name": "feature_id", "type": "integer", "_note": "zipf default 1.1: the core Dashboards feature carries ~a third of events, which is how real product telemetry looks.", "gen": "fk:app.feature@zipf"},
+        {"name": "event_type", "type": "string", "gen": "choice:page_view=0.38,action=0.30,api_call=0.22,login=0.06,export=0.04"},
+        {"name": "units", "type": "integer", "_note": "Metered units carried by the event (API calls / rows in the batch) — calibrated so ~10-20% of tenant-months exceed their plan allowance and bill overage.", "gen": "int:lognormal(median=120,sigma=1.3,min=1,max=50000)"},
+        {"name": "client", "type": "string", "gen": "choice:web=0.61,api=0.23,mobile=0.12,cli=0.04"},
+        {"name": "event_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at", "business_hours": false}}
+      ]
+    },
+    {
+      "schema": "bill", "name": "plan", "layer": "source",
+      "purpose": "Published price book: per-seat price, included metered units, overage rate, and the segment each plan targets.",
+      "source_system": "LedgerPilot Billing",
+      "primary_key": ["plan_id"], "rows": 6, "scale_exempt": true,
+      "columns": [
+        {"name": "plan_id", "type": "integer"},
+        {"name": "plan_code", "type": "string", "gen": {"type": "case", "on": "plan_id", "cases": {"1": "STARTER", "2": "GROWTH", "3": "TEAM", "4": "BUSINESS", "5": "ENTERPRISE", "6": "ENTERPRISE-PLUS"}}},
+        {"name": "plan_name", "type": "string", "gen": {"type": "case", "on": "plan_id", "cases": {"1": "Starter", "2": "Growth", "3": "Team", "4": "Business", "5": "Enterprise", "6": "Enterprise Plus"}}},
+        {"name": "segment_target", "type": "string", "_note": "fk affinity matching key: subscriptions pick a plan whose target matches their tenant segment (4% leak = sales exceptions).", "gen": {"type": "case", "on": "plan_id", "cases": {"1": "smb", "2": "smb", "3": "mid_market", "4": "mid_market", "5": "enterprise", "6": "enterprise"}}},
+        {"name": "plan_rank", "type": "integer", "gen": {"type": "case", "on": "plan_id", "cases": {"1": 1, "2": 2, "3": 2, "4": 3, "5": 3, "6": 4}}},
+        {"name": "price_per_seat", "type": "decimal", "_note": "Published round price points — MRR everywhere downstream is quantized to seats x these.", "gen": {"type": "case", "on": "plan_id", "cases": {"1": 19.0, "2": 29.0, "3": 49.0, "4": 69.0, "5": 99.0, "6": 149.0}}},
+        {"name": "included_units", "type": "integer", "_note": "Monthly metering-credit allowance, anchored near the p85 of each plan's observed tenant-month units so ~10-15% of invoices bill overage, concentrated in the smaller plans (upgrade pressure).", "gen": {"type": "case", "on": "plan_id", "cases": {"1": 250, "2": 600, "3": 1500, "4": 3000, "5": 8000, "6": 20000}}},
+        {"name": "overage_per_1000", "type": "decimal", "gen": {"type": "case", "on": "plan_id", "cases": {"1": 90.0, "2": 75.0, "3": 60.0, "4": 45.0, "5": 30.0, "6": 20.0}}},
+        {"name": "billing_period", "type": "string", "gen": "const:monthly"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Billing platform's own account record, generated 1:1 per tenant with parent_copy so the two systems agree until imperfections make them disagree (late feeds, staging conflicts, missing xref).",
+      "schema": "bill", "name": "customer_account", "layer": "source",
+      "purpose": "Billing platform customer account, fed from the product app but maintained separately.",
+      "source_system": "LedgerPilot Billing",
+      "primary_key": ["account_id"], "natural_key": ["account_code"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
+      "traits": ["audited", "source_stamped"],
+      "columns": [
+        {"name": "account_id", "type": "integer", "gen": "seq"},
+        {"name": "account_code", "type": "string", "gen": {"type": "pattern", "pattern": "ACCT-######", "unique": true}},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "account_name", "type": "string", "gen": {"type": "parent_copy", "source_column": "tenant_name"}},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "region", "type": "string", "gen": {"type": "parent_copy", "source_column": "region"}},
+        {"name": "billing_country", "type": "string", "gen": {"type": "case", "on": "region", "cases": {"na": {"type": "choice", "values": ["US", "CA"], "weights": [0.88, 0.12]}, "emea": {"type": "choice", "values": ["GB", "DE", "FR", "NL", "SE"], "weights": [0.32, 0.25, 0.18, 0.15, 0.1]}, "apac": {"type": "choice", "values": ["AU", "JP", "SG", "IN"], "weights": [0.4, 0.25, 0.2, 0.15]}}}},
+        {"name": "billing_email", "type": "string", "null_rate": 0.05, "_note": "5% missing — DQ-001's queue.", "gen": {"type": "business_email", "company_column": "account_name", "roles": ["billing", "ap", "finance"], "role_share": 0.7}},
+        {"name": "payment_terms", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"smb": {"type": "choice", "values": ["due_on_receipt", "net15"], "weights": [0.9, 0.1]}, "mid_market": {"type": "choice", "values": ["net30", "due_on_receipt"], "weights": [0.7, 0.3]}, "enterprise": {"type": "choice", "values": ["net30", "net45"], "weights": [0.6, 0.4]}}}},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "hours", "offset": {"distribution": "lognormal", "median": 2, "sigma": 1.0, "min": 0, "max": 72}}}
+      ]
+    },
+    {
+      "_note": "Every subscription enters the machine at 'trialing'; 28% convert to active (trial-to-paid is visible in the data: activated_at NULL for the 72% that expired). MRR = seats x plan price_per_seat via fk_copy + expr, so amounts are quantized to the price book. ~12% of tenants have a second subscription episode (re-signup after churn).",
+      "schema": "bill", "name": "subscription", "layer": "operational",
+      "purpose": "Subscription episodes per tenant; lifecycle driven by the subscription_lifecycle machine.",
+      "grain": "one row per tenant per subscription episode",
+      "source_system": "LedgerPilot Billing",
+      "primary_key": ["subscription_id"], "natural_key": ["subscription_code"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "poisson", "lam": 0.6}, "min": 1, "max": 2},
+      "traits": ["audited"],
+      "indexes": [["tenant_id"], ["status"]],
+      "columns": [
+        {"name": "subscription_id", "type": "integer", "gen": "seq"},
+        {"name": "subscription_code", "type": "string", "gen": {"type": "pattern", "pattern": "SUB-#######", "unique": true}},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "plan_id", "type": "integer", "_note": "Affinity match: plan targets the tenant's segment, 4% leak = sales exceptions on the wrong plan.", "gen": {"type": "fk", "ref": "bill.plan", "match": {"parent_column": "segment_target", "local_column": "segment", "leak_rate": 0.04}}},
+        {"name": "seats", "type": "integer", "gen": {"type": "case", "on": "segment", "cases": {"smb": {"type": "int", "distribution": "lognormal", "median": 7, "sigma": 0.7, "min": 1, "max": 60}, "mid_market": {"type": "int", "distribution": "lognormal", "median": 28, "sigma": 0.6, "min": 5, "max": 250}, "enterprise": {"type": "int", "distribution": "lognormal", "median": 110, "sigma": 0.6, "min": 20, "max": 2500}}}},
+        {"name": "price_per_seat", "type": "decimal", "gen": {"type": "fk_copy", "column": "plan_id", "ref": "bill.plan", "source_column": "price_per_seat"}},
+        {"name": "mrr_amount", "type": "decimal", "_note": "Quantized: integer seats x published per-seat price.", "gen": "expr:round(seats * price_per_seat, 2)"},
+        {"name": "billing_method", "type": "string", "gen": {"type": "case", "on": "segment", "cases": {"smb": {"type": "choice", "values": ["card", "invoice"], "weights": [0.93, 0.07]}, "mid_market": {"type": "choice", "values": ["card", "invoice"], "weights": [0.55, 0.45]}, "enterprise": {"type": "choice", "values": ["card", "invoice"], "weights": [0.07, 0.93]}}}},
+        {"name": "started_at", "type": "timestamp", "_note": "Trial starts hours after tenant signup (short process lag, the legit date_offset use).", "gen": {"type": "date_offset", "from": "parent.created_at", "unit": "hours", "offset": {"distribution": "lognormal", "median": 1, "sigma": 1.0, "min": 0, "max": 240}}},
+        {"name": "status", "type": "string", "gen": "const:trialing"},
+        {"name": "activated_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "trial_expired_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "past_due_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "dunning_started_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "recovered_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "cancelled_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "churned_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "comp_flag", "type": "integer", "_note": "manual_override imperfection sets this to 1 on ~2%: comped by sales but still billed full rate -> DQ-011.", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "bill", "name": "subscription_event", "layer": "event",
+      "purpose": "Subscription status history emitted by the lifecycle machine.",
+      "grain": "one row per subscription per state entered",
+      "source": "state_machine",
+      "primary_key": ["subscription_id", "event_seq"],
+      "indexes": [["subscription_id"]],
+      "columns": [
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Everything from here in the bill schema is DERIVED from generated tables: metering rolls up usage events, invoices roll up subscriptions + metering, lines explode invoices, dunning schedules derive from machine timestamps. Real lineage, not parallel-faked data.",
+      "schema": "bill", "name": "meter_reading", "layer": "transaction",
+      "purpose": "Monthly metered-unit rollup per tenant, summed from usage events on metered features.",
+      "grain": "one row per tenant per calendar month with metered usage",
+      "source": "derivation", "primary_key": ["meter_reading_id"],
+      "indexes": [["tenant_id", "period_month"]],
+      "columns": [
+        {"name": "meter_reading_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "period_month", "type": "string"},
+        {"name": "metered_units", "type": "integer"},
+        {"name": "event_count", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "bill", "name": "invoice", "layer": "transaction",
+      "purpose": "Monthly invoices derived from converted subscriptions + metered overage; ~60% bill on the 1st, the rest on anniversary days.",
+      "grain": "one row per converted subscription per active calendar month",
+      "source": "derivation", "primary_key": ["invoice_id"], "natural_key": ["invoice_number"],
+      "indexes": [["subscription_id"], ["period_month"], ["status"]],
+      "columns": [
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "segment", "type": "string"},
+        {"name": "period_month", "type": "string"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "due_date", "type": "date"},
+        {"name": "billing_method", "type": "string"},
+        {"name": "base_amount", "type": "decimal"},
+        {"name": "overage_units", "type": "integer"},
+        {"name": "overage_amount", "type": "decimal"},
+        {"name": "credit_amount", "type": "decimal"},
+        {"name": "invoice_total", "type": "decimal"},
+        {"name": "status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "bill", "name": "invoice_line", "layer": "transaction",
+      "purpose": "Invoice lines: subscription fee, metered overage, occasional quarter-end credit.",
+      "grain": "one row per invoice per line number",
+      "source": "derivation", "primary_key": ["invoice_line_id"], "natural_key": ["invoice_id", "line_number"],
+      "indexes": [["invoice_id"]],
+      "columns": [
+        {"name": "invoice_line_id", "type": "integer"},
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "line_number", "type": "integer"},
+        {"name": "item_type", "type": "string"},
+        {"name": "description", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "line_amount", "type": "decimal"},
+        {"name": "line_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "bill", "name": "dunning_attempt", "layer": "transaction",
+      "purpose": "Card retry schedule derived from dunning episodes: +3/+7/+14 day retries and a +20 day final notice.",
+      "grain": "one row per dunning episode per retry attempt",
+      "source": "derivation", "primary_key": ["dunning_attempt_id"],
+      "indexes": [["subscription_id"]],
+      "columns": [
+        {"name": "dunning_attempt_id", "type": "integer"},
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "attempt_number", "type": "integer"},
+        {"name": "attempted_at", "type": "timestamp"},
+        {"name": "attempt_result", "type": "string"},
+        {"name": "attempt_channel", "type": "string"}
+      ]
+    },
+    {
+      "schema": "bill", "name": "entitlement", "layer": "operational",
+      "purpose": "Feature entitlements derived from live subscriptions x the plan's feature set, plus explicit overrides; stale_mapping leaves 2% expired-but-active for DQ-007.",
+      "grain": "one row per live subscription per entitled feature",
+      "source": "derivation", "primary_key": ["entitlement_id"],
+      "indexes": [["tenant_id"], ["feature_id"]],
+      "columns": [
+        {"name": "entitlement_id", "type": "integer"},
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "feature_id", "type": "integer"},
+        {"name": "granted_on", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"},
+        {"name": "grant_source", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Tickets carry a free-text tenant name (tenant_name_entered) the way real helpdesks do; the typo imperfection corrupts 5% so ticket-to-tenant matching needs the fuzzy-join story (DQ-009). requester orphans (3%) model requesters missing from the IdP after offboarding (DQ-002).",
+      "schema": "sup", "name": "ticket", "layer": "operational",
+      "purpose": "Support tickets; triage lifecycle driven by the ticket_triage machine.",
+      "grain": "one row per support ticket",
+      "source_system": "HelpDeck Support",
+      "primary_key": ["ticket_id"], "natural_key": ["ticket_number"],
+      "rows": {"per_parent": "app.tenant", "distribution": {"distribution": "poisson", "lam": 2.0}, "scale_by": {"parent_column": "segment", "factors": {"smb": 1.0, "mid_market": 2.5, "enterprise": 6.0}, "default": 1.0}, "min": 0, "max": 60},
+      "indexes": [["opened_at"], ["status"]],
+      "columns": [
+        {"name": "ticket_id", "type": "integer", "gen": "seq"},
+        {"name": "ticket_number", "type": "string", "gen": {"type": "pattern", "pattern": "TKT-######", "unique": true}},
+        {"name": "tenant_id", "type": "integer", "gen": "parent_key"},
+        {"name": "segment", "type": "string", "gen": {"type": "parent_copy", "source_column": "segment"}},
+        {"name": "tenant_name_entered", "type": "string", "gen": {"type": "parent_copy", "source_column": "tenant_name"}},
+        {"name": "requester_user_id", "type": "integer", "_note": "Same-tenant requester (leak 0); orphan_fk later ghosts 3% (offboarded users).", "gen": {"type": "fk", "ref": "idp.user", "match": {"parent_column": "tenant_id", "local_column": "tenant_id", "leak_rate": 0.0}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.45,normal=0.40,high=0.12,urgent=0.03"},
+        {"name": "channel", "type": "string", "gen": "choice:email=0.48,portal=0.34,chat=0.15,phone=0.03"},
+        {"name": "product_area", "type": "string", "gen": "choice:platform=0.3,analytics=0.2,api=0.16,integrations=0.14,billing=0.12,admin=0.08"},
+        {"name": "subject", "type": "string", "gen": "text:support_topic"},
+        {"name": "opened_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "status", "type": "string", "gen": "const:new"},
+        {"name": "first_response_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "closed_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "sup", "name": "ticket_event", "layer": "event",
+      "purpose": "Ticket status history emitted by the triage machine.",
+      "grain": "one row per ticket per state entered",
+      "source": "state_machine",
+      "primary_key": ["ticket_id", "event_seq"],
+      "indexes": [["ticket_id"]],
+      "columns": [
+        {"name": "ticket_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "sup", "name": "csat_response", "layer": "event",
+      "purpose": "CSAT surveys: 22% of resolved tickets respond; escalated tickets score ~a point lower.",
+      "grain": "one row per responding resolved ticket",
+      "source": "derivation", "primary_key": ["csat_id"],
+      "columns": [
+        {"name": "csat_id", "type": "integer"},
+        {"name": "ticket_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "submitted_at", "type": "timestamp"},
+        {"name": "score", "type": "integer"},
+        {"name": "comment", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "audit", "name": "change_event", "layer": "audit",
+      "purpose": "Field-level change history on billing subscriptions (seat changes, plan moves, billing detail edits).",
+      "primary_key": ["change_id"],
+      "rows": {"per_parent": "bill.subscription", "distribution": {"distribution": "poisson", "lam": 1.2}, "max": 10},
+      "columns": [
+        {"name": "change_id", "type": "integer", "gen": "seq"},
+        {"name": "subscription_id", "type": "integer", "gen": "parent_key"},
+        {"name": "field_name", "type": "string", "gen": "choice:seats=0.4,plan_id=0.22,billing_email=0.16,billing_method=0.12,payment_terms=0.1"},
+        {"name": "old_value", "type": "string", "_note": "Old/new values stay plausible for the changed field.", "gen": {"type": "case", "on": "field_name", "cases": {"seats": {"type": "int", "distribution": "lognormal", "median": 10, "sigma": 0.9, "min": 1, "max": 900}, "plan_id": {"type": "choice", "values": ["1", "2", "3", "4", "5", "6"]}, "billing_email": {"type": "email"}, "billing_method": {"type": "choice", "values": ["card", "invoice"]}, "payment_terms": {"type": "choice", "values": ["due_on_receipt", "net15", "net30", "net45"]}}}},
+        {"name": "new_value", "type": "string", "gen": {"type": "case", "on": "field_name", "cases": {"seats": {"type": "int", "distribution": "lognormal", "median": 12, "sigma": 0.9, "min": 1, "max": 900}, "plan_id": {"type": "choice", "values": ["1", "2", "3", "4", "5", "6"]}, "billing_email": {"type": "email"}, "billing_method": {"type": "choice", "values": ["card", "invoice"], "weights": [0.6, 0.4]}, "payment_terms": {"type": "choice", "values": ["due_on_receipt", "net15", "net30", "net45"], "weights": [0.2, 0.1, 0.5, 0.2]}}}},
+        {"name": "changed_at", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.started_at"}},
+        {"name": "changed_by", "type": "string", "gen": "staff_user"},
+        {"name": "change_source", "type": "string", "gen": "choice:admin_ui=0.55,api=0.3,backfill_script=0.15"},
+        {"name": "change_note", "type": "string", "null_rate": 0.55, "gen": "text:audit_comment"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "webhook_event", "layer": "integration",
+      "purpose": "Payment processor webhook deliveries landed by the integration bus; retries duplicate ~1.2% (DQ-005 dedupes by event_uid).",
+      "grain": "one row per webhook delivery received",
+      "source_system": "LedgerPilot Billing",
+      "primary_key": ["webhook_id"], "natural_key": ["event_uid"],
+      "rows": 2600,
+      "columns": [
+        {"name": "webhook_id", "type": "integer"},
+        {"name": "event_uid", "type": "string", "gen": {"type": "pattern", "pattern": "evt_????????????", "unique": true}},
+        {"name": "provider", "type": "string", "gen": "const:PayFennec"},
+        {"name": "event_type", "type": "string", "gen": "choice:charge.succeeded=0.62,customer.updated=0.16,subscription.updated=0.12,invoice.payment_failed=0.07,charge.refunded=0.03"},
+        {"name": "reference_code", "type": "string", "gen": "pattern:ch_##########"},
+        {"name": "received_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "processing_status", "type": "string", "gen": "choice:processed=0.94,error=0.04,pending=0.02"},
+        {"name": "payload_bytes", "type": "integer", "gen": "int:lognormal(median=1800,sigma=0.4,min=400,max=20000)"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 11, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "billing account missing billing email", "2": "ticket requester not found in IdP", "3": "tenant missing billing crosswalk mapping", "4": "unparseable raw billing extract date", "5": "duplicate webhook delivery (event_uid)", "6": "usage event references retired feature", "7": "entitlement past valid_to still active", "8": "cross-tenant usage event (isolation breach)", "9": "ticket free-text tenant name mismatch", "10": "staging account name disagrees with source", "11": "comped subscription billed at full rate"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "bill.customer_account", "2": "sup.ticket", "3": "xref.entity_identifier", "4": "raw.billing_account_extract", "5": "integration.webhook_event", "6": "app.usage_event", "7": "bill.entitlement", "8": "app.usage_event", "9": "sup.ticket", "10": "stg.billing_account", "11": "bill.subscription"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "warning", "3": "error", "4": "warning", "5": "error", "6": "error", "7": "error", "8": "critical", "9": "warning", "10": "warning", "11": "error"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "ctl", "name": "control", "layer": "control",
+      "purpose": "Reconciliation control catalog; break populations live in the control_* views.",
+      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "columns": [
+        {"name": "control_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Invoice header total ties to invoice lines", "2": "Provisioned IdP users vs billed seats true-up", "3": "Billing crosswalk coverage for tenants"}}},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_invoice_lines", "2": "control_seat_trueup", "3": "dq_rule_result_current (DQ-003)"}}},
+        {"name": "frequency", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "daily", "2": "monthly", "3": "daily"}}},
+        {"name": "owner_team", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "revenue_accounting", "2": "billing_ops", "3": "data_governance"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "high", "2": "medium", "3": "high"}}}
+      ]
+    },
+    {
+      "_note": "raw -> stg -> xref -> core flow, all SQL-derived from bill.customer_account / app.tenant so lineage (and propagated defects) are real.",
+      "schema": "raw", "name": "billing_account_extract", "layer": "raw",
+      "purpose": "Nightly billing platform extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["account_id"],
+      "columns": [
+        {"name": "account_id", "type": "string"},
+        {"name": "account_code", "type": "string"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "payment_terms", "type": "string"},
+        {"name": "billing_country", "type": "string"},
+        {"name": "source_created_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "billing_account", "layer": "staging",
+      "purpose": "Cleaned billing accounts; normalizes raw extract dates (format drift parses to NULL and DQ-004 catches it).",
+      "source": "derivation", "primary_key": ["account_id"],
+      "columns": [
+        {"name": "account_id", "type": "integer"},
+        {"name": "account_code", "type": "string"},
+        {"name": "tenant_ref", "type": "integer"},
+        {"name": "account_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "payment_terms", "type": "string"},
+        {"name": "billing_country", "type": "string"},
+        {"name": "created_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "xref", "name": "entity_identifier", "layer": "xref",
+      "purpose": "Source-system identifier crosswalk for canonical tenants (app platform + billing platform).",
+      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "indexes": [["canonical_entity_id"]],
+      "columns": [
+        {"name": "entity_identifier_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_entity_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "tenant", "layer": "canonical",
+      "purpose": "Canonical tenant joining the app platform and billing platform through the crosswalk; lifecycle_status is DERIVED from subscription machine states so status and timestamps can never disagree.",
+      "source": "derivation", "primary_key": ["tenant_uid"],
+      "columns": [
+        {"name": "tenant_uid", "type": "integer"},
+        {"name": "tenant_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "billing_account_id", "type": "integer", "nullable": true},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "signup_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_tenant", "layer": "warehouse_dimension",
+      "purpose": "Tenant dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["tenant_key"],
+      "columns": [
+        {"name": "tenant_key", "type": "integer"},
+        {"name": "tenant_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "signup_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_plan", "layer": "warehouse_dimension",
+      "purpose": "Plan dimension from the billing price book.",
+      "source": "derivation", "primary_key": ["plan_key"],
+      "columns": [
+        {"name": "plan_key", "type": "integer"},
+        {"name": "plan_code", "type": "string"},
+        {"name": "plan_name", "type": "string"},
+        {"name": "segment_target", "type": "string"},
+        {"name": "plan_rank", "type": "integer"},
+        {"name": "price_per_seat", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_feature", "layer": "warehouse_dimension",
+      "purpose": "Feature dimension.",
+      "source": "derivation", "primary_key": ["feature_key"],
+      "columns": [
+        {"name": "feature_key", "type": "integer"},
+        {"name": "feature_code", "type": "string"},
+        {"name": "feature_name", "type": "string"},
+        {"name": "product_area", "type": "string"},
+        {"name": "min_plan_rank", "type": "integer"},
+        {"name": "is_metered", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_invoice_line", "layer": "warehouse_fact",
+      "purpose": "Invoice line fact.",
+      "grain": "one row per invoice line",
+      "source": "derivation", "primary_key": ["invoice_line_id"],
+      "indexes": [["period_month"], ["tenant_id"]],
+      "columns": [
+        {"name": "invoice_line_id", "type": "integer"},
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "period_month", "type": "string"},
+        {"name": "invoice_date", "type": "date"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "segment", "type": "string"},
+        {"name": "item_type", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "line_amount", "type": "decimal"},
+        {"name": "invoice_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_subscription_month", "layer": "warehouse_fact",
+      "purpose": "Semi-additive MRR snapshot fact.",
+      "grain": "one row per converted subscription per active calendar month",
+      "source": "derivation", "primary_key": ["subscription_month_id"],
+      "indexes": [["period_month"], ["tenant_id"]],
+      "columns": [
+        {"name": "subscription_month_id", "type": "integer"},
+        {"name": "period_month", "type": "string"},
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "segment", "type": "string"},
+        {"name": "plan_code", "type": "string"},
+        {"name": "seats", "type": "integer"},
+        {"name": "mrr_amount", "type": "decimal"},
+        {"name": "overage_amount", "type": "decimal"},
+        {"name": "invoice_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_support_ticket", "layer": "warehouse_fact",
+      "purpose": "Accumulating-snapshot ticket fact with SLA targets and breach flags.",
+      "grain": "one row per support ticket",
+      "source": "derivation", "primary_key": ["ticket_id"],
+      "indexes": [["opened_at"]],
+      "columns": [
+        {"name": "ticket_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "segment", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "channel", "type": "string"},
+        {"name": "product_area", "type": "string"},
+        {"name": "opened_at", "type": "timestamp"},
+        {"name": "first_response_at", "type": "timestamp", "nullable": true},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true},
+        {"name": "closed_at", "type": "timestamp", "nullable": true},
+        {"name": "status", "type": "string"},
+        {"name": "sla_target_minutes", "type": "integer"},
+        {"name": "response_minutes", "type": "integer", "nullable": true},
+        {"name": "sla_breached", "type": "boolean"},
+        {"name": "resolution_hours", "type": "decimal", "nullable": true}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "_note": "Trial-to-paid 0.28 (trialing->active); voluntary churn and dunning exhaustion both visible. Dunning recovery lands in 'recovered' (not back to 'active') so activated_at is never overwritten and invoice windows stay anchored to first conversion.",
+      "name": "subscription_lifecycle",
+      "table": "bill.subscription",
+      "status_column": "status",
+      "start_column": "started_at",
+      "entry_state": "trialing",
+      "states": ["trialing", "active", "expired_trial", "past_due", "in_dunning", "recovered", "cancelled_voluntary", "cancelled_involuntary"],
+      "transitions": [
+        {"from": "trialing", "to": "active", "probability": 0.28, "dwell": {"distribution": "lognormal", "median": 16, "sigma": 0.4, "unit": "days"}},
+        {"from": "trialing", "to": "expired_trial", "probability": 0.72, "dwell": {"distribution": "lognormal", "median": 24, "sigma": 0.25, "unit": "days"}},
+        {"from": "active", "to": "past_due", "probability": 0.14, "dwell": {"distribution": "lognormal", "median": 150, "sigma": 0.8, "unit": "days"}},
+        {"from": "active", "to": "cancelled_voluntary", "probability": 0.15, "dwell": {"distribution": "lognormal", "median": 230, "sigma": 0.7, "unit": "days"}},
+        {"from": "past_due", "to": "in_dunning", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.3, "unit": "days"}},
+        {"from": "past_due", "to": "recovered", "probability": 0.2, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.5, "unit": "days"}},
+        {"from": "in_dunning", "to": "recovered", "probability": 0.52, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.6, "unit": "days"}},
+        {"from": "in_dunning", "to": "cancelled_involuntary", "probability": 0.48, "dwell": {"distribution": "lognormal", "median": 23, "sigma": 0.2, "unit": "days"}},
+        {"from": "recovered", "to": "past_due", "probability": 0.08, "dwell": {"distribution": "lognormal", "median": 180, "sigma": 0.6, "unit": "days"}},
+        {"from": "recovered", "to": "cancelled_voluntary", "probability": 0.1, "dwell": {"distribution": "lognormal", "median": 220, "sigma": 0.6, "unit": "days"}}
+      ],
+      "timestamp_columns": {"active": "activated_at", "expired_trial": "trial_expired_at", "past_due": "past_due_at", "in_dunning": "dunning_started_at", "recovered": "recovered_at", "cancelled_voluntary": "cancelled_at", "cancelled_involuntary": "churned_at"},
+      "history_table": "bill.subscription_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "_note": "Triage machine: ~9% escalate, 6% reopen, waiting_customer ping-pong, right-censored so recent tickets legitimately sit open.",
+      "name": "ticket_triage",
+      "table": "sup.ticket",
+      "status_column": "status",
+      "start_column": "opened_at",
+      "entry_state": "new",
+      "states": ["new", "triaged", "in_progress", "waiting_customer", "escalated", "resolved", "reopened", "closed", "spam_closed"],
+      "transitions": [
+        {"from": "new", "to": "triaged", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 1, "sigma": 0.9, "unit": "hours"}},
+        {"from": "new", "to": "spam_closed", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "hours"}},
+        {"from": "triaged", "to": "in_progress", "probability": 1.0, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.8, "unit": "hours"}},
+        {"from": "in_progress", "to": "waiting_customer", "probability": 0.36, "dwell": {"distribution": "lognormal", "median": 7, "sigma": 0.7, "unit": "hours"}},
+        {"from": "in_progress", "to": "escalated", "probability": 0.09, "dwell": {"distribution": "lognormal", "median": 26, "sigma": 0.6, "unit": "hours"}},
+        {"from": "in_progress", "to": "resolved", "probability": 0.55, "dwell": {"distribution": "lognormal", "median": 30, "sigma": 0.9, "unit": "hours"}},
+        {"from": "waiting_customer", "to": "in_progress", "probability": 0.58, "dwell": {"distribution": "lognormal", "median": 22, "sigma": 0.7, "unit": "hours"}},
+        {"from": "waiting_customer", "to": "resolved", "probability": 0.42, "dwell": {"distribution": "lognormal", "median": 60, "sigma": 0.7, "unit": "hours"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 90, "sigma": 0.7, "unit": "hours"}},
+        {"from": "resolved", "to": "closed", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 72, "sigma": 0.3, "unit": "hours"}},
+        {"from": "resolved", "to": "reopened", "probability": 0.06, "dwell": {"distribution": "lognormal", "median": 48, "sigma": 0.6, "unit": "hours"}},
+        {"from": "reopened", "to": "in_progress", "probability": 1.0, "dwell": {"distribution": "lognormal", "median": 5, "sigma": 0.6, "unit": "hours"}}
+      ],
+      "timestamp_columns": {"triaged": "first_response_at", "resolved": "resolved_at", "closed": "closed_at"},
+      "history_table": "sup.ticket_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_billing_account_extract",
+      "_note": "Raw landing copy with US-format dates; format_drift later pads a slice, stg parsing turns those into NULLs, DQ-004 catches them.",
+      "sql": [
+        "insert into raw.billing_account_extract",
+        "select cast(account_id as text), account_code, cast(tenant_id as text), account_name, segment,",
+        "       payment_terms, billing_country, strftime('%m/%d/%Y', created_at), 'BATCH-NIGHTLY-BILLING'",
+        "from bill.customer_account;"
+      ]
+    },
+    {
+      "name": "stg_billing_account",
+      "sql": [
+        "insert into stg.billing_account",
+        "select cast(account_id as integer), account_code, cast(tenant_ref as integer), trim(account_name),",
+        "       lower(segment), payment_terms, billing_country,",
+        "       case when source_created_date like '__/__/____'",
+        "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
+        "            else null end",
+        "from raw.billing_account_extract;"
+      ]
+    },
+    {
+      "name": "xref_entity_identifier",
+      "_note": "Both systems mapped per canonical tenant; missing_xref deletes 3% so crosswalk coverage is realistically <100%.",
+      "sql": [
+        "insert into xref.entity_identifier",
+        "select row_number() over (order by t.tenant_id), 'tenant', t.tenant_id,",
+        "       'Atriumly App Platform', 'tenant', cast(t.tenant_id as text), date(t.created_at), null, 1",
+        "from app.tenant t;",
+        "insert into xref.entity_identifier",
+        "select 500000 + row_number() over (order by a.account_id), 'tenant', a.tenant_id,",
+        "       'LedgerPilot Billing', 'customer_account', cast(a.account_id as text), date(a.created_at), null, 1",
+        "from bill.customer_account a;"
+      ]
+    },
+    {
+      "name": "core_tenant",
+      "_note": "lifecycle_status derived FROM subscription machine states — status-vs-timestamp coherence by construction.",
+      "sql": [
+        "insert into core.tenant",
+        "select t.tenant_id, trim(t.tenant_name), t.segment, t.region,",
+        "       (select cast(x.source_record_id as integer) from xref.entity_identifier x",
+        "         where x.source_system = 'LedgerPilot Billing' and x.canonical_entity_id = t.tenant_id",
+        "           and x.active_flag = 1 limit 1),",
+        "       case when exists (select 1 from bill.subscription s where s.tenant_id = t.tenant_id",
+        "                           and s.status in ('active', 'recovered', 'past_due', 'in_dunning')) then 'active'",
+        "            when exists (select 1 from bill.subscription s where s.tenant_id = t.tenant_id",
+        "                           and s.status = 'trialing') then 'trialing'",
+        "            when exists (select 1 from bill.subscription s where s.tenant_id = t.tenant_id",
+        "                           and s.status in ('cancelled_voluntary', 'cancelled_involuntary')) then 'churned'",
+        "            else 'trial_expired' end,",
+        "       date(t.created_at)",
+        "from app.tenant t;"
+      ]
+    },
+    {
+      "name": "bill_meter_reading",
+      "_note": "Sums only metered features. Orphaned feature events (retired features) drop out of the join — metering silently undercounts, exactly the symptom the meter-to-bill recon would chase.",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into bill.meter_reading",
+        "select row_number() over (order by e.tenant_id, strftime('%Y-%m', e.event_at)),",
+        "       e.tenant_id, strftime('%Y-%m', e.event_at), sum(e.units), count(*)",
+        "from app.usage_event e",
+        "join app.feature f on f.feature_id = e.feature_id and f.is_metered = 1",
+        "group by e.tenant_id, strftime('%Y-%m', e.event_at);"
+      ]
+    },
+    {
+      "name": "bill_invoice",
+      "_note": "Month spine x converted subscriptions: only subscriptions that reached 'active' bill (trial-to-paid visible in billing). ~60% calendar-aligned to the 1st, the rest anniversary-dated; due dates honor card autopay vs invoiced terms; status logic ties payment failure to the dunning month from the machine.",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into bill.invoice",
+        "with recursive months(month_start) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(month_start, '+1 month') from months where month_start < date('2025-12-01')",
+        "),",
+        "eligible as (",
+        "  select s.subscription_id, s.tenant_id, s.segment, s.plan_id, s.seats, s.mrr_amount,",
+        "         s.billing_method, s.dunning_started_at, s.churned_at, m.month_start,",
+        "         strftime('%Y-%m', m.month_start) as period_month, date(s.activated_at) as activation_date",
+        "  from bill.subscription s",
+        "  join months m",
+        "    on s.activated_at is not null",
+        "   and date(s.activated_at) <= date(m.month_start, '+1 month', '-1 day')",
+        "   and coalesce(date(s.cancelled_at), date(s.churned_at), '2025-12-31') >= m.month_start",
+        "),",
+        "priced as (",
+        "  select e.*, ca.payment_terms,",
+        "         coalesce(max(mr.metered_units - p.included_units, 0), 0) as overage_units,",
+        "         p.overage_per_1000,",
+        "         case when e.subscription_id % 5 < 3",
+        "                or date(e.month_start, '+' || (e.subscription_id % 26 + 1) || ' days') < e.activation_date",
+        "              then max(e.month_start, e.activation_date)",
+        "              else date(e.month_start, '+' || (e.subscription_id % 26 + 1) || ' days') end as invoice_date",
+        "  from eligible e",
+        "  join bill.plan p on p.plan_id = e.plan_id",
+        "  join bill.customer_account ca on ca.tenant_id = e.tenant_id",
+        "  left join bill.meter_reading mr on mr.tenant_id = e.tenant_id and mr.period_month = e.period_month",
+        "),",
+        "amounts as (",
+        "  select p.*,",
+        "         case when p.billing_method = 'card' then p.invoice_date",
+        "              else date(p.invoice_date, '+' || case p.payment_terms when 'net45' then 45",
+        "                   when 'net30' then 30 when 'net15' then 15 else 0 end || ' days') end as due_date,",
+        "         round(p.overage_units / 1000.0 * p.overage_per_1000, 2) as overage_amount,",
+        "         case when (p.subscription_id + cast(strftime('%m', p.month_start) as integer)) % 37 = 0",
+        "              then -round(p.mrr_amount * 0.15, 2) else 0 end as credit_amount",
+        "  from priced p",
+        ")",
+        "select row_number() over (order by a.subscription_id, a.month_start),",
+        "       'INV-' || printf('%07d', row_number() over (order by a.subscription_id, a.month_start)),",
+        "       a.subscription_id, a.tenant_id, a.segment, a.period_month, a.invoice_date, a.due_date,",
+        "       a.billing_method, a.mrr_amount, a.overage_units, a.overage_amount, a.credit_amount,",
+        "       round(a.mrr_amount + a.overage_amount + a.credit_amount, 2),",
+        "       case",
+        "         when a.dunning_started_at is not null and a.churned_at is not null",
+        "              and a.period_month >= strftime('%Y-%m', a.dunning_started_at) then 'written_off'",
+        "         when a.dunning_started_at is not null",
+        "              and a.period_month = strftime('%Y-%m', a.dunning_started_at) then 'paid'",
+        "         when a.billing_method = 'card' then 'paid'",
+        "         when a.due_date > '2025-12-31' then 'open'",
+        "         when (a.subscription_id * 7 + cast(strftime('%m', a.month_start) as integer)) % 10 < 8 then 'paid'",
+        "         when julianday('2025-12-31') - julianday(a.due_date) > 90",
+        "              and (a.subscription_id * 7 + cast(strftime('%m', a.month_start) as integer)) % 10 = 9 then 'written_off'",
+        "         when julianday('2025-12-31') - julianday(a.due_date) > 15 then 'overdue'",
+        "         else 'open'",
+        "       end",
+        "from amounts a;"
+      ]
+    },
+    {
+      "name": "bill_invoice_line",
+      "_note": "invoice_line_id = invoice_id*10 + line_number keeps IDs deterministic and clear of the imperfection injectors' synthetic ranges. Line amounts tie exactly to the header until restatement_reversal breaks ~1.2% for CTL-001.",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into bill.invoice_line",
+        "select i.invoice_id * 10 + 1, i.invoice_id, 1, 'subscription_fee',",
+        "       p.plan_name || ' plan - ' || s.seats || ' seats', s.seats, s.price_per_seat,",
+        "       i.base_amount, null",
+        "from bill.invoice i",
+        "join bill.subscription s on s.subscription_id = i.subscription_id",
+        "join bill.plan p on p.plan_id = s.plan_id;",
+        "insert into bill.invoice_line",
+        "select i.invoice_id * 10 + 2, i.invoice_id, 2, 'usage_overage',",
+        "       'Metered usage overage - ' || i.overage_units || ' units over plan', 1,",
+        "       i.overage_amount, i.overage_amount, null",
+        "from bill.invoice i where i.overage_amount > 0;",
+        "insert into bill.invoice_line",
+        "select i.invoice_id * 10 + 3, i.invoice_id, 3, 'service_credit',",
+        "       'Quarter-end discount credit', 1, i.credit_amount, i.credit_amount,",
+        "       'Approved by sales leadership.'",
+        "from bill.invoice i where i.credit_amount <> 0;"
+      ]
+    },
+    {
+      "name": "bill_dunning_attempt",
+      "_note": "Retry echo at +3/+7/+14/+20 days from the machine's dunning_started_at; churned episodes run the full schedule to final notice, recovered ones stop at the recovering attempt, open episodes show attempts up to as_of.",
+      "sql": [
+        "insert into bill.dunning_attempt",
+        "with sched(attempt_number, day_offset) as (values (1, 3), (2, 7), (3, 14), (4, 20))",
+        "select s.subscription_id * 10 + sched.attempt_number, s.subscription_id, s.tenant_id,",
+        "       sched.attempt_number,",
+        "       datetime(s.dunning_started_at, '+' || sched.day_offset || ' days'),",
+        "       case",
+        "         when s.churned_at is not null then",
+        "              case when sched.attempt_number = 4 then 'final_notice' else 'failed' end",
+        "         when s.recovered_at is not null and s.recovered_at > s.dunning_started_at then",
+        "              case when sched.attempt_number = 1 + (s.subscription_id % 3) then 'recovered' else 'failed' end",
+        "         else 'failed'",
+        "       end,",
+        "       case when sched.attempt_number = 4 then 'final_notice_email' else 'card_retry' end",
+        "from bill.subscription s",
+        "join sched on (",
+        "       (s.churned_at is not null)",
+        "    or (s.churned_at is null and s.recovered_at is not null and s.recovered_at > s.dunning_started_at",
+        "        and sched.attempt_number <= 1 + (s.subscription_id % 3))",
+        "    or (s.churned_at is null and (s.recovered_at is null or s.recovered_at <= s.dunning_started_at))",
+        ")",
+        "where s.dunning_started_at is not null",
+        "  and datetime(s.dunning_started_at, '+' || sched.day_offset || ' days') <= '2025-12-31 23:59:59';"
+      ]
+    },
+    {
+      "name": "bill_entitlement",
+      "_note": "Live subscriptions x plan feature set (plan_rank >= min_plan_rank) plus ~4% explicit overrides one rank above plan — the override rows are the ones an entitlement audit asks about.",
+      "sql": [
+        "insert into bill.entitlement",
+        "select row_number() over (order by s.subscription_id, f.feature_id),",
+        "       s.subscription_id, s.tenant_id, f.feature_id,",
+        "       date(coalesce(s.activated_at, s.started_at)), null, 1,",
+        "       case when f.min_plan_rank <= p.plan_rank then 'plan' else 'override' end",
+        "from bill.subscription s",
+        "join bill.plan p on p.plan_id = s.plan_id",
+        "join app.feature f",
+        "  on (f.min_plan_rank <= p.plan_rank",
+        "      or (f.min_plan_rank = p.plan_rank + 1 and (s.subscription_id + f.feature_id) % 23 = 0))",
+        "where s.status in ('trialing', 'active', 'recovered', 'past_due', 'in_dunning');"
+      ]
+    },
+    {
+      "name": "sup_csat_response",
+      "_note": "22% response rate (ticket_id % 9 < 2); escalated tickets score ~a point lower; detractor comments only on low scores.",
+      "sql": [
+        "insert into sup.csat_response",
+        "select t.ticket_id, t.ticket_id, t.tenant_id,",
+        "       datetime(t.resolved_at, '+' || (t.ticket_id % 46 + 2) || ' hours'),",
+        "       case when exists (select 1 from sup.ticket_event e where e.ticket_id = t.ticket_id and e.state = 'escalated')",
+        "            then case t.ticket_id % 8 when 0 then 1 when 1 then 2 when 2 then 2 when 3 then 3",
+        "                 when 4 then 3 when 5 then 4 when 6 then 4 else 5 end",
+        "            else case when t.ticket_id % 20 = 0 then 1 when t.ticket_id % 20 = 1 then 2",
+        "                 when t.ticket_id % 20 in (2, 3) then 3 when t.ticket_id % 20 in (4, 5, 6, 7, 8) then 4",
+        "                 else 5 end",
+        "       end,",
+        "       case when t.ticket_id % 20 = 0 then 'Took far too long and we had to chase for updates.'",
+        "            when t.ticket_id % 20 = 1 then 'Issue came back after it was marked resolved.'",
+        "            when t.ticket_id % 3 = 0 then 'Fast and helpful, thanks.'",
+        "            else null end",
+        "from sup.ticket t",
+        "where t.resolved_at is not null and t.ticket_id % 9 < 2",
+        "  and datetime(t.resolved_at, '+' || (t.ticket_id % 46 + 2) || ' hours') <= '2025-12-31 23:59:59';"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_tenant",
+      "sql": [
+        "insert into wh.dim_tenant",
+        "select tenant_uid, tenant_name, segment, region, lifecycle_status, signup_date from core.tenant;"
+      ]
+    },
+    {
+      "name": "wh_dim_plan",
+      "sql": [
+        "insert into wh.dim_plan",
+        "select plan_id, plan_code, plan_name, segment_target, plan_rank, price_per_seat from bill.plan;"
+      ]
+    },
+    {
+      "name": "wh_dim_feature",
+      "sql": [
+        "insert into wh.dim_feature",
+        "select feature_id, feature_code, feature_name, product_area, min_plan_rank, is_metered from app.feature;"
+      ]
+    },
+    {
+      "name": "wh_fact_invoice_line",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into wh.fact_invoice_line",
+        "select l.invoice_line_id, l.invoice_id, i.period_month, i.invoice_date, i.tenant_id, i.segment,",
+        "       l.item_type, l.quantity, l.unit_price, l.line_amount, i.status",
+        "from bill.invoice_line l join bill.invoice i on i.invoice_id = l.invoice_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_subscription_month",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into wh.fact_subscription_month",
+        "select i.invoice_id, i.period_month, i.subscription_id, i.tenant_id, i.segment,",
+        "       p.plan_code, s.seats, i.base_amount, i.overage_amount, i.status",
+        "from bill.invoice i",
+        "join bill.subscription s on s.subscription_id = i.subscription_id",
+        "join bill.plan p on p.plan_id = s.plan_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_support_ticket",
+      "sql": [
+        "insert into wh.fact_support_ticket",
+        "select t.ticket_id, t.tenant_id, t.segment, t.priority, t.channel, t.product_area,",
+        "       t.opened_at, t.first_response_at, t.resolved_at, t.closed_at, t.status,",
+        "       case t.priority when 'urgent' then 60 when 'high' then 240 when 'normal' then 480 else 1440 end,",
+        "       case when t.first_response_at is not null",
+        "            then cast(round((julianday(t.first_response_at) - julianday(t.opened_at)) * 1440) as integer) end,",
+        "       case when t.first_response_at is not null",
+        "             and (julianday(t.first_response_at) - julianday(t.opened_at)) * 1440 >",
+        "                 (case t.priority when 'urgent' then 60 when 'high' then 240 when 'normal' then 480 else 1440 end)",
+        "            then 1 else 0 end,",
+        "       case when t.resolved_at is not null",
+        "            then round((julianday(t.resolved_at) - julianday(t.opened_at)) * 24.0, 1) end",
+        "from sup.ticket t;"
+      ]
+    },
+    {
+      "name": "mart_mrr_monthly",
+      "sql": [
+        "create view mart_mrr_monthly as",
+        "select period_month, segment, count(*) as subscriptions,",
+        "       round(sum(mrr_amount), 2) as mrr,",
+        "       round(sum(overage_amount), 2) as overage_billed,",
+        "       round(sum(mrr_amount) / count(*), 2) as arpa",
+        "from wh.fact_subscription_month",
+        "group by period_month, segment;"
+      ]
+    },
+    {
+      "name": "mart_feature_adoption_monthly",
+      "sql": [
+        "create view mart_feature_adoption_monthly as",
+        "select strftime('%Y-%m', e.event_at) as period_month, f.product_area, f.feature_name,",
+        "       count(*) as events, sum(e.units) as units, count(distinct e.tenant_id) as active_tenants",
+        "from app.usage_event e",
+        "join app.feature f on f.feature_id = e.feature_id",
+        "group by 1, 2, 3;"
+      ]
+    },
+    {
+      "name": "control_recon_invoice_lines",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation restatement reversals on invoice lines (CTL-001 breaks).",
+      "sql": [
+        "create view control_recon_invoice_lines as",
+        "select i.invoice_id, i.invoice_number, i.period_month, i.invoice_total,",
+        "       round(sum(l.line_amount), 2) as lines_total,",
+        "       round(i.invoice_total - sum(l.line_amount), 2) as break_amount",
+        "from bill.invoice i",
+        "join bill.invoice_line l on l.invoice_id = i.invoice_id",
+        "group by i.invoice_id, i.invoice_number, i.period_month, i.invoice_total",
+        "having abs(i.invoice_total - sum(l.line_amount)) > 0.01;"
+      ]
+    },
+    {
+      "name": "control_seat_trueup",
+      "_note": "Seat license true-up (CTL-002): live subscriptions where provisioned active IdP users drift from billed seats by more than max(2, 5%) — lagging deprovisioning and under-licensing both surface.",
+      "sql": [
+        "create view control_seat_trueup as",
+        "select s.subscription_id, s.tenant_id, t.tenant_name, s.segment, s.seats as billed_seats,",
+        "       u.provisioned_users, u.provisioned_users - s.seats as seat_gap",
+        "from bill.subscription s",
+        "join app.tenant t on t.tenant_id = s.tenant_id",
+        "join (select tenant_id, count(*) as provisioned_users from idp.user",
+        "      where status = 'active' group by tenant_id) u on u.tenant_id = s.tenant_id",
+        "where s.status in ('active', 'recovered', 'past_due', 'in_dunning')",
+        "  and abs(u.provisioned_users - s.seats) > max(2, round(s.seats * 0.05));"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'billing account missing billing email' as issue, cast(account_id as text) as entity_id",
+        "from bill.customer_account where billing_email is null or billing_email = ''",
+        "union all",
+        "select 'DQ-002', 'ticket requester not found in IdP', cast(t.ticket_id as text)",
+        "from sup.ticket t",
+        "where t.requester_user_id is not null",
+        "  and not exists (select 1 from idp.user u where u.user_id = t.requester_user_id)",
+        "union all",
+        "select 'DQ-003', 'tenant missing billing crosswalk mapping', cast(t.tenant_id as text)",
+        "from app.tenant t",
+        "where not exists (select 1 from xref.entity_identifier x",
+        "                  where x.source_system = 'LedgerPilot Billing'",
+        "                    and x.canonical_entity_id = t.tenant_id and x.active_flag = 1)",
+        "union all",
+        "select 'DQ-004', 'unparseable raw billing extract date', account_id",
+        "from raw.billing_account_extract where source_created_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-005', 'duplicate webhook delivery', event_uid",
+        "from integration.webhook_event group by event_uid having count(*) > 1",
+        "union all",
+        "select 'DQ-006', 'usage event references retired feature', cast(e.event_id as text)",
+        "from app.usage_event e",
+        "where not exists (select 1 from app.feature f where f.feature_id = e.feature_id)",
+        "union all",
+        "select 'DQ-007', 'entitlement past valid_to still active', cast(entitlement_id as text)",
+        "from bill.entitlement where active_flag = 1 and valid_to is not null and valid_to < '2025-12-31'",
+        "union all",
+        "select 'DQ-008', 'cross-tenant usage event (isolation breach)', cast(e.event_id as text)",
+        "from app.usage_event e join idp.user u on u.user_id = e.user_id",
+        "where u.tenant_id <> e.tenant_id",
+        "union all",
+        "select 'DQ-009', 'ticket free-text tenant name mismatch', cast(t.ticket_id as text)",
+        "from sup.ticket t join app.tenant a on a.tenant_id = t.tenant_id",
+        "where t.tenant_name_entered <> a.tenant_name",
+        "union all",
+        "select 'DQ-010', 'staging account name disagrees with source', cast(sb.account_id as text)",
+        "from stg.billing_account sb join bill.customer_account ca on ca.account_id = sb.account_id",
+        "where sb.account_name <> trim(ca.account_name)",
+        "union all",
+        "select 'DQ-011', 'comped subscription billed at full rate', cast(s.subscription_id as text)",
+        "from bill.subscription s",
+        "where s.comp_flag = 1",
+        "  and exists (select 1 from bill.invoice i where i.subscription_id = s.subscription_id and i.base_amount > 0);"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "tenant_duplicate_signups", "type": "duplicate_entity", "table": "app.tenant", "rate": 0.01, "stage": "pre_derivation", "params": {"fuzz_columns": ["tenant_name"]}, "scenario": "Self-serve re-signups create near-duplicate tenants; same contact phone, fuzzed name. Surfaces in DQ-003 (no billing account) and the MDM merge queue."},
+    {"name": "billing_account_late_sync", "type": "late_arrival", "table": "bill.customer_account", "rate": 0.04, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 2, "sigma": 0.8}}, "scenario": "Nightly app-to-billing sync misses runs; accounts land days late."},
+    {"name": "ticket_requester_orphans", "type": "orphan_fk", "table": "sup.ticket", "rate": 0.03, "stage": "pre_derivation", "params": {"column": "requester_user_id"}, "scenario": "Requesters hard-deleted from the IdP after offboarding -> DQ-002."},
+    {"name": "usage_retired_feature_orphans", "type": "orphan_fk", "table": "app.usage_event", "rate": 0.003, "stage": "pre_derivation", "params": {"column": "feature_id"}, "scenario": "Old SDK versions emit events for retired feature ids -> DQ-006; metering silently drops them."},
+    {"name": "ticket_tenant_name_typos", "type": "typo", "table": "sup.ticket", "rate": 0.05, "stage": "pre_derivation", "params": {"column": "tenant_name_entered"}, "scenario": "Agents hand-key tenant names on tickets; fuzzy matching required -> DQ-009."},
+    {"name": "subscription_comp_overrides", "type": "manual_override", "table": "bill.subscription", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "comp_flag", "value": 1, "note_column": "override_note"}, "scenario": "Sales comps subscriptions but the rating engine keeps billing full MRR -> DQ-011."},
+    {"name": "webhook_retry_duplicates", "type": "duplicate_webhook", "table": "integration.webhook_event", "rate": 0.012, "stage": "pre_derivation", "scenario": "Processor retries deliver the same event_uid twice -> DQ-005 dedupe queue."},
+    {"name": "missing_billing_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Crosswalk rows lost during the 2024 billing migration -> DQ-003; core.tenant left with NULL billing_account_id."},
+    {"name": "raw_billing_date_drift", "type": "format_drift", "table": "raw.billing_account_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_created_date", "format": "padded"}, "scenario": "Legacy extract job pads dates after a patch; staging parses them to NULL -> DQ-004."},
+    {"name": "stg_account_name_conflicts", "type": "conflicting_source_values", "table": "stg.billing_account", "rate": 0.02, "stage": "post_derivation", "params": {"column": "account_name"}, "scenario": "Staging survivorship mangles some names vs the billing source -> DQ-010."},
+    {"name": "invoice_line_restatements", "type": "restatement_reversal", "table": "bill.invoice_line", "rate": 0.012, "stage": "post_derivation", "params": {"amount_columns": ["line_amount"], "reason_column": "line_note"}, "scenario": "Quarter-end billing corrections issued as reversal + restated pairs; these create the CTL-001 invoice-vs-lines recon breaks."},
+    {"name": "stale_entitlement_mappings", "type": "stale_mapping", "table": "bill.entitlement", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Entitlements expired but never revoked -> DQ-007, the access-review finding."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Invoice header total ties to invoice lines", "source_dataset": "bill.invoice", "target_dataset": "bill.invoice_line", "grain": "invoice_id", "tolerance": "0.01", "frequency": "daily", "owner": "revenue_accounting", "severity": "high", "expected_break_rate": "~1.2% of invoices (restatement reversals)", "break_view": "control_recon_invoice_lines"},
+    {"rule_id": "CTL-002", "rule_name": "Provisioned IdP users vs billed seats true-up", "source_dataset": "idp.user", "target_dataset": "bill.subscription", "grain": "subscription_id", "tolerance": "max(2 seats, 5%)", "frequency": "monthly", "owner": "billing_ops", "severity": "medium", "expected_break_rate": "structural drift; lagging deprovisioning dominates", "break_view": "control_seat_trueup"},
+    {"rule_id": "CTL-003", "rule_name": "Billing crosswalk coverage for tenants", "source_dataset": "app.tenant", "target_dataset": "xref.entity_identifier", "grain": "tenant_id", "tolerance": "0 missing for paying tenants", "frequency": "daily", "owner": "data_governance", "severity": "high", "expected_break_rate": "~3% (migration losses) + duplicate signups", "break_view": "dq_rule_result_current"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "bill.customer_account", "rule_type": "required_field", "condition": "billing accounts have a billing email", "severity": "warning", "expected_failure_rate": 0.05},
+    {"rule_id": "DQ-002", "dataset": "sup.ticket", "rule_type": "fk_exists", "condition": "ticket requester exists in the IdP", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every tenant has an active billing mapping", "severity": "error", "expected_failure_rate": 0.04},
+    {"rule_id": "DQ-004", "dataset": "raw.billing_account_extract", "rule_type": "format", "condition": "extract date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-005", "dataset": "integration.webhook_event", "rule_type": "uniqueness", "condition": "event_uid delivered once", "severity": "error", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-006", "dataset": "app.usage_event", "rule_type": "fk_exists", "condition": "usage events reference live features", "severity": "error", "expected_failure_rate": 0.003},
+    {"rule_id": "DQ-007", "dataset": "bill.entitlement", "rule_type": "staleness", "condition": "active entitlements not past valid_to", "severity": "error", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-008", "dataset": "app.usage_event", "rule_type": "isolation", "condition": "event user belongs to the event tenant", "severity": "critical", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-009", "dataset": "sup.ticket", "rule_type": "consistency", "condition": "free-text tenant name matches tenant master", "severity": "warning", "expected_failure_rate": 0.05},
+    {"rule_id": "DQ-010", "dataset": "stg.billing_account", "rule_type": "consistency", "condition": "staging name matches billing source", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-011", "dataset": "bill.subscription", "rule_type": "consistency", "condition": "comped subscriptions are zero-rated", "severity": "error", "expected_failure_rate": 0.02}
+  ],
+  "dataflows": [
+    {"name": "tenant_mastering", "sequence": "app.tenant + bill.customer_account -> raw extract -> staging -> xref -> core.tenant -> wh.dim_tenant"},
+    {"name": "trial_to_paid", "sequence": "app.tenant signup -> bill.subscription (trialing) -> subscription_lifecycle machine -> activated_at -> bill.invoice"},
+    {"name": "meter_to_bill", "sequence": "app.usage_event -> bill.meter_reading -> overage lines on bill.invoice/invoice_line -> wh facts -> marts"},
+    {"name": "dunning", "sequence": "subscription_lifecycle past_due/in_dunning -> bill.dunning_attempt (+3/+7/+14/+20d) -> recovered or cancelled_involuntary"},
+    {"name": "support", "sequence": "sup.ticket -> ticket_triage machine -> sup.ticket_event -> sup.csat_response -> wh.fact_support_ticket"}
+  ],
+  "validation": {
+    "required_views": ["mart_mrr_monthly", "mart_feature_adoption_monthly", "control_recon_invoice_lines", "control_seat_trueup", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "app.tenant": [1700, 1950],
+      "app.usage_event": [90000, 280000],
+      "bill.subscription": [1700, 2500],
+      "bill.invoice": [4000, 13000],
+      "sup.ticket": [4500, 10500]
+    }
+  }
+}

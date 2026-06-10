@@ -1,0 +1,965 @@
+{
+  "_note": "Worked example: Copperleaf Mercantile, a fictional omnichannel general-merchandise retailer. Four source systems (TillPoint POS, CartHaven Commerce, ShelfWise Merchandising, LoopRewards Loyalty), store + web sales with a fulfillment state machine, derived tenders/returns, raw->stg->xref->core customer mastering, warehouse dims/facts, daily sales + returns marts, a tender recon control, and 12 logged imperfections each aimed at a catcher. Keys starting with '_' are comments stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Copperleaf Mercantile",
+    "archetype": "omnichannel_retail",
+    "industry": "Omnichannel retail",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 31,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "Retail inverts the B2B week: Saturday is the heaviest day, Mon-Tue the lightest. Month weights carry the Q4 ramp (Nov ~1.4x, Dec ~1.9x) and the soft Jan-Feb trough. Stores close Thanksgiving and Christmas.",
+    "weekday_weights": [0.85, 0.8, 0.88, 0.95, 1.12, 1.55, 1.28],
+    "month_weights": [0.85, 0.8, 0.92, 0.94, 1.0, 0.98, 0.94, 1.05, 0.96, 1.03, 1.42, 1.85],
+    "holidays": ["2024-01-01", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-07-04", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.06,
+    "business_hours": [9, 21]
+  },
+  "vocab": {
+    "_note": "Per-category product pools so names, prices, and cost ratios stay mutually coherent, like a real item master.",
+    "apparel_product": ["Crewneck Tee", "Slim Fit Chino", "Hooded Fleece", "Denim Jacket", "Performance Legging", "Flannel Shirt", "Puffer Vest", "Ribbed Cardigan", "Jogger Pant", "Oxford Button-Down"],
+    "footwear_product": ["Trail Runner Sneaker", "Canvas Slip-On", "Leather Chelsea Boot", "Knit Running Shoe", "Suede Loafer", "Waterproof Hiker", "Court Sneaker", "Cozy House Slipper"],
+    "home_product": ["Stoneware Mug Set", "Linen Throw Pillow", "Scented Soy Candle", "Bamboo Cutting Board", "Ceramic Planter", "Waffle Bath Towel", "Cast Iron Skillet", "Woven Storage Basket", "Flannel Sheet Set", "Glass Food Container Set"],
+    "electronics_product": ["Wireless Earbuds", "Bluetooth Speaker", "Smart LED Bulb", "Fitness Tracker Band", "USB-C Wall Charger", "Portable Power Bank", "Streaming Media Stick", "Noise-Canceling Headphones"],
+    "beauty_product": ["Hydrating Face Serum", "Matte Lip Crayon", "Daily SPF Moisturizer", "Argan Hair Oil", "Charcoal Cleansing Bar", "Vitamin C Eye Cream", "Beach Wave Spray", "Cushion Foundation Compact"],
+    "grocery_product": ["Cold Brew Concentrate", "Sea Salt Almonds", "Organic Honey Jar", "Sparkling Water 8-Pack", "Dark Chocolate Bar", "Trail Mix Pouch", "Maple Granola", "Sourdough Crackers"],
+    "toys_product": ["Building Block Set", "Plush Otter", "Wooden Puzzle Map", "RC Stunt Car", "Craft Slime Kit", "Junior Science Lab", "Stacking Ring Tower", "Galaxy Projector Night Light"],
+    "promo_name": ["Weekend Doorbusters", "Holiday Kickoff Event", "Back to School Bash", "Midsummer Clearance", "Loyalty Member Days", "Spring Refresh Sale", "Black Friday Preview", "Cyber Week Deals", "Clearance Blowout", "Anniversary Savings Event"]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 7, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "TillPoint POS", "2": "CartHaven Commerce", "3": "ShelfWise Merchandising", "4": "LoopRewards Loyalty", "5": "Copperleaf Data Warehouse", "6": "FlowGate Integration Hub", "7": "Beacon BI Portal"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "POS", "2": "ecommerce", "3": "merchandising", "4": "loyalty", "5": "warehouse", "6": "integration", "7": "BI"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "store transactions/tenders", "2": "web orders/fulfillment", "3": "product/price/promotion/inventory", "4": "customer/loyalty", "5": "reporting", "6": "integration", "7": "dashboards"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.55,tier2=0.3,tier3=0.15"},
+        {"name": "contains_pii_flag", "type": "boolean", "gen": "bool:0.45"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "schema": "merch", "name": "supplier", "layer": "source",
+      "purpose": "Merchandise vendors.",
+      "source_system": "ShelfWise Merchandising",
+      "primary_key": ["supplier_id"], "rows": 60, "scale_exempt": true,
+      "columns": [
+        {"name": "supplier_id", "type": "integer"},
+        {"name": "supplier_code", "type": "string", "gen": "seq:SUP-%04d"},
+        {"name": "supplier_name", "type": "string", "gen": {"type": "company_name", "flavor": "manufacturing", "unique": true}},
+        {"name": "lead_time_days", "type": "integer", "gen": "int:uniform(5,45)"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.93"}
+      ]
+    },
+    {
+      "_note": "Category is drawn first; name, list price band, and cost ratio are all conditioned on it. Prices land on retail endings (.99/.49/.00) so the line-amount duplicate mass looks like a real price file.",
+      "schema": "merch", "name": "product", "layer": "source",
+      "purpose": "Item master with category-coherent names, retail price endings, and category-tiered cost ratios.",
+      "source_system": "ShelfWise Merchandising",
+      "primary_key": ["product_id"], "natural_key": ["sku"],
+      "rows": 600, "traits": ["audited"],
+      "indexes": [["category"]],
+      "columns": [
+        {"name": "product_id", "type": "integer"},
+        {"name": "sku", "type": "string", "gen": {"type": "pattern", "pattern": "SKU-######", "unique": true}},
+        {"name": "category", "type": "string", "gen": "choice:apparel=0.26,home=0.16,grocery=0.14,electronics=0.12,toys=0.12,footwear=0.1,beauty=0.1"},
+        {"name": "product_name", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"apparel": {"type": "text_template", "templates": ["{apparel_product}"]}, "footwear": {"type": "text_template", "templates": ["{footwear_product}"]}, "home": {"type": "text_template", "templates": ["{home_product}"]}, "electronics": {"type": "text_template", "templates": ["{electronics_product}"]}, "beauty": {"type": "text_template", "templates": ["{beauty_product}"]}, "grocery": {"type": "text_template", "templates": ["{grocery_product}"]}, "toys": {"type": "text_template", "templates": ["{toys_product}"]}}}},
+        {"name": "supplier_id", "type": "integer", "gen": "fk:merch.supplier@zipf"},
+        {"name": "gtin", "type": "string", "gen": "identifier:gtin13"},
+        {"name": "list_price", "type": "decimal", "_note": "Retail price points: category-banded lognormal snapped to .99/.49/.00 endings.", "gen": {"type": "case", "on": "category", "cases": {"apparel": {"type": "money", "median": 26, "sigma": 0.45, "price_endings": [0.99, 0.49, 0.0]}, "footwear": {"type": "money", "median": 54, "sigma": 0.4, "price_endings": [0.99, 0.49, 0.0]}, "home": {"type": "money", "median": 22, "sigma": 0.55, "price_endings": [0.99, 0.49, 0.0]}, "electronics": {"type": "money", "median": 64, "sigma": 0.6, "price_endings": [0.99, 0.49, 0.0]}, "beauty": {"type": "money", "median": 14, "sigma": 0.4, "price_endings": [0.99, 0.49, 0.0]}, "grocery": {"type": "money", "median": 6, "sigma": 0.4, "price_endings": [0.99, 0.49, 0.0]}, "toys": {"type": "money", "median": 19, "sigma": 0.5, "price_endings": [0.99, 0.49, 0.0]}}}},
+        {"name": "cost_ratio", "type": "decimal", "_note": "Cost ratio by category: grocery/electronics thin margin, apparel/beauty rich. Scalar case branches + ONE expression below — a case whose branches are different expressions silently reuses the first compiled expression (engine caches by column name).", "gen": {"type": "case", "on": "category", "cases": {"apparel": 0.42, "footwear": 0.48, "home": 0.5, "electronics": 0.72, "beauty": 0.38, "grocery": 0.68, "toys": 0.52}}},
+        {"name": "unit_cost", "type": "decimal", "gen": "expr:round(list_price * cost_ratio, 2)"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.9"}
+      ]
+    },
+    {
+      "_note": "24 stores with deterministic region blocks so fk affinity matching on home_region has full coverage.",
+      "schema": "ops", "name": "store", "layer": "source",
+      "purpose": "Physical store locations.",
+      "source_system": "ShelfWise Merchandising",
+      "primary_key": ["store_id"], "rows": 24, "scale_exempt": true,
+      "columns": [
+        {"name": "store_id", "type": "integer"},
+        {"name": "store_code", "type": "string", "gen": "seq:ST-%03d"},
+        {"name": "region", "type": "string", "gen": {"type": "case", "on": "store_id", "cases": {"1": "Northeast", "2": "Northeast", "3": "Northeast", "4": "Northeast", "5": "Northeast", "6": "Northeast", "7": "Northeast", "8": "Southeast", "9": "Southeast", "10": "Southeast", "11": "Southeast", "12": "Southeast", "13": "Southeast", "14": "Southeast", "15": "Midwest", "16": "Midwest", "17": "Midwest", "18": "Midwest", "19": "Midwest", "20": "Midwest", "21": "West", "22": "West", "23": "West", "24": "West"}}},
+        {"name": "store_format", "type": "string", "gen": "choice:standard=0.71,outlet=0.17,flagship=0.12"},
+        {"name": "selling_sqft", "type": "integer", "gen": "int:uniform(7000,42000)"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "opened_at", "type": "timestamp", "_note": "Almost the whole fleet predates the data window; store IDs correlate with opening order.", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.95, "backfill_start": "2008-01-01"}}
+      ]
+    },
+    {
+      "schema": "loyal", "name": "tier", "layer": "source",
+      "purpose": "Loyalty program tier definitions.",
+      "source_system": "LoopRewards Loyalty",
+      "primary_key": ["tier_id"], "rows": 4, "scale_exempt": true,
+      "columns": [
+        {"name": "tier_id", "type": "integer"},
+        {"name": "tier_name", "type": "string", "gen": {"type": "case", "on": "tier_id", "cases": {"1": "member", "2": "silver", "3": "gold", "4": "platinum"}}},
+        {"name": "annual_spend_threshold", "type": "integer", "gen": {"type": "case", "on": "tier_id", "cases": {"1": 0, "2": 500, "3": 1500, "4": 4000}}},
+        {"name": "points_multiplier", "type": "decimal", "gen": {"type": "case", "on": "tier_id", "cases": {"1": 1.0, "2": 1.25, "3": 1.5, "4": 2.0}}}
+      ]
+    },
+    {
+      "_note": "Loyalty platform is the customer system of record. created_at is sorted with 60% backfill: a tenured book whose IDs correlate with signup date, so in-window volume grows ~6%/yr instead of ramping from zero. loyalty_tier drives both store and web volume via scale_by.",
+      "schema": "crm", "name": "customer", "layer": "source",
+      "purpose": "Customer master with loyalty segment.",
+      "source_system": "LoopRewards Loyalty",
+      "primary_key": ["customer_id"], "natural_key": ["customer_code"],
+      "rows": 3000, "traits": ["audited"],
+      "indexes": [["loyalty_tier"], ["home_region"]],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "customer_code", "type": "string", "gen": {"type": "pattern", "pattern": "CU-######", "unique": true}},
+        {"name": "first_name", "type": "string"},
+        {"name": "last_name", "type": "string"},
+        {"name": "email", "type": "string", "null_rate": 0.05},
+        {"name": "phone", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "home_region", "type": "string", "gen": "choice:Northeast=0.3,Southeast=0.28,Midwest=0.24,West=0.18"},
+        {"name": "loyalty_tier", "type": "string", "gen": "choice:none=0.55,member=0.25,silver=0.12,gold=0.06,platinum=0.02"},
+        {"name": "marketing_opt_in", "type": "boolean", "gen": "bool:0.57"},
+        {"name": "status", "type": "string", "gen": "choice:active=0.78,lapsed=0.18,closed=0.04"},
+        {"name": "created_at", "type": "timestamp", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.6, "backfill_start": "2018-06-01"}}
+      ]
+    },
+    {
+      "schema": "promo", "name": "promotion", "layer": "source",
+      "purpose": "Promotion calendar; depth tiers match the discount tiers applied on sale lines.",
+      "source_system": "ShelfWise Merchandising",
+      "primary_key": ["promo_id"], "rows": 60, "scale_exempt": true,
+      "columns": [
+        {"name": "promo_id", "type": "integer"},
+        {"name": "promo_code", "type": "string", "gen": {"type": "pattern", "pattern": "PR-2#-###", "unique": true}},
+        {"name": "promo_name", "type": "string", "gen": {"type": "text_template", "templates": ["{promo_name}"]}},
+        {"name": "category", "type": "string", "gen": "choice:apparel=0.26,home=0.16,grocery=0.14,electronics=0.12,toys=0.12,footwear=0.1,beauty=0.1"},
+        {"name": "depth_pct", "type": "integer", "gen": {"type": "choice", "values": [10, 20, 30], "weights": [0.4, 0.38, 0.22]}},
+        {"name": "channel_scope", "type": "string", "gen": "choice:all=0.6,store_only=0.25,web_only=0.15"},
+        {"name": "start_date", "type": "date"},
+        {"name": "end_date", "type": "date", "gen": {"type": "date_offset", "from": "start_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 12, "sigma": 0.5, "min": 3, "max": 45}, "clamp_as_of": false, "as": "date"}}
+      ]
+    },
+    {
+      "_note": "Store transactions per customer scale with loyalty tier (platinum ~5.5x of non-members) plus a heavy-tailed per-customer activity weight -> whales. Store assignment uses fk affinity on home_region with a 7% leak (travel shopping). source_stamped supplies ingested_at for the late-TLOG imperfection.",
+      "schema": "pos", "name": "transaction", "layer": "transaction",
+      "purpose": "Store register transactions.", "grain": "one row per store register transaction",
+      "source_system": "TillPoint POS",
+      "primary_key": ["txn_id"], "natural_key": ["txn_number"],
+      "rows": {"per_parent": "crm.customer", "distribution": {"distribution": "lognormal", "median": 3.0, "sigma": 0.85}, "scale_by": {"parent_column": "loyalty_tier", "factors": {"none": 1.0, "member": 1.5, "silver": 2.2, "gold": 3.4, "platinum": 5.5}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.7}, "min": 0, "max": 160},
+      "traits": ["source_stamped"],
+      "indexes": [["customer_id"], ["store_id"], ["txn_ts"]],
+      "columns": [
+        {"name": "txn_id", "type": "integer", "gen": "seq"},
+        {"name": "txn_number", "type": "string", "gen": {"type": "pattern", "pattern": "POS-########", "unique": true}},
+        {"name": "customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "home_region", "type": "string", "gen": {"type": "parent_copy", "source_column": "home_region"}},
+        {"name": "loyalty_tier", "type": "string", "gen": {"type": "parent_copy", "source_column": "loyalty_tier"}},
+        {"name": "store_id", "type": "integer", "gen": {"type": "fk", "ref": "ops.store", "match": {"parent_column": "region", "local_column": "home_region", "leak_rate": 0.07}}},
+        {"name": "cashier", "type": "string", "gen": "staff_user"},
+        {"name": "txn_ts", "type": "timestamp", "_note": "Calendar-weighted (weekend-heavy, Q4 ramp) and never before the customer signed up.", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "status", "type": "string", "gen": "choice:completed=0.985,voided=0.015"},
+        {"name": "manual_override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "_note": "Basket: ~2.4 lines per transaction, quantities mostly 1-2. unit_price is a case on the promo depth flag over the fk_copy'd list price, so discount application is visible line by line and amounts repeat exact price points.",
+      "schema": "pos", "name": "transaction_line", "layer": "transaction",
+      "purpose": "Store transaction lines with promo-tiered pricing.",
+      "grain": "one row per transaction per line number",
+      "source_system": "TillPoint POS",
+      "primary_key": ["line_id"], "natural_key": ["txn_id", "line_number"],
+      "rows": {"per_parent": "pos.transaction", "distribution": {"distribution": "lognormal", "median": 2.0, "sigma": 0.6}, "min": 1, "max": 12},
+      "columns": [
+        {"name": "line_id", "type": "integer", "gen": "seq"},
+        {"name": "txn_id", "type": "integer", "gen": "parent_key"},
+        {"name": "line_number", "type": "integer", "gen": "child_index"},
+        {"name": "product_id", "type": "integer", "_note": "zipf(0.5): popular SKUs lead but the top item stays ~2-4% of lines.", "gen": "fk:merch.product@zipf(0.5)"},
+        {"name": "quantity", "type": "integer", "gen": "int:lognormal(median=1.3,sigma=0.55,min=1,max=9)"},
+        {"name": "list_price", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "merch.product", "source_column": "list_price"}},
+        {"name": "promo_depth", "type": "string", "gen": "choice:none=0.68,promo10=0.12,promo20=0.12,promo30=0.08"},
+        {"name": "promo_multiplier", "type": "decimal", "_note": "Scalar case on the promo flag, then one shared pricing expression — promo application stays visible line by line.", "gen": {"type": "case", "on": "promo_depth", "cases": {"promo10": 0.9, "promo20": 0.8, "promo30": 0.7}, "default": 1.0}},
+        {"name": "unit_price", "type": "decimal", "gen": "expr:round(list_price * promo_multiplier, 2)"},
+        {"name": "extended_amount", "type": "decimal", "gen": "expr:round(quantity * unit_price, 2)"},
+        {"name": "discount_amount", "type": "decimal", "gen": "expr:round(quantity * (list_price - unit_price), 2)"}
+      ]
+    },
+    {
+      "schema": "pos", "name": "tender", "layer": "transaction",
+      "purpose": "Tenders derived from completed transactions; ~8% split across two tenders that sum exactly. Restatement reversals later break the tender-to-transaction recon.",
+      "grain": "one row per tender applied to a completed transaction",
+      "source": "derivation", "primary_key": ["tender_id"],
+      "indexes": [["txn_id"]],
+      "columns": [
+        {"name": "tender_id", "type": "integer"},
+        {"name": "txn_id", "type": "integer"},
+        {"name": "tender_seq", "type": "integer"},
+        {"name": "tender_type", "type": "string"},
+        {"name": "tender_amount", "type": "decimal"},
+        {"name": "adjustment_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Web orders flow through a right-censored fulfillment machine; delivered orders feed the return derivation (web returns run ~16-18% of delivered lines vs ~7% in store). Members shop online disproportionately (scale_by).",
+      "schema": "ecom", "name": "order_header", "layer": "transaction",
+      "purpose": "Web order headers.", "grain": "one row per web order",
+      "source_system": "CartHaven Commerce",
+      "primary_key": ["order_id"], "natural_key": ["order_number"],
+      "rows": {"per_parent": "crm.customer", "distribution": {"distribution": "lognormal", "median": 1.2, "sigma": 0.95}, "scale_by": {"parent_column": "loyalty_tier", "factors": {"none": 1.0, "member": 1.7, "silver": 2.5, "gold": 4.0, "platinum": 7.0}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.8}, "min": 0, "max": 120},
+      "indexes": [["customer_id"], ["order_placed_ts"], ["status"]],
+      "columns": [
+        {"name": "order_id", "type": "integer", "gen": "seq"},
+        {"name": "order_number", "type": "string", "gen": {"type": "pattern", "pattern": "WEB-########", "unique": true}},
+        {"name": "customer_id", "type": "integer", "gen": "parent_key"},
+        {"name": "loyalty_tier", "type": "string", "gen": {"type": "parent_copy", "source_column": "loyalty_tier"}},
+        {"name": "ship_region", "type": "string", "gen": {"type": "parent_copy", "source_column": "home_region"}},
+        {"name": "device", "type": "string", "gen": "choice:mobile=0.55,desktop=0.38,tablet=0.07"},
+        {"name": "order_placed_ts", "type": "timestamp", "gen": {"type": "timestamp", "min": "parent.created_at"}},
+        {"name": "status", "type": "string", "gen": "const:placed"},
+        {"name": "authorized_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "allocated_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "shipped_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "delivered_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "return_requested_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "return_received_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "ecom", "name": "order_line", "layer": "transaction",
+      "purpose": "Web order lines; smaller baskets, deeper promo participation than store.",
+      "grain": "one row per web order per line number",
+      "source_system": "CartHaven Commerce",
+      "primary_key": ["order_line_id"], "natural_key": ["order_id", "line_number"],
+      "rows": {"per_parent": "ecom.order_header", "distribution": {"distribution": "lognormal", "median": 1.5, "sigma": 0.6}, "min": 1, "max": 8},
+      "columns": [
+        {"name": "order_line_id", "type": "integer", "gen": "seq"},
+        {"name": "order_id", "type": "integer", "gen": "parent_key"},
+        {"name": "line_number", "type": "integer", "gen": "child_index"},
+        {"name": "product_id", "type": "integer", "gen": "fk:merch.product@zipf(0.5)"},
+        {"name": "quantity", "type": "integer", "gen": "int:lognormal(median=1.2,sigma=0.5,min=1,max=6)"},
+        {"name": "list_price", "type": "decimal", "gen": {"type": "fk_copy", "column": "product_id", "ref": "merch.product", "source_column": "list_price"}},
+        {"name": "promo_depth", "type": "string", "gen": "choice:none=0.62,promo10=0.12,promo20=0.15,promo30=0.11"},
+        {"name": "promo_multiplier", "type": "decimal", "gen": {"type": "case", "on": "promo_depth", "cases": {"promo10": 0.9, "promo20": 0.8, "promo30": 0.7}, "default": 1.0}},
+        {"name": "unit_price", "type": "decimal", "gen": "expr:round(list_price * promo_multiplier, 2)"},
+        {"name": "extended_amount", "type": "decimal", "gen": "expr:round(quantity * unit_price, 2)"},
+        {"name": "discount_amount", "type": "decimal", "gen": "expr:round(quantity * (list_price - unit_price), 2)"}
+      ]
+    },
+    {
+      "schema": "ecom", "name": "order_event", "layer": "event",
+      "purpose": "Order fulfillment history emitted by the state machine; the OMS webhook disorder imperfection hits this stream.",
+      "grain": "one row per order per state entered",
+      "source": "state_machine",
+      "primary_key": ["order_id", "event_seq"],
+      "indexes": [["order_id"]],
+      "columns": [
+        {"name": "order_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "inv", "name": "stock_snapshot", "layer": "operational",
+      "purpose": "Periodic perpetual-inventory samples per product per store.",
+      "grain": "one row per product per sampled store per snapshot date",
+      "source_system": "ShelfWise Merchandising",
+      "primary_key": ["snapshot_id"],
+      "rows": {"per_parent": "merch.product", "distribution": {"distribution": "poisson", "lam": 28}, "min": 4, "max": 56},
+      "indexes": [["product_id"], ["snapshot_date"]],
+      "columns": [
+        {"name": "snapshot_id", "type": "integer", "gen": "seq"},
+        {"name": "product_id", "type": "integer", "gen": "parent_key"},
+        {"name": "category", "type": "string", "gen": {"type": "parent_copy", "source_column": "category"}},
+        {"name": "store_id", "type": "integer", "gen": "fk:ops.store"},
+        {"name": "snapshot_date", "type": "date"},
+        {"name": "on_hand_units", "type": "integer", "gen": "int:lognormal(median=36,sigma=0.9,min=0,max=800)"},
+        {"name": "on_order_units", "type": "integer", "gen": "int:lognormal(median=10,sigma=0.8,min=0,max=400)"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "exception_case", "layer": "workflow",
+      "purpose": "Exception and review queues fed by the controlled imperfections.",
+      "source_system": "FlowGate Integration Hub",
+      "primary_key": ["case_id"], "rows": 150, "traits": ["audited"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-#####", "unique": true}},
+        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.24,tender_recon_break=0.26,blind_return_review=0.18,price_override_audit=0.17,inventory_count_variance=0.15"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "tender_recon_break": "sales_audit", "blind_return_review": "loss_prevention", "price_override_audit": "store_ops", "inventory_count_variance": "inventory_control"}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.32,medium=0.48,high=0.2"},
+        {"name": "related_entity", "type": "string", "gen": "pattern:ENT-######"},
+        {"name": "status", "type": "string", "gen": "const:open"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case_event", "layer": "workflow",
+      "purpose": "Case status history.",
+      "grain": "one row per case per state entered",
+      "source": "state_machine",
+      "primary_key": ["case_id", "event_seq"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Batch job run log.",
+      "primary_key": ["run_id"], "rows": 800,
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": "choice:pos_tlog_load=0.28,ecom_order_sync=0.22,loyalty_member_extract=0.18,merch_item_sync=0.14,warehouse_refresh=0.18"},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=5000,sigma=1.0,min=0)"},
+        {"name": "error_note", "type": "string", "null_rate": 0.85, "gen": "text:exception_note"}
+      ]
+    },
+    {
+      "_note": "Execution log for the recon control — run metadata only (no break counts), so it cannot contradict the live break view.",
+      "schema": "control", "name": "control_run", "layer": "control",
+      "purpose": "Daily execution log for the tender-to-transaction reconciliation control.",
+      "source_system": "FlowGate Integration Hub",
+      "primary_key": ["run_id"], "rows": 700,
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": "const:CTL-001"},
+        {"name": "run_date", "type": "date"},
+        {"name": "items_checked", "type": "integer", "gen": "int:lognormal(median=35,sigma=0.5,min=0,max=400)"},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.97,failed=0.03"},
+        {"name": "runtime_seconds", "type": "integer", "gen": "int:lognormal(median=22,sigma=0.6,min=2,max=600)"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 6, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active customer missing email", "2": "sale line references unknown product", "3": "active customer missing POS crosswalk", "4": "unparseable raw loyalty signup date", "5": "fulfillment events out of sequence", "6": "return line missing original sale line"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.customer", "2": "pos.transaction_line", "3": "xref.entity_identifier", "4": "raw.loyalty_member_extract", "5": "ecom.order_event", "6": "ret.return_line"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning", "5": "warning", "6": "error"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "_note": "Everything below is populated by SQL derivations — real lineage from the source rows above.",
+      "schema": "raw", "name": "loyalty_member_extract", "layer": "raw",
+      "purpose": "Nightly loyalty extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["member_id"],
+      "columns": [
+        {"name": "member_id", "type": "string"},
+        {"name": "full_name", "type": "string"},
+        {"name": "home_region", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "source_signup_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "customer", "layer": "staging",
+      "purpose": "Cleaned customers; normalizes the raw extract's US dates (drift-corrupted dates become NULL and DQ-004 catches the raw rows).",
+      "source": "derivation", "primary_key": ["customer_id"],
+      "columns": [
+        {"name": "customer_id", "type": "integer"},
+        {"name": "full_name", "type": "string"},
+        {"name": "home_region", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "signup_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "xref", "name": "entity_identifier", "layer": "xref",
+      "purpose": "Crosswalk of canonical customers to POS, web, and loyalty identifiers.",
+      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "columns": [
+        {"name": "entity_identifier_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_entity_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "customer", "layer": "canonical",
+      "purpose": "Canonical customer joining staging and the crosswalk; pos_customer_ref is NULL where the xref row was lost.",
+      "source": "derivation", "primary_key": ["customer_uid"],
+      "columns": [
+        {"name": "customer_uid", "type": "integer"},
+        {"name": "full_name", "type": "string"},
+        {"name": "home_region", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "signup_date", "type": "date", "nullable": true},
+        {"name": "pos_customer_ref", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "core", "name": "product", "layer": "canonical",
+      "purpose": "Canonical product.",
+      "source": "derivation", "primary_key": ["product_uid"],
+      "columns": [
+        {"name": "product_uid", "type": "integer"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "unit_cost", "type": "decimal"},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "ret", "name": "return_line", "layer": "transaction",
+      "purpose": "Returned sale lines derived from delivered web orders (~16-18% of delivered lines) and a 1-in-14 slice of completed store lines (~7%) — channel return economics by construction. ~1% of store return lines deliberately reference a missing sale line (blind returns) for DQ-006.",
+      "grain": "one row per returned sale line",
+      "source": "derivation", "primary_key": ["return_line_id"],
+      "indexes": [["return_id"], ["product_id"]],
+      "columns": [
+        {"name": "return_line_id", "type": "integer"},
+        {"name": "return_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "sale_line_id", "type": "integer"},
+        {"name": "product_id", "type": "integer"},
+        {"name": "quantity_returned", "type": "integer"},
+        {"name": "refund_amount", "type": "decimal"},
+        {"name": "return_reason", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "return_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "ret", "name": "return_header", "layer": "transaction",
+      "purpose": "Return events aggregated from return lines; store returns carry the store, web returns the return center.",
+      "grain": "one row per return event",
+      "source": "derivation", "primary_key": ["return_id"],
+      "indexes": [["customer_id"], ["return_date"]],
+      "columns": [
+        {"name": "return_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "store_id", "type": "integer", "nullable": true},
+        {"name": "return_date", "type": "date"},
+        {"name": "status", "type": "string"},
+        {"name": "refund_total", "type": "decimal"},
+        {"name": "line_count", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_customer", "layer": "warehouse_dimension",
+      "purpose": "Customer dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["customer_key"],
+      "columns": [
+        {"name": "customer_key", "type": "integer"},
+        {"name": "full_name", "type": "string"},
+        {"name": "home_region", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_product", "layer": "warehouse_dimension",
+      "purpose": "Product dimension.",
+      "source": "derivation", "primary_key": ["product_key"],
+      "columns": [
+        {"name": "product_key", "type": "integer"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"},
+        {"name": "list_price", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_store", "layer": "warehouse_dimension",
+      "purpose": "Store dimension.",
+      "source": "derivation", "primary_key": ["store_key"],
+      "columns": [
+        {"name": "store_key", "type": "integer"},
+        {"name": "store_code", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "store_format", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_loyalty_tier", "layer": "warehouse_dimension",
+      "purpose": "Loyalty tier dimension.",
+      "source": "derivation", "primary_key": ["tier_key"],
+      "columns": [
+        {"name": "tier_key", "type": "integer"},
+        {"name": "tier_name", "type": "string"},
+        {"name": "annual_spend_threshold", "type": "integer"},
+        {"name": "points_multiplier", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_sales_line", "layer": "warehouse_fact",
+      "purpose": "Unified sale line fact across store and web; margin is NULL for orphaned SKUs (unreportable, as in life).",
+      "grain": "one row per sale line across store and web channels",
+      "source": "derivation", "primary_key": ["sale_line_uid"],
+      "indexes": [["sale_date"], ["customer_key"], ["product_key"], ["channel"]],
+      "columns": [
+        {"name": "sale_line_uid", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "sale_ref", "type": "integer"},
+        {"name": "sale_date", "type": "date"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "store_key", "type": "integer", "nullable": true},
+        {"name": "product_key", "type": "integer"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "promo_depth", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "gross_amount", "type": "decimal"},
+        {"name": "discount_amount", "type": "decimal"},
+        {"name": "net_amount", "type": "decimal"},
+        {"name": "cost_amount", "type": "decimal", "nullable": true},
+        {"name": "margin_amount", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_return_line", "layer": "warehouse_fact",
+      "purpose": "Return line fact.",
+      "grain": "one row per returned line",
+      "source": "derivation", "primary_key": ["return_line_key"],
+      "indexes": [["return_date"], ["customer_key"], ["product_key"]],
+      "columns": [
+        {"name": "return_line_key", "type": "integer"},
+        {"name": "return_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "return_date", "type": "date"},
+        {"name": "customer_key", "type": "integer"},
+        {"name": "store_key", "type": "integer", "nullable": true},
+        {"name": "product_key", "type": "integer"},
+        {"name": "quantity_returned", "type": "integer"},
+        {"name": "refund_amount", "type": "decimal"},
+        {"name": "return_reason", "type": "string"},
+        {"name": "disposition", "type": "string"}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "name": "ecom_order_fulfillment",
+      "_note": "Right-censored: orders near the as_of date legitimately sit in placed/allocated/shipped with NULL downstream timestamps. delivered->return_requested feeds the web return derivation, so the web return rate is a lifecycle outcome, not a dice roll.",
+      "table": "ecom.order_header",
+      "status_column": "status",
+      "start_column": "order_placed_ts",
+      "entry_state": "placed",
+      "states": ["placed", "payment_authorized", "auth_declined", "allocated", "picked", "shipped", "delivered", "delivery_exception", "return_requested", "returned", "return_abandoned", "completed", "cancelled_oos", "cancelled_by_customer"],
+      "transitions": [
+        {"from": "placed", "to": "payment_authorized", "probability": 0.96, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.8, "unit": "minutes"}},
+        {"from": "placed", "to": "auth_declined", "probability": 0.04, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.8, "unit": "minutes"}},
+        {"from": "payment_authorized", "to": "allocated", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.9, "unit": "hours"}},
+        {"from": "payment_authorized", "to": "cancelled_oos", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "hours"}},
+        {"from": "allocated", "to": "picked", "probability": 0.985, "dwell": {"distribution": "lognormal", "median": 7, "sigma": 0.6, "unit": "hours"}},
+        {"from": "allocated", "to": "cancelled_by_customer", "probability": 0.015, "dwell": {"distribution": "lognormal", "median": 12, "sigma": 0.7, "unit": "hours"}},
+        {"from": "picked", "to": "shipped", "probability": 0.995, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 0.5, "unit": "hours"}},
+        {"from": "shipped", "to": "delivered", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.5, "unit": "days"}},
+        {"from": "shipped", "to": "delivery_exception", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.5, "unit": "days"}},
+        {"from": "delivery_exception", "to": "delivered", "probability": 0.88, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.5, "unit": "days"}},
+        {"from": "delivered", "to": "completed", "probability": 0.76, "dwell": {"distribution": "lognormal", "median": 16, "sigma": 0.4, "unit": "days"}},
+        {"from": "delivered", "to": "return_requested", "probability": 0.24, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 0.7, "unit": "days"}},
+        {"from": "return_requested", "to": "returned", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 7, "sigma": 0.5, "unit": "days"}},
+        {"from": "return_requested", "to": "return_abandoned", "probability": 0.07, "dwell": {"distribution": "lognormal", "median": 20, "sigma": 0.5, "unit": "days"}}
+      ],
+      "timestamp_columns": {"payment_authorized": "authorized_at", "allocated": "allocated_at", "shipped": "shipped_at", "delivered": "delivered_at", "return_requested": "return_requested_at", "returned": "return_received_at"},
+      "history_table": "ecom.order_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "name": "case_lifecycle",
+      "table": "workflow.exception_case",
+      "status_column": "status",
+      "start_column": "created_at",
+      "entry_state": "open",
+      "states": ["open", "triaged", "in_review", "escalated", "resolved"],
+      "transitions": [
+        {"from": "open", "to": "triaged", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "in_review", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_review", "to": "resolved", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_review", "to": "escalated", "probability": 0.12, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 8, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "resolved": "resolved_at"},
+      "history_table": "workflow.case_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_loyalty_member_extract",
+      "_note": "Raw landing copy with US-format dates; format_drift later corrupts a slice, which the staging parse turns into NULL signup dates and DQ-004 flags.",
+      "sql": [
+        "insert into raw.loyalty_member_extract",
+        "select cast(customer_id as text), first_name || ' ' || last_name, home_region, loyalty_tier, status,",
+        "       strftime('%m/%d/%Y', created_at), 'BATCH-NIGHTLY-LOYALTY'",
+        "from crm.customer;"
+      ]
+    },
+    {
+      "name": "stg_customer",
+      "sql": [
+        "insert into stg.customer",
+        "select cast(member_id as integer), trim(full_name), home_region, lower(loyalty_tier), lower(status),",
+        "       case when source_signup_date like '__/__/____'",
+        "            then substr(source_signup_date,7,4) || '-' || substr(source_signup_date,1,2) || '-' || substr(source_signup_date,4,2)",
+        "            else null end",
+        "from raw.loyalty_member_extract;"
+      ]
+    },
+    {
+      "name": "xref_entity_identifier",
+      "_note": "Three source identities per customer (loyalty members only get the third) — a crosswalk that maps a single system is not a crosswalk.",
+      "sql": [
+        "insert into xref.entity_identifier",
+        "select row_number() over (order by customer_id), 'customer', customer_id,",
+        "       'TillPoint POS', 'pos_customer', 'POS-' || printf('%06d', customer_id), date(created_at), null, 1",
+        "from crm.customer;",
+        "insert into xref.entity_identifier",
+        "select 200000 + row_number() over (order by customer_id), 'customer', customer_id,",
+        "       'CartHaven Commerce', 'web_account', 'WEB-' || printf('%06d', customer_id), date(created_at), null, 1",
+        "from crm.customer;",
+        "insert into xref.entity_identifier",
+        "select 400000 + row_number() over (order by customer_id), 'customer', customer_id,",
+        "       'LoopRewards Loyalty', 'member', 'LM-' || printf('%06d', customer_id), date(created_at), null, 1",
+        "from crm.customer where loyalty_tier != 'none';"
+      ]
+    },
+    {
+      "name": "core_customer",
+      "sql": [
+        "insert into core.customer",
+        "select s.customer_id, s.full_name, s.home_region, s.loyalty_tier, s.status, s.signup_date,",
+        "       (select x.source_record_id from xref.entity_identifier x",
+        "         where x.canonical_entity_id = s.customer_id and x.source_system = 'TillPoint POS'",
+        "           and x.active_flag = 1 limit 1)",
+        "from stg.customer s;"
+      ]
+    },
+    {
+      "name": "core_product",
+      "sql": [
+        "insert into core.product",
+        "select product_id, sku, product_name, category, list_price, unit_cost, active_flag",
+        "from merch.product;"
+      ]
+    },
+    {
+      "name": "pos_tender",
+      "_note": "Single tender for most completed transactions; every 12th splits 60/40 across two tenders that sum exactly. The tender restatement imperfection later breaks the recon for ~0.6% of tenders.",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into pos.tender",
+        "with totals as (",
+        "  select t.txn_id, round(sum(l.extended_amount), 2) as txn_total",
+        "  from pos.transaction t join pos.transaction_line l on l.txn_id = t.txn_id",
+        "  where t.status = 'completed' group by t.txn_id",
+        ")",
+        "select row_number() over (order by txn_id), txn_id, 1,",
+        "       case when txn_id % 100 < 58 then 'card' when txn_id % 100 < 81 then 'cash'",
+        "            when txn_id % 100 < 92 then 'gift_card' else 'wallet' end,",
+        "       case when txn_id % 12 = 0 then round(txn_total * 0.6, 2) else txn_total end,",
+        "       null",
+        "from totals;",
+        "insert into pos.tender",
+        "with totals as (",
+        "  select t.txn_id, round(sum(l.extended_amount), 2) as txn_total",
+        "  from pos.transaction t join pos.transaction_line l on l.txn_id = t.txn_id",
+        "  where t.status = 'completed' group by t.txn_id",
+        ")",
+        "select 5000000 + row_number() over (order by txn_id), txn_id, 2,",
+        "       case when txn_id % 3 = 0 then 'gift_card' when txn_id % 3 = 1 then 'card' else 'cash' end,",
+        "       round(txn_total - round(txn_total * 0.6, 2), 2), null",
+        "from totals where txn_id % 12 = 0;"
+      ]
+    },
+    {
+      "name": "ret_return_line",
+      "_note": "Store: 1-in-14 slice of completed store lines (~7%), returned 1-42 days after purchase, window clipped at as_of. Web: lines of orders whose return was received via the state machine, ~83% line participation -> ~16-18% of delivered web lines after right-censoring. Every 97th store return line points at a non-existent sale line (blind return) for DQ-006.",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into ret.return_line",
+        "select l.line_id, 1000000 + t.txn_id, 'store',",
+        "       case when l.line_id % 97 = 0 then l.line_id + 9000000 else l.line_id end,",
+        "       l.product_id,",
+        "       case when l.quantity > 1 and l.line_id % 5 = 0 then l.quantity - 1 else l.quantity end,",
+        "       round(l.unit_price * (case when l.quantity > 1 and l.line_id % 5 = 0 then l.quantity - 1 else l.quantity end), 2),",
+        "       case l.line_id % 6 when 0 then 'defective' when 1 then 'wrong_item' when 2 then 'changed_mind'",
+        "            when 3 then 'better_price_found' when 4 then 'gift_return' else 'fit_or_size' end,",
+        "       case when l.line_id % 10 < 7 then 'restock' when l.line_id % 10 < 9 then 'salvage_damage' else 'return_to_vendor' end,",
+        "       date(t.txn_ts, '+' || (1 + (l.line_id * 7) % 42) || ' days')",
+        "from pos.transaction_line l join pos.transaction t on t.txn_id = l.txn_id",
+        "where t.status = 'completed' and l.line_id % 14 = 0",
+        "  and date(t.txn_ts, '+' || (1 + (l.line_id * 7) % 42) || ' days') <= '2025-12-31';",
+        "insert into ret.return_line",
+        "select 5000000 + l.order_line_id, o.order_id, 'web', l.order_line_id, l.product_id,",
+        "       case when l.quantity > 1 and l.order_line_id % 6 = 0 then l.quantity - 1 else l.quantity end,",
+        "       round(l.unit_price * (case when l.quantity > 1 and l.order_line_id % 6 = 0 then l.quantity - 1 else l.quantity end), 2),",
+        "       case l.order_line_id % 6 when 0 then 'fit_or_size' when 1 then 'not_as_described' when 2 then 'changed_mind'",
+        "            when 3 then 'arrived_damaged' when 4 then 'late_delivery' else 'wrong_item' end,",
+        "       case when l.order_line_id % 10 < 6 then 'restock' when l.order_line_id % 10 < 9 then 'salvage_damage' else 'return_to_vendor' end,",
+        "       date(o.return_received_at)",
+        "from ecom.order_line l join ecom.order_header o on o.order_id = l.order_id",
+        "where o.return_received_at is not null and l.order_line_id % 6 != 0;"
+      ]
+    },
+    {
+      "name": "ret_return_header",
+      "sql": [
+        "insert into ret.return_header",
+        "select rl.return_id, 'store', t.customer_id, t.store_id, min(rl.return_date),",
+        "       case when rl.return_id % 19 = 0 then 'pending_refund' else 'refunded' end,",
+        "       round(sum(rl.refund_amount), 2), count(*)",
+        "from ret.return_line rl join pos.transaction t on t.txn_id = rl.return_id - 1000000",
+        "where rl.channel = 'store'",
+        "group by rl.return_id, t.customer_id, t.store_id;",
+        "insert into ret.return_header",
+        "select rl.return_id, 'web', o.customer_id, null, min(rl.return_date),",
+        "       case when rl.return_id % 19 = 0 then 'pending_refund' else 'refunded' end,",
+        "       round(sum(rl.refund_amount), 2), count(*)",
+        "from ret.return_line rl join ecom.order_header o on o.order_id = rl.return_id",
+        "where rl.channel = 'web'",
+        "group by rl.return_id, o.customer_id;"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_customer",
+      "sql": [
+        "insert into wh.dim_customer",
+        "select customer_uid, full_name, home_region, loyalty_tier, status from core.customer;"
+      ]
+    },
+    {
+      "name": "wh_dim_product",
+      "sql": [
+        "insert into wh.dim_product",
+        "select product_uid, sku, product_name, category, list_price from core.product;"
+      ]
+    },
+    {
+      "name": "wh_dim_store",
+      "sql": [
+        "insert into wh.dim_store",
+        "select store_id, store_code, region, store_format, city, state from ops.store;"
+      ]
+    },
+    {
+      "name": "wh_dim_loyalty_tier",
+      "sql": [
+        "insert into wh.dim_loyalty_tier",
+        "select tier_id, tier_name, annual_spend_threshold, points_multiplier from loyal.tier;"
+      ]
+    },
+    {
+      "name": "wh_fact_sales_line",
+      "_note": "Union of completed store lines and non-cancelled web lines. Orphaned SKUs left-join to NULL cost, so their margin is genuinely unreportable downstream.",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into wh.fact_sales_line",
+        "select l.line_id, 'store', t.txn_id, date(t.txn_ts), t.customer_id, t.store_id, l.product_id,",
+        "       t.loyalty_tier, l.promo_depth, l.quantity, l.list_price, l.unit_price,",
+        "       round(l.quantity * l.list_price, 2), l.discount_amount, l.extended_amount,",
+        "       round(l.quantity * p.unit_cost, 2), round(l.extended_amount - l.quantity * p.unit_cost, 2)",
+        "from pos.transaction_line l",
+        "join pos.transaction t on t.txn_id = l.txn_id",
+        "left join merch.product p on p.product_id = l.product_id",
+        "where t.status = 'completed';",
+        "insert into wh.fact_sales_line",
+        "select 5000000 + l.order_line_id, 'web', o.order_id, date(o.order_placed_ts), o.customer_id, null, l.product_id,",
+        "       o.loyalty_tier, l.promo_depth, l.quantity, l.list_price, l.unit_price,",
+        "       round(l.quantity * l.list_price, 2), l.discount_amount, l.extended_amount,",
+        "       round(l.quantity * p.unit_cost, 2), round(l.extended_amount - l.quantity * p.unit_cost, 2)",
+        "from ecom.order_line l",
+        "join ecom.order_header o on o.order_id = l.order_id",
+        "left join merch.product p on p.product_id = l.product_id",
+        "where o.status not in ('auth_declined', 'cancelled_oos', 'cancelled_by_customer');"
+      ]
+    },
+    {
+      "name": "wh_fact_return_line",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into wh.fact_return_line",
+        "select rl.return_line_id, rl.return_id, rl.channel, rl.return_date, rh.customer_id, rh.store_id,",
+        "       rl.product_id, rl.quantity_returned, rl.refund_amount, rl.return_reason, rl.disposition",
+        "from ret.return_line rl join ret.return_header rh on rh.return_id = rl.return_id;"
+      ]
+    },
+    {
+      "name": "mart_sales_daily",
+      "sql": [
+        "create view mart_sales_daily as",
+        "select sale_date, channel, count(distinct sale_ref) as transactions, sum(quantity) as units,",
+        "       round(sum(gross_amount), 2) as gross_sales, round(sum(discount_amount), 2) as promo_discount,",
+        "       round(sum(net_amount), 2) as net_sales",
+        "from wh.fact_sales_line",
+        "group by sale_date, channel;"
+      ]
+    },
+    {
+      "name": "mart_returns_daily",
+      "sql": [
+        "create view mart_returns_daily as",
+        "select return_date, channel, count(distinct return_id) as returns, sum(quantity_returned) as units_returned,",
+        "       round(sum(refund_amount), 2) as refund_total",
+        "from wh.fact_return_line",
+        "group by return_date, channel;"
+      ]
+    },
+    {
+      "name": "mart_promotion_performance",
+      "sql": [
+        "create view mart_promotion_performance as",
+        "select channel, promo_depth, count(*) as line_count, sum(quantity) as units,",
+        "       round(sum(gross_amount), 2) as gross_sales, round(sum(discount_amount), 2) as promo_discount,",
+        "       round(sum(net_amount), 2) as net_sales",
+        "from wh.fact_sales_line",
+        "group by channel, promo_depth;"
+      ]
+    },
+    {
+      "name": "control_recon_tender_to_transaction",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation imperfections: tender restatement reversals create the breaks.",
+      "sql": [
+        "create view control_recon_tender_to_transaction as",
+        "select lt.txn_id, lt.txn_total, tt.tender_total, round(tt.tender_total - lt.txn_total, 2) as break_amount",
+        "from (select l.txn_id, round(sum(l.extended_amount), 2) as txn_total",
+        "      from pos.transaction_line l join pos.transaction t on t.txn_id = l.txn_id",
+        "      where t.status = 'completed' group by l.txn_id) lt",
+        "join (select txn_id, round(sum(tender_amount), 2) as tender_total",
+        "      from pos.tender group by txn_id) tt on tt.txn_id = lt.txn_id",
+        "where abs(tt.tender_total - lt.txn_total) > 0.01;"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'active customer missing email' as issue, cast(customer_id as text) as entity_id",
+        "from crm.customer where status = 'active' and (email is null or email = '')",
+        "union all",
+        "select 'DQ-002', 'sale line references unknown product', cast(l.line_id as text)",
+        "from pos.transaction_line l",
+        "where not exists (select 1 from merch.product p where p.product_id = l.product_id)",
+        "union all",
+        "select 'DQ-003', 'active customer missing POS crosswalk', cast(c.customer_id as text)",
+        "from crm.customer c",
+        "where c.status = 'active' and not exists (",
+        "  select 1 from xref.entity_identifier x",
+        "  where x.source_system = 'TillPoint POS' and x.canonical_entity_id = c.customer_id and x.active_flag = 1)",
+        "union all",
+        "select 'DQ-004', 'unparseable raw loyalty signup date', member_id",
+        "from raw.loyalty_member_extract where source_signup_date not like '__/__/____'",
+        "union all",
+        "select distinct 'DQ-005', 'fulfillment events out of sequence', cast(e1.order_id as text)",
+        "from ecom.order_event e1",
+        "join ecom.order_event e2 on e2.order_id = e1.order_id and e2.event_seq = e1.event_seq + 1",
+        "where e2.entered_at < e1.entered_at",
+        "union all",
+        "select 'DQ-006', 'return line missing original sale line', cast(rl.return_line_id as text)",
+        "from ret.return_line rl",
+        "where (rl.channel = 'store' and not exists (select 1 from pos.transaction_line p where p.line_id = rl.sale_line_id))",
+        "   or (rl.channel = 'web' and not exists (select 1 from ecom.order_line w where w.order_line_id = rl.sale_line_id));"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "customer_name_typos", "type": "typo", "table": "crm.customer", "rate": 0.015, "stage": "pre_derivation", "params": {"column": "last_name"}, "scenario": "Associates hand-key names at in-store signup; typos feed the duplicate review queue."},
+    {"name": "duplicate_loyalty_members", "type": "duplicate_entity", "table": "crm.customer", "rate": 0.012, "stage": "pre_derivation", "params": {"fuzz_columns": ["last_name", "phone"]}, "scenario": "Email vs phone signups split identities; MDM duplicate_customer_review queue works these."},
+    {"name": "pos_offline_tlog_late", "type": "late_arrival", "table": "pos.transaction", "rate": 0.035, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8}}, "scenario": "Offline-mode store registers batch up and post 1-3 days late; daily flash vs final sales mismatch."},
+    {"name": "orphan_sale_lines", "type": "orphan_fk", "table": "pos.transaction_line", "rate": 0.004, "stage": "pre_derivation", "params": {"column": "product_id"}, "scenario": "Discontinued SKUs hard-deleted from the item master; DQ-002 flags the lines and their margin is unreportable in the fact."},
+    {"name": "pos_price_overrides", "type": "manual_override", "table": "pos.transaction", "rate": 0.012, "stage": "pre_derivation", "params": {"column": "manual_override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Cashier price/tender overrides with supervisor codes; store_ops price_override_audit queue reviews them."},
+    {"name": "raw_signup_date_drift", "type": "format_drift", "table": "raw.loyalty_member_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_signup_date", "format": "padded"}, "scenario": "Loyalty extract patch pads dates differently; staging parse nulls them and DQ-004 catches the raw rows."},
+    {"name": "missing_pos_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Crosswalk rows lost in the 2024 loyalty re-platform; DQ-003 counts unmapped active customers."},
+    {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired identifier mappings never re-pointed; data stewards triage."},
+    {"name": "tender_restatements", "type": "restatement_reversal", "table": "pos.tender", "rate": 0.006, "stage": "post_derivation", "params": {"amount_columns": ["tender_amount"], "reason_column": "adjustment_note"}, "scenario": "Post-void and re-ring corrections land as reversal + restated tender pairs; control_recon_tender_to_transaction breaks on them."},
+    {"name": "oms_event_disorder", "type": "out_of_order_events", "table": "ecom.order_event", "rate": 0.012, "stage": "pre_derivation", "params": {"sequence_column": "event_seq", "group_column": "order_id"}, "scenario": "OMS webhook stream delivers fulfillment events out of order; DQ-005 flags shipped-before-picked sequences."},
+    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries double-log batch runs."},
+    {"name": "customer_email_gaps", "type": "null_field", "table": "crm.customer", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "email"}, "scenario": "Kiosk signups skip email capture; DQ-001 counts active customers without one."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Tender totals tie to transaction totals", "source_dataset": "pos.transaction_line", "target_dataset": "pos.tender", "grain": "txn_id", "tolerance": "0.01", "frequency": "daily", "owner": "sales_audit", "severity": "high", "expected_break_rate": "~0.6% of completed transactions (tender restatement reversals)", "break_view": "control_recon_tender_to_transaction"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "crm.customer", "rule_type": "required_field", "condition": "active customers have email", "severity": "warning", "expected_failure_rate": 0.07},
+    {"rule_id": "DQ-002", "dataset": "pos.transaction_line", "rule_type": "fk_exists", "condition": "product exists in item master", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every active customer mapped to a POS identifier", "severity": "error", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-004", "dataset": "raw.loyalty_member_extract", "rule_type": "format", "condition": "signup date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-005", "dataset": "ecom.order_event", "rule_type": "sequence", "condition": "event timestamps non-decreasing within an order", "severity": "warning", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-006", "dataset": "ret.return_line", "rule_type": "fk_exists", "condition": "return line references an original sale line", "severity": "error", "expected_failure_rate": 0.01}
+  ],
+  "dataflows": [
+    {"name": "customer_mastering", "sequence": "crm.customer (LoopRewards) -> raw.loyalty_member_extract -> stg.customer -> xref.entity_identifier -> core.customer -> wh.dim_customer"},
+    {"name": "store_sales", "sequence": "pos.transaction/transaction_line -> pos.tender -> wh.fact_sales_line -> mart_sales_daily / control_recon_tender_to_transaction"},
+    {"name": "ecom_order_to_deliver", "sequence": "ecom.order_header -> fulfillment state machine -> ecom.order_event -> wh.fact_sales_line"},
+    {"name": "returns", "sequence": "delivered web orders + completed store line slice -> ret.return_line/return_header -> wh.fact_return_line -> mart_returns_daily"}
+  ],
+  "validation": {
+    "required_views": ["mart_sales_daily", "mart_returns_daily", "mart_promotion_performance", "control_recon_tender_to_transaction", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "crm.customer": [2700, 3400],
+      "pos.transaction": [10000, 65000],
+      "pos.transaction_line": [25000, 170000],
+      "ecom.order_header": [5000, 35000],
+      "wh.fact_sales_line": [28000, 220000]
+    }
+  }
+}
