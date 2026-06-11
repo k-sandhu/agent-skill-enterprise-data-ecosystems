@@ -1,0 +1,1099 @@
+{
+  "_note": "Worked example: Ironvale Equipment Works, a fictional discrete manufacturer of industrial equipment. Distinctives vs the harborline example: a self_fk part hierarchy (the one example that showcases it), an scd2 standard-cost history on the ERP item master, BOM-driven material consumption derived from work orders x BOM, lot genealogy with a completeness control, case-conditioned yield/defect rates by work center, and an OEE mart. Keys starting with '_' are comments and are stripped before validation.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Ironvale Equipment Works",
+    "archetype": "discrete_manufacturing",
+    "industry": "Discrete manufacturing - industrial equipment",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 37,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "Plant runs Mon-Fri two shifts with Saturday overtime and a Sunday maintenance window; July dips for summer shutdown, quarter-end months push.",
+    "weekday_weights": [1.02, 1.05, 1.05, 1.02, 0.98, 0.42, 0.16],
+    "month_weights": [0.96, 0.98, 1.09, 0.99, 1.01, 1.1, 0.8, 0.97, 1.08, 1.01, 1.04, 1.06],
+    "holidays": ["2024-01-01", "2024-05-27", "2024-07-04", "2024-09-02", "2024-11-28", "2024-12-25", "2025-01-01", "2025-05-26", "2025-07-04", "2025-09-01", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.05,
+    "business_hours": [6, 22]
+  },
+  "vocab": {
+    "_note": "Per-part-type name pools so part names stay coherent with part_type (a finished good never reads like bar stock).",
+    "fg_part": ["Axial Flow Compressor", "Rotary Screw Air Compressor", "Industrial Gear Reducer", "Hydraulic Power Unit", "Conveyor Drive Station", "Vertical Turbine Pump", "Servo Press Cell", "Pallet Wrapping Machine", "Vibratory Bowl Feeder", "CNC Indexing Table", "Heavy-Duty Winch Assembly", "Centrifugal Blower Unit", "Dust Collection Skid", "Chain Hoist System"],
+    "sub_part": ["Gearbox Housing Subassembly", "Hydraulic Manifold Block", "Control Cabinet Harness", "Drive Shaft Module", "Impeller Rotor Pack", "Bearing Carrier Cartridge", "Lubrication Pump Module", "Operator Console Frame", "Motor Mount Weldment", "Valve Stack Assembly", "Cooling Loop Module", "Brake Caliper Pack"],
+    "comp_part": ["Helical Gear 24T", "Sealed Ball Bearing 6204", "Hex Flange Bolt M10", "O-Ring Viton 45mm", "Pressure Relief Valve 3000psi", "Shaft Key 8x7", "Timing Belt HTD-8M", "Proximity Sensor M12", "Terminal Block 6-Pole", "Hydraulic Hose 3-8in", "Spur Pinion 16T", "Lip Seal 52mm", "Cable Gland M20", "Spring Washer M12", "Coupling Insert NBR"],
+    "raw_part": ["Cold Rolled Steel Sheet 2mm", "6061 Aluminum Bar Stock", "Ductile Iron Casting Blank", "4140 Alloy Round Bar", "Stainless Plate 304 6mm", "Copper Bus Bar Stock", "ABS Pellet Resin", "Powder Coat Polyester Gray", "Weld Wire ER70S-6", "Hydraulic Oil ISO 46"],
+    "inspection_note": ["Dimensional check within tolerance.", "Surface finish marginal on second sample.", "Burr found on edge, deburred and passed.", "Torque spec verified on all fasteners.", "Weld penetration acceptable per WPS.", "Paint thickness low on one panel.", "Re-measured after gauge recalibration.", "Operator flagged intermittent fit issue.", "First article approved by quality engineer.", "Sample pulled at shift change."],
+    "downtime_note": ["Waiting on maintenance tech.", "Coolant leak contained, cleanup done.", "Tool change took longer than standard.", "Upstream starvation from press cell.", "PLC fault cleared after reboot.", "Operator meeting overran.", "Chuck alignment re-checked.", "Hydraulic pressure dropped below setpoint."]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "CrucibleWorks PLM", "2": "ForgeLine ERP", "3": "ShopPulse MES", "4": "GearGuard CMMS", "5": "Ironvale Data Warehouse", "6": "FlowForge Integration Hub", "7": "Insight BI Portal", "8": "TraceVault Quality Archive"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "PLM", "2": "ERP", "3": "MES", "4": "CMMS", "5": "warehouse", "6": "integration", "7": "BI", "8": "archive"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "part/BOM design", "2": "items/work orders/costing", "3": "shop-floor execution/quality", "4": "assets/maintenance", "5": "reporting", "6": "integration", "7": "dashboards", "8": "quality records"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.5,tier2=0.4,tier3=0.1"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "schema": "control", "name": "control_catalog", "layer": "control",
+      "purpose": "Reconciliation control definitions; break populations come from the control/DQ views.",
+      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "columns": [
+        {"name": "control_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Material consumption vs BOM standard", "2": "Lot genealogy completeness", "3": "Finished lots tie to completed work orders"}}},
+        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "work order x component", "2": "material issue", "3": "produced lot"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "5% of standard quantity", "2": "existence", "3": "existence"}}},
+        {"name": "frequency", "type": "string", "gen": "const:daily"},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_consumption_vs_bom", "2": "dq_rule_result_current", "3": "dq_rule_result_current"}}}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 12, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active item missing standard cost", "2": "operation references unknown machine", "3": "part missing source crosswalk coverage", "4": "unparseable raw PLM extract date", "5": "lot-controlled issue missing genealogy edge", "6": "negative operation cycle time", "7": "duplicate downtime delivery", "8": "duplicate inspection entry", "9": "asset name drift vs MES machine master", "10": "BOM component equals its assembly", "11": "work order carries manual quality override", "12": "MES feed ingested more than 5 days late"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "erp.item", "2": "mes.operation", "3": "xref.item_identifier", "4": "raw.plm_item_extract", "5": "inventory.lot_genealogy", "6": "mes.operation", "7": "mes.downtime_event", "8": "quality.inspection", "9": "cmms.asset", "10": "plm.bom_component", "11": "production.work_order", "12": "mes.operation"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "error", "11": "warning", "12": "warning"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "_note": "PLM part master with a self_fk where-used hierarchy: parent_part_id always points at an EARLIER (lower-id, older) part, so the hierarchy is a DAG by construction. introduced_at is sorted with 70% pre-horizon backfill, so part ids correlate with engineering age and in-window activity does not ramp from zero.",
+      "schema": "plm", "name": "part", "layer": "source",
+      "purpose": "Engineering part master across all part types (FG, subassembly, component, raw).",
+      "source_system": "CrucibleWorks PLM",
+      "primary_key": ["part_id"], "natural_key": ["part_number"],
+      "rows": 900, "traits": ["audited"],
+      "indexes": [["part_type"], ["product_family"], ["parent_part_id"]],
+      "columns": [
+        {"name": "part_id", "type": "integer"},
+        {"name": "part_number", "type": "string", "gen": {"type": "pattern", "pattern": "PN-@@-#####", "unique": true}},
+        {"name": "part_type", "type": "string", "gen": "choice:finished_good=0.12,subassembly=0.2,component=0.55,raw_material=0.13"},
+        {"name": "product_family", "type": "string", "gen": "choice:drivetrain=0.2,hydraulics=0.17,chassis=0.19,electrical=0.16,controls=0.13,powertrain=0.15"},
+        {"name": "part_name", "type": "string", "_note": "part_type is drawn first, then the name comes from that type's pool - finished goods read like machines, raw materials like stock.", "gen": {"type": "case", "on": "part_type", "cases": {"finished_good": {"type": "text_template", "templates": ["{fg_part}"]}, "subassembly": {"type": "text_template", "templates": ["{sub_part}"]}, "component": {"type": "text_template", "templates": ["{comp_part}"]}, "raw_material": {"type": "text_template", "templates": ["{raw_part}"]}}}},
+        {"name": "make_buy", "type": "string", "gen": {"type": "case", "on": "part_type", "cases": {"finished_good": "make", "subassembly": {"type": "choice", "values": ["make", "buy"], "weights": [0.88, 0.12]}, "component": {"type": "choice", "values": ["buy", "make"], "weights": [0.82, 0.18]}, "raw_material": "buy"}}},
+        {"name": "make_profile", "type": "string", "_note": "Single scale_by driver reused downstream: 'none' for buy parts (no work orders, no BOM), else the part type. Keeps work orders and BOMs off purchased parts without a second conditioning column.", "gen": {"type": "case", "on": "make_buy", "cases": {"buy": "none"}, "default": {"type": "copy", "column": "part_type"}}},
+        {"name": "uom", "type": "string", "gen": {"type": "case", "on": "part_type", "cases": {"raw_material": {"type": "choice", "values": ["KG", "M", "L"], "weights": [0.55, 0.25, 0.2]}}, "default": "EA"}},
+        {"name": "lot_controlled", "type": "boolean", "gen": "bool:0.92"},
+        {"name": "parent_part_id", "type": "integer", "nullable": true, "_note": "self_fk where-used hierarchy; 12% roots (top-level products and free stock).", "gen": {"type": "self_fk", "root_share": 0.12}},
+        {"name": "unit_weight_kg", "type": "decimal", "gen": {"type": "number", "distribution": "lognormal", "median": 2.5, "sigma": 1.2, "min": 0.01, "max": 650, "decimals": 3}},
+        {"name": "lifecycle_status", "type": "string", "gen": "choice:active=0.86,phase_out=0.09,obsolete=0.05"},
+        {"name": "introduced_at", "type": "timestamp", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.7, "backfill_start": "2016-01-01"}}
+      ]
+    },
+    {
+      "_note": "Manufacturing BOM kept in PLM. Generated per assembly part with scale_by on make_profile so only make FG/subassembly/component parts carry BOM lines. Component picks use zipf(0.5): common fasteners and seals appear on many BOMs without one part dominating.",
+      "schema": "plm", "name": "bom_component", "layer": "source",
+      "purpose": "Single-level BOM lines per assembly; multi-level structure emerges by chaining through subassembly parts.",
+      "source_system": "CrucibleWorks PLM",
+      "primary_key": ["bom_line_id"],
+      "rows": {"per_parent": "plm.part", "distribution": {"distribution": "lognormal", "median": 7, "sigma": 0.5}, "scale_by": {"parent_column": "make_profile", "factors": {"finished_good": 1.15, "subassembly": 0.55, "component": 0.18}, "default": 0.0}, "min": 0, "max": 40},
+      "indexes": [["part_id"]],
+      "columns": [
+        {"name": "bom_line_id", "type": "integer", "gen": "seq"},
+        {"name": "part_id", "type": "integer", "gen": "parent_key"},
+        {"name": "line_number", "type": "integer", "gen": "child_index"},
+        {"name": "component_part_id", "type": "integer", "gen": "fk:plm.part@zipf(0.5)"},
+        {"name": "qty_per", "type": "integer", "_note": "Standard per-unit quantities are quantized like real BOMs (1, 2, 4, 8...).", "gen": {"type": "choice", "values": [1, 2, 4, 6, 8, 12, 16, 24], "weights": [0.3, 0.22, 0.16, 0.1, 0.08, 0.06, 0.05, 0.03]}},
+        {"name": "scrap_factor", "type": "decimal", "gen": {"type": "choice", "values": [0.0, 0.01, 0.02, 0.05], "weights": [0.55, 0.2, 0.15, 0.1]}}
+      ]
+    },
+    {
+      "_note": "ERP item master, 1:1 from PLM via parent_copy, with an scd2 standard-cost history: ~30% of items carry 1-2 predecessor cost versions with chained effective dates (current_flag 0). FK and per_parent pools only ever see current versions.",
+      "schema": "erp", "name": "item", "layer": "source",
+      "purpose": "ERP material master with standard cost (scd2 history on cost revisions).",
+      "source_system": "ForgeLine ERP",
+      "primary_key": ["item_id"],
+      "rows": {"per_parent": "plm.part", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
+      "traits": ["audited", "effective_dated"],
+      "history": {"strategy": "scd2", "change_rate": 0.3, "max_versions": 3, "track": ["standard_cost"]},
+      "indexes": [["part_id"], ["current_flag"]],
+      "columns": [
+        {"name": "item_id", "type": "integer", "gen": "seq"},
+        {"name": "part_id", "type": "integer", "gen": "parent_key"},
+        {"name": "item_code", "type": "string", "gen": {"type": "pattern", "pattern": "ITM-######", "unique": true}},
+        {"name": "part_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "part_type"}},
+        {"name": "product_family", "type": "string", "gen": {"type": "parent_copy", "source_column": "product_family"}},
+        {"name": "make_buy", "type": "string", "gen": {"type": "parent_copy", "source_column": "make_buy"}},
+        {"name": "make_profile", "type": "string", "gen": {"type": "parent_copy", "source_column": "make_profile"}},
+        {"name": "uom", "type": "string", "gen": {"type": "parent_copy", "source_column": "uom"}},
+        {"name": "lot_controlled", "type": "boolean", "gen": {"type": "parent_copy", "source_column": "lot_controlled"}},
+        {"name": "standard_cost", "type": "decimal", "gen": {"type": "case", "on": "part_type", "cases": {"raw_material": {"type": "money", "median": 7, "sigma": 0.8}, "component": {"type": "money", "median": 16, "sigma": 0.9}, "subassembly": {"type": "money", "median": 140, "sigma": 0.7}, "finished_good": {"type": "money", "median": 950, "sigma": 0.6}}}},
+        {"name": "safety_stock", "type": "integer", "gen": "int:lognormal(median=24,sigma=1.0,min=0,max=2500)"},
+        {"name": "created_at", "type": "timestamp", "_note": "Item created shortly after the PLM part is introduced, so backfilled parts have backfilled ERP items.", "gen": {"type": "date_offset", "from": "parent.introduced_at", "unit": "days", "offset": {"distribution": "lognormal", "median": 7, "sigma": 1.0, "min": 0, "max": 90}}}
+      ]
+    },
+    {
+      "schema": "erp", "name": "work_center", "layer": "source",
+      "purpose": "Work centers across the two plants; yield, defect rates, cycle times, and labor rates all condition on center_type.",
+      "source_system": "ForgeLine ERP",
+      "primary_key": ["work_center_id"], "natural_key": ["work_center_code"],
+      "rows": 24, "scale_exempt": true,
+      "columns": [
+        {"name": "work_center_id", "type": "integer"},
+        {"name": "work_center_code", "type": "string", "gen": {"type": "pattern", "pattern": "WC-###", "unique": true}},
+        {"name": "center_type", "type": "string", "gen": "choice:machining=0.3,assembly=0.2,welding=0.15,fabrication=0.15,paint=0.1,test=0.1"},
+        {"name": "plant", "type": "string", "gen": "choice:Easton=0.55,Meridian=0.45"},
+        {"name": "hourly_rate", "type": "decimal", "gen": {"type": "case", "on": "center_type", "cases": {"machining": 72.5, "welding": 64.0, "fabrication": 58.5, "paint": 49.0, "assembly": 43.5, "test": 55.0}}},
+        {"name": "shift_pattern", "type": "string", "gen": "choice:two_shift=0.7,three_shift=0.2,day_shift=0.1"},
+        {"name": "established_at", "type": "timestamp", "_note": "All work centers predate the data window (backfill_share 1.0), so machines and maintenance history have sensible vintages.", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 1.0, "backfill_start": "2008-06-01"}}
+      ]
+    },
+    {
+      "schema": "mes", "name": "machine", "layer": "operational",
+      "purpose": "Shop-floor machines per work center.",
+      "source_system": "ShopPulse MES",
+      "primary_key": ["machine_id"], "natural_key": ["machine_code"],
+      "rows": {"per_parent": "erp.work_center", "distribution": {"distribution": "poisson", "lam": 2.0}, "min": 1, "max": 6},
+      "columns": [
+        {"name": "machine_id", "type": "integer", "gen": "seq"},
+        {"name": "work_center_id", "type": "integer", "gen": "parent_key"},
+        {"name": "center_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "center_type"}},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "machine_code", "type": "string", "gen": {"type": "pattern", "pattern": "MCH-@@-###", "unique": true}},
+        {"name": "manufacturer", "type": "string", "gen": "company:manufacturing"},
+        {"name": "model_number", "type": "string", "gen": "pattern:MDL-####"},
+        {"name": "commissioned_date", "type": "date", "_note": "Offset from the work center's establishment, so machine vintages span 2008-2025 instead of bunching inside the data window.", "gen": {"type": "date_offset", "from": "parent.established_at", "unit": "days", "offset": {"distribution": "lognormal", "median": 1200, "sigma": 0.7, "min": 90, "max": 5800}, "as": "date"}},
+        {"name": "rated_speed_uph", "type": "integer", "gen": "int:uniform(4,30)"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.94"}
+      ]
+    },
+    {
+      "_note": "CMMS asset registry mirrors MES machines 1:1; the conflicting_source_values imperfection then makes asset names drift from machine codes, which DQ-009 catches (classic CMMS-vs-MES master drift).",
+      "schema": "cmms", "name": "asset", "layer": "operational",
+      "purpose": "Maintainable asset registry (one asset per machine).",
+      "source_system": "GearGuard CMMS",
+      "primary_key": ["asset_id"],
+      "rows": {"per_parent": "mes.machine", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
+      "traits": ["audited"],
+      "columns": [
+        {"name": "asset_id", "type": "integer", "gen": "seq"},
+        {"name": "machine_id", "type": "integer", "gen": "parent_key"},
+        {"name": "asset_tag", "type": "string", "gen": {"type": "pattern", "pattern": "AST-#####", "unique": true}},
+        {"name": "asset_name", "type": "string", "gen": {"type": "parent_copy", "source_column": "machine_code"}},
+        {"name": "center_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "center_type"}},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "criticality", "type": "string", "gen": "choice:A=0.25,B=0.45,C=0.3"},
+        {"name": "acquisition_cost", "type": "decimal", "gen": {"type": "money", "median": 175000, "sigma": 0.8, "decimals": 0}},
+        {"name": "in_service_date", "type": "date", "gen": {"type": "parent_copy", "source_column": "commissioned_date"}}
+      ]
+    },
+    {
+      "_note": "Work orders only exist for make parts: scale_by on make_profile zeroes out buy parts and raw materials, weights FG > subassembly > make-component, and a heavy-tailed per_parent_multiplier creates runner products. Quantities are standard lot sizes (1/5/10/25...), not continuous draws.",
+      "schema": "production", "name": "work_order", "layer": "transaction",
+      "purpose": "Production work orders.", "grain": "one row per production work order",
+      "source_system": "ForgeLine ERP",
+      "primary_key": ["work_order_id"], "natural_key": ["work_order_number"],
+      "rows": {"per_parent": "erp.item", "distribution": {"distribution": "lognormal", "median": 6, "sigma": 0.7}, "scale_by": {"parent_column": "make_profile", "factors": {"finished_good": 6.0, "subassembly": 2.2, "component": 0.9}, "default": 0.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.6}, "min": 0, "max": 200},
+      "traits": ["audited"],
+      "indexes": [["item_id"], ["part_id"], ["status"], ["planned_start_date"]],
+      "columns": [
+        {"name": "work_order_id", "type": "integer", "gen": "seq"},
+        {"name": "work_order_number", "type": "string", "gen": {"type": "pattern", "pattern": "WO-#######", "unique": true}},
+        {"name": "item_id", "type": "integer", "gen": "parent_key"},
+        {"name": "part_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "part_id"}},
+        {"name": "part_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "part_type"}},
+        {"name": "product_family", "type": "string", "gen": {"type": "parent_copy", "source_column": "product_family"}},
+        {"name": "plant", "type": "string", "gen": "choice:Easton=0.56,Meridian=0.44"},
+        {"name": "order_class", "type": "string", "gen": "choice:make_to_stock=0.68,make_to_order=0.32"},
+        {"name": "qty_planned", "type": "integer", "gen": {"type": "case", "on": "part_type", "cases": {"finished_good": {"type": "choice", "values": [1, 2, 5, 10, 25, 50], "weights": [0.2, 0.12, 0.22, 0.2, 0.16, 0.1]}, "subassembly": {"type": "choice", "values": [10, 25, 50, 100, 200], "weights": [0.22, 0.28, 0.26, 0.16, 0.08]}, "component": {"type": "choice", "values": [50, 100, 250, 500], "weights": [0.3, 0.35, 0.25, 0.1]}}, "default": 25}},
+        {"name": "planned_start_date", "type": "date", "_note": "Calendar-weighted, never before the ERP item existed.", "gen": {"type": "date", "min": "parent.created_at"}},
+        {"name": "status", "type": "string", "gen": "const:planned"},
+        {"name": "released_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "started_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "completed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "closed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "production", "name": "work_order_event", "layer": "event",
+      "purpose": "Work order status history emitted by the state machine.",
+      "grain": "one row per work order per state entered",
+      "source": "state_machine",
+      "primary_key": ["work_order_id", "event_seq"],
+      "indexes": [["work_order_id"]],
+      "columns": [
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Routing operations. Yield is the showcase correlation: scrap_pct is case-conditioned on the work center type (machining ~93.5% first-pass yield, test ~99%), quantities are quantized lot sizes, and labor_cost = qty x constant cycle x constant rate, so exact amounts repeat like real backflush postings. Timestamps are stamped by the mes_operation_schedule derivation INSIDE each work order's actual released->completed window.",
+      "schema": "mes", "name": "operation", "layer": "event",
+      "purpose": "Work order routing operations with reported quantities.",
+      "grain": "one row per work order per routing operation",
+      "source_system": "ShopPulse MES",
+      "primary_key": ["operation_id"],
+      "rows": {"per_parent": "production.work_order", "distribution": {"distribution": "lognormal", "median": 4, "sigma": 0.45}, "min": 1, "max": 10},
+      "traits": ["source_stamped"],
+      "indexes": [["work_order_id"], ["machine_id"], ["op_status"]],
+      "columns": [
+        {"name": "operation_id", "type": "integer", "gen": "seq"},
+        {"name": "work_order_id", "type": "integer", "gen": "parent_key"},
+        {"name": "op_index", "type": "integer", "gen": "child_index"},
+        {"name": "op_number", "type": "integer", "gen": "expr:op_index * 10"},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "reported_date", "type": "date", "_note": "Anchors the source_stamped trait timestamps near the work order's life.", "gen": {"type": "date_offset", "from": "parent.planned_start_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 5, "sigma": 0.9, "min": 0, "max": 45}, "as": "date"}},
+        {"name": "qty_started", "type": "integer", "gen": {"type": "parent_copy", "source_column": "qty_planned"}},
+        {"name": "work_center_id", "type": "integer", "_note": "Affinity match on plant with a 3% leak (outside-processing at the sister plant).", "gen": {"type": "fk", "ref": "erp.work_center", "match": {"parent_column": "plant", "local_column": "plant", "leak_rate": 0.03}}},
+        {"name": "wc_type", "type": "string", "gen": {"type": "fk_copy", "column": "work_center_id", "ref": "erp.work_center", "source_column": "center_type"}},
+        {"name": "machine_id", "type": "integer", "_note": "Machines belong to the operation's work center (2% miscoded scans).", "gen": {"type": "fk", "ref": "mes.machine", "match": {"parent_column": "work_center_id", "local_column": "work_center_id", "leak_rate": 0.02}}},
+        {"name": "scrap_pct", "type": "decimal", "_note": "First-pass yield 92-99% by work center via case conditioning - the manufacturing realism must.", "gen": {"type": "case", "on": "wc_type", "cases": {"machining": {"type": "number", "distribution": "beta", "alpha": 4, "beta": 56, "decimals": 4}, "welding": {"type": "number", "distribution": "beta", "alpha": 3.5, "beta": 60, "decimals": 4}, "fabrication": {"type": "number", "distribution": "beta", "alpha": 3, "beta": 72, "decimals": 4}, "paint": {"type": "number", "distribution": "beta", "alpha": 2.5, "beta": 95, "decimals": 4}, "test": {"type": "number", "distribution": "beta", "alpha": 1.5, "beta": 140, "decimals": 4}}, "default": {"type": "number", "distribution": "beta", "alpha": 2, "beta": 120, "decimals": 4}}},
+        {"name": "qty_scrapped", "type": "integer", "gen": "expr:round(qty_started * scrap_pct)"},
+        {"name": "qty_good", "type": "integer", "gen": "expr:qty_started - qty_scrapped"},
+        {"name": "cycle_minutes", "type": "integer", "gen": {"type": "case", "on": "wc_type", "cases": {"machining": 18, "welding": 24, "fabrication": 15, "paint": 9, "assembly": 11, "test": 6}, "default": 12}},
+        {"name": "hourly_rate", "type": "decimal", "gen": {"type": "fk_copy", "column": "work_center_id", "ref": "erp.work_center", "source_column": "hourly_rate"}},
+        {"name": "labor_cost", "type": "decimal", "_note": "Quantized qty x constant cycle x constant rate: real amount columns repeat exact values (duplicate-mass realism check).", "gen": "expr:round(qty_started * cycle_minutes / 60.0 * hourly_rate, 2)"},
+        {"name": "op_status", "type": "string", "nullable": true, "gen": "skip"},
+        {"name": "started_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "completed_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "_note": "In-process/final inspections on a share of operations (~40% of work orders end up inspected). Defect counts are case-conditioned on work center type so machining fails ~4x more often than test; disposition only exists for failed samples.",
+      "schema": "quality", "name": "inspection", "layer": "event",
+      "purpose": "Quality inspections sampled against routing operations.",
+      "grain": "one row per inspection sample per operation",
+      "source_system": "ShopPulse MES",
+      "primary_key": ["inspection_id"], "natural_key": ["inspection_number"],
+      "rows": {"per_parent": "mes.operation", "distribution": {"distribution": "poisson", "lam": 0.12}, "min": 0, "max": 2},
+      "traits": ["audited"],
+      "indexes": [["operation_id"], ["work_order_id"], ["disposition"]],
+      "columns": [
+        {"name": "inspection_id", "type": "integer", "gen": "seq"},
+        {"name": "operation_id", "type": "integer", "gen": "parent_key"},
+        {"name": "work_order_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "work_order_id"}},
+        {"name": "work_center_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "work_center_id"}},
+        {"name": "wc_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "wc_type"}},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "recorded_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.reported_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 2, "sigma": 0.8, "min": 0, "max": 21}, "as": "date"}},
+        {"name": "sample_seq", "type": "integer", "gen": "child_index"},
+        {"name": "inspection_number", "type": "string", "gen": {"type": "pattern", "pattern": "INSP-#######", "unique": true}},
+        {"name": "inspection_type", "type": "string", "gen": "choice:in_process=0.7,final_release=0.3"},
+        {"name": "sample_size", "type": "integer", "gen": {"type": "choice", "values": [2, 3, 5, 8, 13], "weights": [0.3, 0.25, 0.2, 0.15, 0.1]}},
+        {"name": "defects_found", "type": "integer", "_note": "Defect rate by work center via case conditioning: machining fails ~22% of samples, test ~5%.", "gen": {"type": "case", "on": "wc_type", "cases": {"machining": {"type": "int", "distribution": "poisson", "lam": 0.25}, "welding": {"type": "int", "distribution": "poisson", "lam": 0.2}, "fabrication": {"type": "int", "distribution": "poisson", "lam": 0.15}, "paint": {"type": "int", "distribution": "poisson", "lam": 0.12}, "test": {"type": "int", "distribution": "poisson", "lam": 0.05}}, "default": {"type": "int", "distribution": "poisson", "lam": 0.07}}},
+        {"name": "result", "type": "string", "gen": {"type": "case", "on": "defects_found", "cases": {"0": "pass"}, "default": "fail"}},
+        {"name": "disposition", "type": "string", "gen": {"type": "case", "on": "result", "cases": {"pass": "accept"}, "default": {"type": "choice", "values": ["rework", "scrap", "use_as_is", "return_to_supplier"], "weights": [0.45, 0.25, 0.18, 0.12]}}},
+        {"name": "inspector", "type": "string", "gen": "staff_user"},
+        {"name": "inspection_note", "type": "string", "null_rate": 0.55, "gen": "text:inspection_note"},
+        {"name": "inspected_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "quality", "name": "nonconformance", "layer": "operational",
+      "purpose": "NCRs raised from failed inspections (scrap, supplier returns, and a third of reworks).",
+      "source": "derivation", "source_system": "ShopPulse MES",
+      "primary_key": ["ncr_id"],
+      "indexes": [["inspection_id"], ["status"]],
+      "columns": [
+        {"name": "ncr_id", "type": "integer"},
+        {"name": "ncr_number", "type": "string"},
+        {"name": "inspection_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "work_center_id", "type": "integer"},
+        {"name": "severity", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "opened_at", "type": "timestamp"},
+        {"name": "closed_at", "type": "timestamp", "nullable": true}
+      ]
+    },
+    {
+      "schema": "mes", "name": "downtime_event", "layer": "event",
+      "purpose": "Machine downtime intervals from the SCADA feed.",
+      "grain": "one row per machine downtime interval",
+      "source_system": "ShopPulse MES",
+      "primary_key": ["downtime_id"],
+      "rows": {"per_parent": "mes.machine", "distribution": {"distribution": "lognormal", "median": 130, "sigma": 0.5}, "min": 25, "max": 420},
+      "indexes": [["machine_id"], ["started_at"]],
+      "columns": [
+        {"name": "downtime_id", "type": "integer", "gen": "seq"},
+        {"name": "machine_id", "type": "integer", "gen": "parent_key"},
+        {"name": "work_center_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "work_center_id"}},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "reason_code", "type": "string", "gen": "choice:changeover=0.27,unplanned_breakdown=0.18,material_starvation=0.14,planned_maintenance=0.13,setup_adjustment=0.12,quality_stop=0.09,operator_meeting=0.07"},
+        {"name": "started_at", "type": "timestamp"},
+        {"name": "duration_minutes", "type": "integer", "gen": "int:lognormal(median=42,sigma=0.9,min=5,max=480)"},
+        {"name": "reported_by", "type": "string", "gen": "staff_user"},
+        {"name": "downtime_note", "type": "string", "null_rate": 0.6, "gen": "text:downtime_note"}
+      ]
+    },
+    {
+      "schema": "cmms", "name": "maintenance_order", "layer": "transaction",
+      "purpose": "Preventive and corrective maintenance work orders per asset.",
+      "grain": "one row per maintenance work order",
+      "source_system": "GearGuard CMMS",
+      "primary_key": ["mo_id"], "natural_key": ["mo_number"],
+      "rows": {"per_parent": "cmms.asset", "distribution": {"distribution": "lognormal", "median": 36, "sigma": 0.5}, "min": 4, "max": 120},
+      "traits": ["audited"],
+      "indexes": [["asset_id"], ["status"]],
+      "columns": [
+        {"name": "mo_id", "type": "integer", "gen": "seq"},
+        {"name": "mo_number", "type": "string", "gen": {"type": "pattern", "pattern": "MWO-######", "unique": true}},
+        {"name": "asset_id", "type": "integer", "gen": "parent_key"},
+        {"name": "machine_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "machine_id"}},
+        {"name": "plant", "type": "string", "gen": {"type": "parent_copy", "source_column": "plant"}},
+        {"name": "mo_type", "type": "string", "gen": "choice:preventive=0.55,corrective=0.36,inspection=0.09"},
+        {"name": "priority", "type": "string", "gen": {"type": "case", "on": "mo_type", "cases": {"corrective": {"type": "choice", "values": ["urgent", "high", "medium"], "weights": [0.3, 0.4, 0.3]}, "preventive": {"type": "choice", "values": ["medium", "low"], "weights": [0.55, 0.45]}, "inspection": {"type": "choice", "values": ["low", "medium"], "weights": [0.7, 0.3]}}}},
+        {"name": "requested_date", "type": "date"},
+        {"name": "status", "type": "string", "gen": "const:requested"},
+        {"name": "approved_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "started_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "completed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "labor_hours", "type": "decimal", "gen": {"type": "number", "distribution": "lognormal", "median": 3, "sigma": 0.7, "min": 0.5, "max": 40, "decimals": 1}},
+        {"name": "parts_cost", "type": "decimal", "gen": "money:lognormal(median=85,sigma=1.0)"}
+      ]
+    },
+    {
+      "schema": "cmms", "name": "maintenance_order_event", "layer": "event",
+      "purpose": "Maintenance order status history emitted by the state machine.",
+      "grain": "one row per maintenance order per state entered",
+      "source": "state_machine",
+      "primary_key": ["mo_id", "event_seq"],
+      "indexes": [["mo_id"]],
+      "columns": [
+        {"name": "mo_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Everything below is populated by SQL derivations - real lineage. Material issues are BOM x released work orders with deterministic over/under-issue variance aimed at the consumption recon control.",
+      "schema": "production", "name": "material_issue", "layer": "transaction",
+      "purpose": "Component issues to released work orders, exploded from the BOM.",
+      "grain": "one row per work order per BOM line issue",
+      "source": "derivation", "source_system": "ForgeLine ERP",
+      "primary_key": ["issue_id"],
+      "indexes": [["work_order_id"], ["component_part_id"], ["lot_id"]],
+      "columns": [
+        {"name": "issue_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "part_id", "type": "integer"},
+        {"name": "component_part_id", "type": "integer"},
+        {"name": "bom_line_id", "type": "integer"},
+        {"name": "lot_id", "type": "integer", "nullable": true},
+        {"name": "qty_standard", "type": "decimal"},
+        {"name": "qty_issued", "type": "decimal"},
+        {"name": "unit_std_cost", "type": "decimal", "nullable": true},
+        {"name": "extended_cost", "type": "decimal", "nullable": true},
+        {"name": "issued_at", "type": "timestamp"},
+        {"name": "adjustment_note", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "inventory", "name": "lot", "layer": "operational",
+      "purpose": "Material lots: purchased receipt lots for buy parts plus one produced lot per completed work order.",
+      "grain": "one row per lot",
+      "source": "derivation", "source_system": "ForgeLine ERP",
+      "primary_key": ["lot_id"],
+      "indexes": [["part_id"], ["work_order_id"], ["lot_type"]],
+      "columns": [
+        {"name": "lot_id", "type": "integer"},
+        {"name": "part_id", "type": "integer"},
+        {"name": "lot_number", "type": "string"},
+        {"name": "lot_type", "type": "string"},
+        {"name": "work_order_id", "type": "integer", "nullable": true},
+        {"name": "received_date", "type": "date"},
+        {"name": "qty_received", "type": "decimal"},
+        {"name": "lot_status", "type": "string"},
+        {"name": "vendor_code", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "inventory", "name": "lot_genealogy", "layer": "operational",
+      "purpose": "Forward/backward lot trace: produced lot <- consumed component lot, one edge per lot-controlled material issue.",
+      "grain": "one row per produced-lot/consumed-lot edge",
+      "source": "derivation", "source_system": "ForgeLine ERP",
+      "primary_key": ["edge_id"],
+      "indexes": [["child_lot_id"], ["parent_lot_id"], ["work_order_id"]],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "child_lot_id", "type": "integer"},
+        {"name": "parent_lot_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "component_part_id", "type": "integer"},
+        {"name": "source_issue_id", "type": "integer"},
+        {"name": "qty_consumed", "type": "decimal"},
+        {"name": "edge_date", "type": "date"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "plm_item_extract", "layer": "raw",
+      "purpose": "Nightly PLM extract as landed: all text, US-format dates.",
+      "source": "derivation",
+      "primary_key": ["part_id"],
+      "columns": [
+        {"name": "part_id", "type": "string"},
+        {"name": "part_number", "type": "string"},
+        {"name": "part_type", "type": "string"},
+        {"name": "product_family", "type": "string"},
+        {"name": "part_name", "type": "string"},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "introduced_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "plm_item", "layer": "staging",
+      "purpose": "Cleaned PLM parts; normalizes raw extract dates.",
+      "source": "derivation",
+      "primary_key": ["part_id"],
+      "columns": [
+        {"name": "part_id", "type": "integer"},
+        {"name": "part_number", "type": "string"},
+        {"name": "part_type", "type": "string"},
+        {"name": "product_family", "type": "string"},
+        {"name": "part_name", "type": "string"},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "introduced_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "xref", "name": "item_identifier", "layer": "xref",
+      "purpose": "Source-system identifier crosswalk for canonical parts (PLM part numbers + ERP item ids).",
+      "source": "derivation",
+      "primary_key": ["xref_id"],
+      "indexes": [["canonical_part_id"], ["source_system"]],
+      "columns": [
+        {"name": "xref_id", "type": "integer"},
+        {"name": "canonical_entity_type", "type": "string"},
+        {"name": "canonical_part_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "source_object_name", "type": "string"},
+        {"name": "source_record_id", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "part", "layer": "canonical",
+      "purpose": "Canonical part joining PLM and ERP through the crosswalk.",
+      "source": "derivation",
+      "primary_key": ["part_uid"],
+      "columns": [
+        {"name": "part_uid", "type": "integer"},
+        {"name": "part_number", "type": "string"},
+        {"name": "part_name", "type": "string"},
+        {"name": "part_type", "type": "string"},
+        {"name": "product_family", "type": "string"},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "make_buy", "type": "string", "nullable": true},
+        {"name": "erp_item_id", "type": "integer", "nullable": true},
+        {"name": "standard_cost", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_part", "layer": "warehouse_dimension",
+      "purpose": "Part dimension from the canonical layer.",
+      "source": "derivation", "primary_key": ["part_key"],
+      "columns": [
+        {"name": "part_key", "type": "integer"},
+        {"name": "part_number", "type": "string"},
+        {"name": "part_name", "type": "string"},
+        {"name": "part_type", "type": "string"},
+        {"name": "product_family", "type": "string"},
+        {"name": "lifecycle_status", "type": "string"},
+        {"name": "make_buy", "type": "string", "nullable": true},
+        {"name": "standard_cost", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_work_center", "layer": "warehouse_dimension",
+      "purpose": "Work center dimension.",
+      "source": "derivation", "primary_key": ["work_center_key"],
+      "columns": [
+        {"name": "work_center_key", "type": "integer"},
+        {"name": "work_center_code", "type": "string"},
+        {"name": "center_type", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "hourly_rate", "type": "decimal"},
+        {"name": "shift_pattern", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_machine", "layer": "warehouse_dimension",
+      "purpose": "Machine dimension.",
+      "source": "derivation", "primary_key": ["machine_key"],
+      "columns": [
+        {"name": "machine_key", "type": "integer"},
+        {"name": "machine_code", "type": "string"},
+        {"name": "work_center_key", "type": "integer"},
+        {"name": "center_type", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "manufacturer", "type": "string"},
+        {"name": "commissioned_date", "type": "date"},
+        {"name": "rated_speed_uph", "type": "integer"},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_production_order", "layer": "warehouse_fact",
+      "purpose": "Production order fact with rolled yield and material cost.",
+      "grain": "one row per production work order",
+      "source": "derivation", "primary_key": ["work_order_id"],
+      "indexes": [["part_key"], ["status"], ["planned_start_date"]],
+      "columns": [
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "work_order_number", "type": "string"},
+        {"name": "part_key", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "order_class", "type": "string"},
+        {"name": "part_type", "type": "string"},
+        {"name": "qty_planned", "type": "integer"},
+        {"name": "qty_good", "type": "integer"},
+        {"name": "qty_scrapped", "type": "integer"},
+        {"name": "rolled_yield", "type": "decimal", "nullable": true},
+        {"name": "status", "type": "string"},
+        {"name": "planned_start_date", "type": "date"},
+        {"name": "released_at", "type": "timestamp", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "lead_time_days", "type": "decimal", "nullable": true},
+        {"name": "actual_material_cost", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_machine_utilization_daily", "layer": "warehouse_fact",
+      "purpose": "Daily machine utilization with OEE components (availability x performance x quality).",
+      "grain": "one row per machine per active production date",
+      "source": "derivation", "primary_key": ["util_id"],
+      "indexes": [["machine_key"], ["activity_date"]],
+      "columns": [
+        {"name": "util_id", "type": "integer"},
+        {"name": "machine_key", "type": "integer"},
+        {"name": "work_center_key", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "activity_date", "type": "date"},
+        {"name": "planned_minutes", "type": "integer"},
+        {"name": "downtime_minutes", "type": "integer"},
+        {"name": "runtime_minutes", "type": "integer"},
+        {"name": "units_total", "type": "integer"},
+        {"name": "units_good", "type": "integer"},
+        {"name": "availability", "type": "decimal"},
+        {"name": "performance", "type": "decimal"},
+        {"name": "quality_rate", "type": "decimal"},
+        {"name": "oee", "type": "decimal"}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "name": "work_order_lifecycle",
+      "table": "production.work_order",
+      "status_column": "status",
+      "start_column": "planned_start_date",
+      "entry_state": "planned",
+      "states": ["planned", "released", "in_progress", "quality_hold", "completed", "scrapped", "cancelled", "closed"],
+      "_note": "Right-censored at as_of: recent orders legitimately sit planned/released/in_progress. quality_hold keeps a 16% residual so open holds accumulate (the use-as-is override imperfection feeds the same story).",
+      "transitions": [
+        {"from": "planned", "to": "released", "probability": 0.94, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.9, "unit": "days"}},
+        {"from": "planned", "to": "cancelled", "probability": 0.05, "dwell": {"distribution": "lognormal", "median": 7, "sigma": 0.8, "unit": "days"}},
+        {"from": "released", "to": "in_progress", "probability": 0.96, "dwell": {"distribution": "lognormal", "median": 1.2, "sigma": 0.8, "unit": "days"}},
+        {"from": "released", "to": "cancelled", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_progress", "to": "completed", "probability": 0.91, "dwell": {"distribution": "lognormal", "median": 3.5, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_progress", "to": "quality_hold", "probability": 0.06, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_progress", "to": "scrapped", "probability": 0.02, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.7, "unit": "days"}},
+        {"from": "quality_hold", "to": "completed", "probability": 0.7, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.8, "unit": "days"}},
+        {"from": "quality_hold", "to": "scrapped", "probability": 0.14, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.8, "unit": "days"}},
+        {"from": "completed", "to": "closed", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.6, "unit": "business_days"}}
+      ],
+      "timestamp_columns": {"released": "released_at", "in_progress": "started_at", "completed": "completed_at", "closed": "closed_at"},
+      "history_table": "production.work_order_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "name": "maintenance_order_lifecycle",
+      "table": "cmms.maintenance_order",
+      "status_column": "status",
+      "start_column": "requested_date",
+      "entry_state": "requested",
+      "states": ["requested", "approved", "rejected", "scheduled", "in_progress", "completed", "closed"],
+      "transitions": [
+        {"from": "requested", "to": "approved", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 1, "sigma": 0.9, "unit": "days"}},
+        {"from": "requested", "to": "rejected", "probability": 0.07, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.8, "unit": "days"}},
+        {"from": "approved", "to": "scheduled", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "scheduled", "to": "in_progress", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.9, "unit": "days"}},
+        {"from": "in_progress", "to": "completed", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.8, "unit": "hours"}},
+        {"from": "completed", "to": "closed", "probability": 0.93, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"approved": "approved_at", "in_progress": "started_at", "completed": "completed_at"},
+      "history_table": "cmms.maintenance_order_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "mes_operation_schedule",
+      "_note": "Stamps operation start/complete times INSIDE each work order's actual released->completed window (interpolated by op_index with id-math jitter), right-censors ops past as_of, zeroes quantities on not-yet-run ops, then cascades qty_started so each op starts from what survived earlier ops. Uses a helper table + correlated subqueries instead of UPDATE..FROM to stay compatible with older SQLite.",
+      "sql": [
+        "create table tmp_op_schedule (operation_id integer primary key, s_at text, c_at text);",
+        "insert into tmp_op_schedule",
+        "with wo as (",
+        "  select work_order_id, julianday(started_at) as sj,",
+        "         max(julianday(coalesce(completed_at, datetime(started_at, '+' || (2 + work_order_id % 9) || ' days'))) - julianday(started_at), 0.05) as span",
+        "  from production.work_order where started_at is not null",
+        "),",
+        "n as (select work_order_id, count(*) as n_ops from mes.operation group by work_order_id)",
+        "select o.operation_id,",
+        "       datetime(wo.sj + wo.span * (o.op_index - 1 + 0.05 + (o.operation_id % 7) * 0.02) / n.n_ops),",
+        "       datetime(wo.sj + wo.span * (o.op_index - 0.25 + (o.operation_id % 5) * 0.02) / n.n_ops)",
+        "from mes.operation o",
+        "join wo on wo.work_order_id = o.work_order_id",
+        "join n on n.work_order_id = o.work_order_id;",
+        "update mes.operation set",
+        "  started_at = (select case when s.s_at <= '2025-12-31 23:59:59' then s.s_at end from tmp_op_schedule s where s.operation_id = mes.operation.operation_id),",
+        "  completed_at = (select case when s.c_at <= '2025-12-31 23:59:59' then s.c_at end from tmp_op_schedule s where s.operation_id = mes.operation.operation_id);",
+        "update mes.operation set op_status = case when completed_at is not null then 'completed' when started_at is not null then 'in_progress' else 'pending' end;",
+        "update mes.operation set qty_started = 0, qty_scrapped = 0, qty_good = 0, labor_cost = 0.0 where op_status = 'pending';",
+        "update mes.operation set qty_scrapped = 0, qty_good = 0, labor_cost = 0.0 where op_status = 'in_progress';",
+        "update mes.operation set",
+        "  qty_started = max(qty_started - coalesce((select sum(o2.qty_scrapped) from mes.operation o2 where o2.work_order_id = mes.operation.work_order_id and o2.op_index < mes.operation.op_index and o2.op_status = 'completed'), 0), qty_scrapped),",
+        "  qty_good = max(qty_started - coalesce((select sum(o2.qty_scrapped) from mes.operation o2 where o2.work_order_id = mes.operation.work_order_id and o2.op_index < mes.operation.op_index and o2.op_status = 'completed'), 0), qty_scrapped) - qty_scrapped,",
+        "  labor_cost = round(max(qty_started - coalesce((select sum(o2.qty_scrapped) from mes.operation o2 where o2.work_order_id = mes.operation.work_order_id and o2.op_index < mes.operation.op_index and o2.op_status = 'completed'), 0), qty_scrapped) * cycle_minutes / 60.0 * hourly_rate, 2)",
+        "where op_status = 'completed';",
+        "drop table tmp_op_schedule;"
+      ]
+    },
+    {
+      "name": "quality_inspection_results",
+      "_note": "Inspections stamp shortly after their operation completes; samples against not-yet-completed operations stay pending with no result.",
+      "sql": [
+        "update quality.inspection set inspected_at = (",
+        "  select min(datetime(julianday(o.completed_at) + 0.01 + (quality.inspection.inspection_id % 13) * 0.005), '2025-12-31 23:59:59')",
+        "  from mes.operation o where o.operation_id = quality.inspection.operation_id and o.completed_at is not null);",
+        "update quality.inspection set result = 'pending', disposition = 'pending', defects_found = null where inspected_at is null;"
+      ]
+    },
+    {
+      "name": "inventory_lot_purchased",
+      "_note": "3-8 receipt lots per buy part with deterministic id-math dates (Sundays nudged to Monday: receiving is closed).",
+      "sql": [
+        "insert into inventory.lot",
+        "with recursive seq(n) as (select 1 union all select n + 1 from seq where n < 10)",
+        "select p.part_id * 16 + s.n, p.part_id, 'LOT-P' || printf('%07d', p.part_id * 16 + s.n), 'purchased', null,",
+        "       case when strftime('%w', date('2024-01-08', '+' || ((p.part_id * 53 + s.n * 97) % 715) || ' days')) = '0'",
+        "            then date('2024-01-08', '+' || ((p.part_id * 53 + s.n * 97) % 715 + 1) || ' days')",
+        "            else date('2024-01-08', '+' || ((p.part_id * 53 + s.n * 97) % 715) || ' days') end,",
+        "       (p.part_id * 31 + s.n * 17) % 900 + 50,",
+        "       case when (p.part_id + s.n) % 11 = 0 then 'depleted' when (p.part_id + s.n) % 17 = 0 then 'quality_hold' else 'available' end,",
+        "       'VND-' || printf('%04d', (p.part_id * 7) % 300 + 1)",
+        "from plm.part p join seq s on s.n <= 3 + (p.part_id % 6)",
+        "where p.make_buy = 'buy';"
+      ]
+    },
+    {
+      "name": "inventory_lot_produced",
+      "_note": "Exactly one finished lot per COMPLETED work order (lot-per-work-order genealogy grain); quantity is the last operation's good quantity, so scrapped units never reach stock.",
+      "sql": [
+        "insert into inventory.lot",
+        "select 500000 + wo.work_order_id, wo.part_id, 'LOT-W' || printf('%07d', wo.work_order_id), 'produced', wo.work_order_id,",
+        "       date(wo.completed_at),",
+        "       coalesce((select o.qty_good from mes.operation o where o.work_order_id = wo.work_order_id and o.completed_at is not null order by o.op_index desc limit 1), wo.qty_planned),",
+        "       case when wo.status = 'closed' and wo.work_order_id % 5 < 3 then 'consumed' else 'available' end,",
+        "       null",
+        "from production.work_order wo",
+        "where wo.completed_at is not null;"
+      ]
+    },
+    {
+      "name": "production_material_issue",
+      "expect": {"at_least_rows": 5000},
+      "_note": "BOM explosion against released work orders. ~8% of issues carry deliberate over/under-issue beyond the 5% tolerance (every 23rd/29th hash bucket) - those are exactly what control_recon_consumption_vs_bom flags. Lot picks rotate deterministically through each component's lots; parts with no lots issue lot-less (bulk/non-lot-controlled).",
+      "sql": [
+        "insert into production.material_issue",
+        "with demand as (",
+        "  select wo.work_order_id, wo.part_id, wo.qty_planned, wo.released_at,",
+        "         bc.bom_line_id, bc.line_number, bc.component_part_id, bc.qty_per, bc.scrap_factor",
+        "  from production.work_order wo",
+        "  join plm.bom_component bc on bc.part_id = wo.part_id and bc.component_part_id != wo.part_id",
+        "  where wo.released_at is not null",
+        "),",
+        "calc as (",
+        "  select d.*, round(d.qty_planned * d.qty_per * (1.0 + d.scrap_factor), 2) as qty_std,",
+        "         round(d.qty_planned * d.qty_per * (1.0 + d.scrap_factor) *",
+        "           (case when (d.work_order_id * 3 + d.line_number) % 23 = 0 then 1.06 + (d.work_order_id % 6) * 0.015",
+        "                 when (d.work_order_id * 3 + d.line_number) % 29 = 1 then 0.93 - (d.work_order_id % 4) * 0.012",
+        "                 else 1.0 + (((d.work_order_id * 13 + d.line_number * 7) % 17) - 8) / 280.0 end), 2) as qty_act",
+        "  from demand d",
+        "),",
+        "lot_ranked as (",
+        "  select lot_id, part_id, row_number() over (partition by part_id order by lot_id) - 1 as rk,",
+        "         count(*) over (partition by part_id) as cnt",
+        "  from inventory.lot",
+        ")",
+        "select row_number() over (order by c.work_order_id, c.bom_line_id),",
+        "       c.work_order_id, c.part_id, c.component_part_id, c.bom_line_id,",
+        "       lr.lot_id, c.qty_std, c.qty_act,",
+        "       i.standard_cost, round(c.qty_act * i.standard_cost, 2),",
+        "       min(datetime(c.released_at, '+' || ((c.work_order_id * 11 + c.line_number * 37) % 2160) || ' minutes'), '2025-12-31 23:59:59'),",
+        "       null",
+        "from calc c",
+        "left join lot_ranked lr on lr.part_id = c.component_part_id and lr.rk = (c.work_order_id + c.line_number) % lr.cnt",
+        "left join erp.item i on i.part_id = c.component_part_id and i.current_flag = 1;"
+      ]
+    },
+    {
+      "name": "inventory_lot_genealogy",
+      "expect": {"at_least_rows": 3000},
+      "_note": "One trace edge per lot-carrying issue whose work order produced a finished lot. The missing_xref imperfection later deletes ~2% of edges - DQ-005 finds the resulting trace dead-ends.",
+      "sql": [
+        "insert into inventory.lot_genealogy",
+        "select row_number() over (order by mi.issue_id),",
+        "       pl.lot_id, mi.lot_id, mi.work_order_id, mi.component_part_id, mi.issue_id, mi.qty_issued, date(mi.issued_at)",
+        "from production.material_issue mi",
+        "join inventory.lot pl on pl.work_order_id = mi.work_order_id and pl.lot_type = 'produced'",
+        "where mi.lot_id is not null;"
+      ]
+    },
+    {
+      "name": "quality_nonconformance",
+      "_note": "NCRs from failed inspections: all scrap/supplier-return dispositions plus a third of reworks; ~45-day-old NCRs mostly closed, recent ones open (as-of snapshot realism).",
+      "sql": [
+        "insert into quality.nonconformance",
+        "select row_number() over (order by q.inspection_id),",
+        "       'NCR-' || printf('%06d', q.inspection_id),",
+        "       q.inspection_id, q.work_order_id, q.work_center_id,",
+        "       case when q.defects_found >= 4 then 'major' when q.inspection_id % 19 = 0 then 'critical' else 'minor' end,",
+        "       q.disposition,",
+        "       case when date(q.inspected_at) <= date('2025-12-31', '-45 days') and q.inspection_id % 17 != 0 then 'closed'",
+        "            when q.inspection_id % 3 = 0 then 'in_disposition' else 'open' end,",
+        "       q.inspected_at,",
+        "       case when date(q.inspected_at) <= date('2025-12-31', '-45 days') and q.inspection_id % 17 != 0",
+        "            then datetime(q.inspected_at, '+' || (3 + (q.inspection_id * 7) % 38) || ' days') else null end",
+        "from quality.inspection q",
+        "where q.inspected_at is not null",
+        "  and (q.disposition in ('scrap', 'return_to_supplier') or (q.disposition = 'rework' and q.inspection_id % 3 = 0));"
+      ]
+    },
+    {
+      "name": "raw_plm_item_extract",
+      "_note": "Raw landing copy with US-format dates; the format_drift imperfection later corrupts a slice, which DQ-004 catches.",
+      "sql": [
+        "insert into raw.plm_item_extract",
+        "select cast(part_id as text), part_number, part_type, product_family, part_name, lifecycle_status,",
+        "       strftime('%m/%d/%Y', introduced_at), 'BATCH-NIGHTLY-PLM'",
+        "from plm.part;"
+      ]
+    },
+    {
+      "name": "stg_plm_item",
+      "sql": [
+        "insert into stg.plm_item",
+        "select cast(part_id as integer), part_number, lower(part_type), lower(product_family), trim(part_name), lower(lifecycle_status),",
+        "       case when introduced_date like '__/__/____'",
+        "            then substr(introduced_date, 7, 4) || '-' || substr(introduced_date, 1, 2) || '-' || substr(introduced_date, 4, 2)",
+        "            else null end",
+        "from raw.plm_item_extract;"
+      ]
+    },
+    {
+      "name": "xref_item_identifier",
+      "_note": "Both systems mapped: a crosswalk covering a single system is not a crosswalk. ERP rows only map current scd2 versions.",
+      "sql": [
+        "insert into xref.item_identifier",
+        "select p.part_id, 'part', p.part_id, 'CrucibleWorks PLM', 'part', cast(p.part_id as text), date(p.introduced_at), null, 1",
+        "from plm.part p;",
+        "insert into xref.item_identifier",
+        "select 100000 + row_number() over (order by i.item_id), 'part', i.part_id, 'ForgeLine ERP', 'item', cast(i.item_id as text), date(i.created_at), null, 1",
+        "from erp.item i where i.current_flag = 1;"
+      ]
+    },
+    {
+      "name": "core_part",
+      "sql": [
+        "insert into core.part",
+        "select s.part_id, s.part_number, s.part_name, s.part_type, s.product_family, s.lifecycle_status,",
+        "       (select i.make_buy from erp.item i where i.part_id = s.part_id and i.current_flag = 1 limit 1),",
+        "       (select cast(x.source_record_id as integer) from xref.item_identifier x",
+        "         where x.canonical_part_id = s.part_id and x.source_system = 'ForgeLine ERP' and x.active_flag = 1 limit 1),",
+        "       (select i.standard_cost from erp.item i where i.part_id = s.part_id and i.current_flag = 1 limit 1)",
+        "from stg.plm_item s;"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_part",
+      "sql": [
+        "insert into wh.dim_part",
+        "select part_uid, part_number, part_name, part_type, product_family, lifecycle_status, make_buy, standard_cost from core.part;"
+      ]
+    },
+    {
+      "name": "wh_dim_work_center",
+      "sql": [
+        "insert into wh.dim_work_center",
+        "select work_center_id, work_center_code, center_type, plant, hourly_rate, shift_pattern from erp.work_center;"
+      ]
+    },
+    {
+      "name": "wh_dim_machine",
+      "sql": [
+        "insert into wh.dim_machine",
+        "select machine_id, machine_code, work_center_id, center_type, plant, manufacturer, commissioned_date, rated_speed_uph, active_flag from mes.machine;"
+      ]
+    },
+    {
+      "name": "wh_fact_production_order",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into wh.fact_production_order",
+        "select wo.work_order_id, wo.work_order_number, wo.part_id, wo.plant, wo.order_class, wo.part_type,",
+        "       wo.qty_planned,",
+        "       coalesce((select o.qty_good from mes.operation o where o.work_order_id = wo.work_order_id and o.completed_at is not null order by o.op_index desc limit 1), 0),",
+        "       coalesce((select sum(o.qty_scrapped) from mes.operation o where o.work_order_id = wo.work_order_id and o.completed_at is not null), 0),",
+        "       case when wo.completed_at is not null then round(1.0 * coalesce((select o.qty_good from mes.operation o where o.work_order_id = wo.work_order_id and o.completed_at is not null order by o.op_index desc limit 1), 0) / wo.qty_planned, 4) end,",
+        "       wo.status, wo.planned_start_date, wo.released_at, wo.completed_at,",
+        "       case when wo.completed_at is not null and wo.released_at is not null then round(julianday(wo.completed_at) - julianday(wo.released_at), 2) end,",
+        "       (select round(sum(mi.extended_cost), 2) from production.material_issue mi where mi.work_order_id = wo.work_order_id)",
+        "from production.work_order wo;"
+      ]
+    },
+    {
+      "name": "wh_fact_machine_utilization_daily",
+      "expect": {"at_least_rows": 3000},
+      "_note": "OEE components per machine-day: availability from SCADA downtime against a 960-minute two-shift day, quality from reported good/total units, performance as a deterministic hash in the 0.62-0.89 band (ideal cycle times are not modeled). oee always recomputes exactly as a*p*q.",
+      "sql": [
+        "insert into wh.fact_machine_utilization_daily",
+        "with op_day as (",
+        "  select o.machine_id, date(o.started_at) as d, sum(o.qty_started) as units_total, sum(o.qty_good) as units_good",
+        "  from mes.operation o",
+        "  where o.completed_at is not null and o.machine_id is not null",
+        "  group by o.machine_id, date(o.started_at)",
+        "),",
+        "dtm as (",
+        "  select machine_id, date(started_at) as d, sum(duration_minutes) as dt_min",
+        "  from mes.downtime_event group by machine_id, date(started_at)",
+        "),",
+        "base as (",
+        "  select od.machine_id, m.work_center_id, m.plant, od.d,",
+        "         960 as planned_minutes,",
+        "         coalesce(min(dtm.dt_min, 900), 0) as downtime_minutes,",
+        "         od.units_total, od.units_good,",
+        "         round((960.0 - coalesce(min(dtm.dt_min, 900), 0)) / 960.0, 4) as availability,",
+        "         round(0.62 + ((od.machine_id * 31 + cast(strftime('%j', od.d) as integer) * 7) % 28) / 100.0, 4) as performance,",
+        "         round(case when od.units_total > 0 then 1.0 * od.units_good / od.units_total else 1.0 end, 4) as quality_rate",
+        "  from op_day od",
+        "  join mes.machine m on m.machine_id = od.machine_id",
+        "  left join dtm on dtm.machine_id = od.machine_id and dtm.d = od.d",
+        ")",
+        "select row_number() over (order by machine_id, d),",
+        "       machine_id, work_center_id, plant, d, planned_minutes, downtime_minutes,",
+        "       planned_minutes - downtime_minutes, units_total, units_good,",
+        "       availability, performance, quality_rate,",
+        "       round(availability * performance * quality_rate, 4)",
+        "from base;"
+      ]
+    },
+    {
+      "name": "mart_oee_daily",
+      "sql": [
+        "create view mart_oee_daily as",
+        "select f.activity_date, w.work_center_code, w.center_type, f.plant,",
+        "       count(*) as machines_active,",
+        "       round(avg(f.availability), 4) as availability,",
+        "       round(avg(f.performance), 4) as performance,",
+        "       round(avg(f.quality_rate), 4) as quality_rate,",
+        "       round(avg(f.oee), 4) as oee,",
+        "       sum(f.units_good) as units_good,",
+        "       sum(f.downtime_minutes) as downtime_minutes",
+        "from wh.fact_machine_utilization_daily f",
+        "join wh.dim_work_center w on w.work_center_key = f.work_center_key",
+        "group by f.activity_date, w.work_center_code, w.center_type, f.plant;"
+      ]
+    },
+    {
+      "name": "mart_yield_by_work_center",
+      "sql": [
+        "create view mart_yield_by_work_center as",
+        "select w.work_center_code, w.center_type, w.plant,",
+        "       count(*) as operations_completed,",
+        "       sum(o.qty_started) as units_started,",
+        "       sum(o.qty_good) as units_good,",
+        "       sum(o.qty_scrapped) as units_scrapped,",
+        "       round(1.0 * sum(o.qty_good) / max(sum(o.qty_started), 1), 4) as first_pass_yield,",
+        "       round(1.0 * sum(o.qty_scrapped) / max(sum(o.qty_started), 1), 4) as scrap_rate,",
+        "       round(sum(o.labor_cost), 2) as labor_cost",
+        "from mes.operation o",
+        "join erp.work_center w on w.work_center_id = o.work_center_id",
+        "where o.completed_at is not null",
+        "group by w.work_center_code, w.center_type, w.plant;"
+      ]
+    },
+    {
+      "name": "control_recon_consumption_vs_bom",
+      "_note": "Reconciliation as a VIEW so it reflects post-derivation imperfections: standard demand recomputed from the BOM (never trusting denormalized copies), actual from issues including restatement reversal pairs. Breaks = designed over/under-issues plus restatement drift.",
+      "sql": [
+        "create view control_recon_consumption_vs_bom as",
+        "with std as (",
+        "  select wo.work_order_id, bc.component_part_id,",
+        "         sum(round(wo.qty_planned * bc.qty_per * (1.0 + bc.scrap_factor), 2)) as standard_qty",
+        "  from production.work_order wo",
+        "  join plm.bom_component bc on bc.part_id = wo.part_id and bc.component_part_id != wo.part_id",
+        "  where wo.released_at is not null",
+        "  group by wo.work_order_id, bc.component_part_id",
+        "),",
+        "act as (",
+        "  select work_order_id, component_part_id, sum(qty_issued) as issued_qty, avg(unit_std_cost) as unit_cost",
+        "  from production.material_issue",
+        "  group by work_order_id, component_part_id",
+        ")",
+        "select s.work_order_id, s.component_part_id, s.standard_qty,",
+        "       round(a.issued_qty, 2) as issued_qty,",
+        "       round(a.issued_qty - s.standard_qty, 2) as variance_qty,",
+        "       round((a.issued_qty - s.standard_qty) / max(s.standard_qty, 0.01), 4) as variance_pct,",
+        "       round((a.issued_qty - s.standard_qty) * a.unit_cost, 2) as variance_value,",
+        "       case when a.issued_qty > s.standard_qty then 'over_issue' else 'under_issue' end as break_type",
+        "from std s",
+        "join act a on a.work_order_id = s.work_order_id and a.component_part_id = s.component_part_id",
+        "where abs(a.issued_qty - s.standard_qty) > 0.05 * s.standard_qty;"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'active item missing standard cost' as issue, cast(item_id as text) as entity_id",
+        "from erp.item where current_flag = 1 and standard_cost is null",
+        "union all",
+        "select 'DQ-002', 'operation references unknown machine', cast(o.operation_id as text)",
+        "from mes.operation o",
+        "where o.machine_id is not null and not exists (select 1 from mes.machine m where m.machine_id = o.machine_id)",
+        "union all",
+        "select 'DQ-003', 'part missing source crosswalk coverage', cast(s.part_id as text)",
+        "from stg.plm_item s",
+        "where (select count(distinct x.source_system) from xref.item_identifier x",
+        "       where x.canonical_part_id = s.part_id and x.active_flag = 1) < 2",
+        "union all",
+        "select 'DQ-004', 'unparseable raw PLM extract date', part_id",
+        "from raw.plm_item_extract where introduced_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-005', 'lot-controlled issue missing genealogy edge', cast(mi.issue_id as text)",
+        "from production.material_issue mi",
+        "where mi.lot_id is not null and mi.adjustment_note is null",
+        "  and exists (select 1 from inventory.lot pl where pl.work_order_id = mi.work_order_id and pl.lot_type = 'produced')",
+        "  and not exists (select 1 from inventory.lot_genealogy g where g.source_issue_id = mi.issue_id)",
+        "union all",
+        "select 'DQ-006', 'negative operation cycle time', cast(operation_id as text)",
+        "from mes.operation where completed_at is not null and started_at is not null and completed_at < started_at",
+        "union all",
+        "select 'DQ-007', 'duplicate downtime delivery', cast(machine_id as text) || '@' || started_at",
+        "from mes.downtime_event group by machine_id, started_at having count(*) > 1",
+        "union all",
+        "select 'DQ-008', 'duplicate inspection entry', cast(operation_id as text) || '#' || cast(sample_seq as text)",
+        "from quality.inspection group by operation_id, sample_seq having count(*) > 1",
+        "union all",
+        "select 'DQ-009', 'asset name drift vs MES machine master', cast(a.asset_id as text)",
+        "from cmms.asset a join mes.machine m on m.machine_id = a.machine_id",
+        "where a.asset_name != m.machine_code",
+        "union all",
+        "select 'DQ-010', 'BOM component equals its assembly', cast(bom_line_id as text)",
+        "from plm.bom_component where component_part_id = part_id",
+        "union all",
+        "select 'DQ-011', 'work order carries manual quality override', cast(work_order_id as text)",
+        "from production.work_order where override_flag = 1",
+        "union all",
+        "select 'DQ-012', 'MES feed ingested more than 5 days late', cast(operation_id as text)",
+        "from mes.operation where julianday(ingested_at) - julianday(source_updated_at) > 5;"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "asset_name_drift", "type": "conflicting_source_values", "table": "cmms.asset", "rate": 0.09, "stage": "pre_derivation", "params": {"column": "asset_name"}, "scenario": "CMMS asset names drift from the MES machine master after ad-hoc renames; DQ-009 compares the two registries."},
+    {"name": "op_machine_orphans", "type": "orphan_fk", "table": "mes.operation", "rate": 0.004, "stage": "pre_derivation", "params": {"column": "machine_id"}, "scenario": "Retired machines hard-deleted from MES while old operation records still point at them; DQ-002 catches the dangling scans."},
+    {"name": "mes_feed_lag", "type": "late_arrival", "table": "mes.operation", "rate": 0.05, "stage": "pre_derivation", "params": {"column": "ingested_at", "lag_days": {"distribution": "lognormal", "median": 4, "sigma": 0.8}}, "scenario": "MES backflush batches sync days late after network outages; DQ-012 flags ingestion lag over 5 days."},
+    {"name": "plm_extract_date_drift", "type": "format_drift", "table": "raw.plm_item_extract", "rate": 0.05, "stage": "post_derivation", "params": {"column": "introduced_date", "format": "padded"}, "scenario": "Legacy PLM extract job pads dates after a patch; DQ-004 flags unparseable rows."},
+    {"name": "item_xref_gaps", "type": "missing_xref", "table": "xref.item_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Crosswalk rows lost during the 2024 integration-hub migration; DQ-003 reports parts without full source coverage."},
+    {"name": "genealogy_edge_gaps", "type": "missing_xref", "table": "inventory.lot_genealogy", "rate": 0.02, "stage": "post_derivation", "scenario": "Bulk/backflushed components skip lot scans, so trace edges are missing; DQ-005 (control CTL-002) finds recall-trace dead ends."},
+    {"name": "consumption_restatements", "type": "restatement_reversal", "table": "production.material_issue", "rate": 0.005, "stage": "post_derivation", "params": {"amount_columns": ["qty_issued", "extended_cost"], "reason_column": "adjustment_note"}, "scenario": "Issue corrections posted as reversal + restated pairs; the net drift shows up in the consumption-vs-BOM recon."},
+    {"name": "duplicate_inspection_entries", "type": "duplicate_entity", "table": "quality.inspection", "rate": 0.02, "stage": "pre_derivation", "params": {"fuzz_columns": ["inspection_note"]}, "scenario": "Inspectors re-key results after tablet sync failures; DQ-008 finds doubled samples per operation."},
+    {"name": "wo_use_as_is_overrides", "type": "manual_override", "table": "production.work_order", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Use-as-is dispositions signed off by supervisors; DQ-011 keeps the audit queue."},
+    {"name": "item_cost_gaps", "type": "null_field", "table": "erp.item", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "standard_cost"}, "scenario": "Standard costs never set after ECO re-releases; DQ-001 flags costless items and issues lose extended cost downstream."},
+    {"name": "scada_duplicate_feeds", "type": "duplicate_webhook", "table": "mes.downtime_event", "rate": 0.012, "stage": "pre_derivation", "scenario": "SCADA gateway retries re-deliver downtime intervals; DQ-007 finds same-machine same-timestamp doubles before they understate OEE."},
+    {"name": "mes_clock_skew", "type": "out_of_order_events", "table": "mes.operation", "rate": 0.012, "stage": "post_derivation", "params": {"sequence_column": "started_at", "group_column": "work_order_id"}, "scenario": "Operator batch entry and PLC clock skew swap start times between adjacent operations; DQ-006 reports negative cycle times."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Material consumption ties to BOM standard", "source_dataset": "production.material_issue", "target_dataset": "plm.bom_component", "grain": "work_order_id x component_part_id", "tolerance": "5% of standard quantity", "frequency": "daily", "owner": "plant_controlling", "severity": "high", "expected_break_rate": "~8% of work-order components (designed over/under-issues + restatement drift)", "break_view": "control_recon_consumption_vs_bom"},
+    {"rule_id": "CTL-002", "rule_name": "Lot genealogy completeness", "source_dataset": "production.material_issue", "target_dataset": "inventory.lot_genealogy", "grain": "issue", "tolerance": "existence", "frequency": "daily", "owner": "quality_systems", "severity": "high", "expected_break_rate": "~2% of lot-controlled issues (missing scans)", "break_view": "dq_rule_result_current"},
+    {"rule_id": "CTL-003", "rule_name": "Finished lots tie to completed work orders", "source_dataset": "inventory.lot", "target_dataset": "production.work_order", "grain": "produced lot", "tolerance": "existence", "frequency": "daily", "owner": "plant_controlling", "severity": "medium", "expected_break_rate": "0 (structural: produced lots derive from completed orders)", "break_view": "dq_rule_result_current"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "erp.item", "rule_type": "required_field", "condition": "current items have standard_cost", "severity": "error", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-002", "dataset": "mes.operation", "rule_type": "fk_exists", "condition": "machine exists in MES", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-003", "dataset": "xref.item_identifier", "rule_type": "coverage", "condition": "every part mapped in both PLM and ERP", "severity": "error", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-004", "dataset": "raw.plm_item_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.05},
+    {"rule_id": "DQ-005", "dataset": "inventory.lot_genealogy", "rule_type": "coverage", "condition": "lot-controlled issues have trace edges", "severity": "error", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-006", "dataset": "mes.operation", "rule_type": "consistency", "condition": "completed_at >= started_at", "severity": "warning", "expected_failure_rate": 0.003},
+    {"rule_id": "DQ-007", "dataset": "mes.downtime_event", "rule_type": "uniqueness", "condition": "one interval per machine per start time", "severity": "warning", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-008", "dataset": "quality.inspection", "rule_type": "uniqueness", "condition": "one entry per operation per sample", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-009", "dataset": "cmms.asset", "rule_type": "consistency", "condition": "asset name matches MES machine code", "severity": "warning", "expected_failure_rate": 0.05},
+    {"rule_id": "DQ-010", "dataset": "plm.bom_component", "rule_type": "consistency", "condition": "component differs from its assembly", "severity": "error", "expected_failure_rate": 0.001},
+    {"rule_id": "DQ-011", "dataset": "production.work_order", "rule_type": "review_queue", "condition": "manual quality overrides audited", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-012", "dataset": "mes.operation", "rule_type": "timeliness", "condition": "ingested within 5 days of source update", "severity": "warning", "expected_failure_rate": 0.02}
+  ],
+  "dataflows": [
+    {"name": "item_mastering", "sequence": "plm.part -> raw extract -> staging -> xref -> core.part -> wh.dim_part"},
+    {"name": "plan_to_produce", "sequence": "erp.item -> production.work_order -> state machine -> mes.operation schedule -> wh.fact_production_order"},
+    {"name": "material_and_genealogy", "sequence": "plm.bom_component x released work orders -> production.material_issue -> inventory.lot (produced) -> inventory.lot_genealogy"},
+    {"name": "machine_to_oee", "sequence": "mes.downtime_event + mes.operation -> wh.fact_machine_utilization_daily -> mart_oee_daily"},
+    {"name": "quality_loop", "sequence": "mes.operation -> quality.inspection -> quality.nonconformance -> scrap/use-as-is dispositions"}
+  ],
+  "validation": {
+    "required_views": ["mart_oee_daily", "mart_yield_by_work_center", "control_recon_consumption_vs_bom", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "plm.part": [800, 1000],
+      "production.work_order": [5000, 20000],
+      "mes.operation": [22000, 90000],
+      "production.material_issue": [30000, 130000],
+      "inventory.lot_genealogy": [15000, 100000]
+    }
+  }
+}

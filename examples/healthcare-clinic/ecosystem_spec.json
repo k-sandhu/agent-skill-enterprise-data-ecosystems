@@ -1,0 +1,1185 @@
+{
+  "_note": "Worked example: Cedar Summit Health Partners, a fictional 12-clinic ambulatory healthcare network. Practice management (ClearSlate PM) owns patients/coverage/appointments, the EHR (MeadowPoint) owns encounters/diagnoses/procedures (derived from completed appointments - real lineage), and the RCM platform (BrightBill) owns charges/claims/remittances. Two state machines run on scheduling.appointment: the scheduling lifecycle (scheduled -> checked_in -> completed / no_show / cancelled) and the visit billing lifecycle anchored on completed_at (claims with denial/resubmission). No real PII: surrogate MRNs, persona-pool names, birth_year only, 555-01xx phones, example.com emails, NPIs in the provably-fictional 9xxxxxxxxx range.",
+  "spec_version": 2,
+  "organization": {
+    "name": "Cedar Summit Health Partners",
+    "archetype": "ambulatory_health_network",
+    "industry": "Ambulatory healthcare",
+    "currency": "USD"
+  },
+  "platform": "sqlite",
+  "seed": 17,
+  "scale": {"profile": "small", "multiplier": 1.0},
+  "time": {
+    "start_date": "2024-01-01",
+    "end_date": "2025-12-31",
+    "as_of_date": "2025-12-31"
+  },
+  "calendar": {
+    "_note": "Ambulatory weekday shape: Monday peak, Friday taper, urgent-care-only weekends. Month weights carry the winter respiratory bump (Dec-Feb) and the mid-summer elective dip with a Nov-Dec deductible-met lift.",
+    "weekday_weights": [1.15, 1.05, 1.0, 1.0, 0.92, 0.16, 0.04],
+    "month_weights": [1.12, 1.08, 1.02, 0.98, 0.97, 0.93, 0.9, 0.95, 1.0, 1.03, 1.05, 1.06],
+    "holidays": ["2024-01-01", "2024-05-27", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-05-26", "2025-07-04", "2025-11-27", "2025-12-25"],
+    "annual_growth": 0.05,
+    "business_hours": [7, 18]
+  },
+  "vocab": {
+    "_note": "Per-category service and diagnosis pools so descriptions, fees, and chronic flags stay mutually coherent (category is drawn first, everything else conditions on it).",
+    "em_visit_desc": ["Office visit, established patient, brief", "Office visit, established patient, expanded", "Office visit, established patient, detailed", "Office visit, new patient, detailed", "Office visit, new patient, comprehensive", "Telehealth visit, established patient", "After-hours office visit", "Nurse-only visit, blood pressure check", "Office consultation, problem focused", "Extended office visit, complex management", "Same-day sick visit", "Chronic care follow-up visit", "Medication management visit", "Hospital follow-up transition visit"],
+    "preventive_desc": ["Annual wellness visit, 18-39", "Annual wellness visit, 40-64", "Annual wellness visit, 65 plus", "Well-child check, 5-11", "Well-child check, 12-17", "Medicare annual wellness visit", "Preventive counseling, tobacco cessation", "Preventive screening visit, depression", "Sports physical", "Pre-operative clearance exam", "New patient preventive exam", "Well-woman preventive exam"],
+    "procedure_desc": ["Joint injection, major joint", "Skin lesion excision, benign", "Mole removal with closure", "Laceration repair, simple", "Cryotherapy, skin lesion", "Ingrown toenail removal", "Colposcopy with biopsy", "Skin biopsy, punch", "Cerumen removal", "Trigger point injection", "IUD insertion", "Endometrial biopsy", "Casting, short arm", "Incision and drainage, abscess", "Spirometry with interpretation", "EKG with interpretation"],
+    "lab_desc": ["Comprehensive metabolic panel", "Basic metabolic panel", "Lipid panel", "CBC with differential", "Hemoglobin A1c", "TSH", "Urinalysis, automated", "Rapid strep test", "Influenza antigen test", "Respiratory virus PCR panel", "Vitamin D, 25-hydroxy", "PSA, total", "Urine culture", "Throat culture", "Pregnancy test, urine", "Glucose, fasting"],
+    "imaging_desc": ["X-ray chest, 2 views", "X-ray knee, 3 views", "X-ray lumbar spine", "Ultrasound abdomen, complete", "Ultrasound thyroid", "Mammogram, screening bilateral", "DEXA bone density", "Echocardiogram, transthoracic", "CT head without contrast", "MRI knee without contrast", "X-ray hand, 3 views", "Ultrasound pelvis"],
+    "immunization_desc": ["Influenza vaccine, quadrivalent", "Tdap booster", "Pneumococcal vaccine, PCV20", "Shingles vaccine, recombinant", "Hepatitis B vaccine, adult", "MMR vaccine", "Varicella vaccine", "HPV vaccine", "Meningococcal vaccine", "Polio vaccine, IPV", "Hepatitis A vaccine, pediatric", "RSV vaccine, older adult"],
+    "respiratory_dx": ["Acute upper respiratory infection", "Acute bronchitis", "Asthma, mild intermittent", "Asthma with exacerbation", "COPD without exacerbation", "Allergic rhinitis", "Acute sinusitis", "Acute pharyngitis", "Influenza with respiratory manifestations", "Pneumonia, unspecified organism", "Chronic cough", "Obstructive sleep apnea"],
+    "metabolic_dx": ["Type 2 diabetes without complications", "Type 2 diabetes with hyperglycemia", "Prediabetes", "Hypothyroidism", "Hyperlipidemia, mixed", "Pure hypercholesterolemia", "Obesity, BMI 30-34.9", "Morbid obesity", "Vitamin D deficiency", "Gout, unspecified", "Metabolic syndrome", "Type 1 diabetes, controlled"],
+    "cardiovascular_dx": ["Essential hypertension", "Hypertensive heart disease", "Atrial fibrillation, paroxysmal", "Coronary artery disease, native vessel", "Congestive heart failure, chronic", "Peripheral vascular disease", "Mitral valve disorder", "Orthostatic hypotension", "Palpitations", "History of myocardial infarction", "Venous insufficiency", "Hypertensive chronic kidney disease"],
+    "musculoskeletal_dx": ["Low back pain", "Cervicalgia", "Osteoarthritis of knee", "Osteoarthritis of hip", "Rotator cuff syndrome", "Plantar fasciitis", "Carpal tunnel syndrome", "Lateral epicondylitis", "Osteoporosis without fracture", "Fibromyalgia", "Joint pain, shoulder", "Muscle strain, lumbar"],
+    "mental_health_dx": ["Major depressive disorder, single episode", "Generalized anxiety disorder", "Adjustment disorder with anxiety", "ADHD, combined type", "Insomnia, chronic", "Panic disorder", "PTSD, chronic", "Bipolar II disorder, stable", "Alcohol use disorder, mild", "Depression screening encounter", "Social anxiety disorder", "Grief reaction"],
+    "preventive_dx": ["Encounter for annual exam", "Encounter for immunization", "Screening for malignant neoplasm of colon", "Screening mammogram encounter", "Encounter for contraceptive management", "Well child examination", "Screening for diabetes", "Screening for lipid disorder", "Pre-employment examination", "Encounter for medication review", "Tobacco use counseling encounter", "BMI screening encounter"],
+    "injury_dx": ["Ankle sprain, lateral ligament", "Wrist sprain", "Contusion of knee", "Laceration of forearm", "Concussion without loss of consciousness", "Fracture of distal radius, closed", "Burn, second degree, hand", "Foreign body in eye", "Insect bite, infected", "Dog bite, open wound", "Whiplash injury", "Fall from standing height"]
+  },
+  "tables": [
+    {
+      "schema": "app", "name": "application", "layer": "app",
+      "purpose": "Application catalog for the fictional landscape.",
+      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "application_id", "type": "integer"},
+        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "ClearSlate PM", "2": "MeadowPoint EHR", "3": "BrightBill RCM", "4": "Atlas Clearing Gateway", "5": "Lantern EMPI", "6": "Cedar Summit Data Warehouse", "7": "FlowMerge Integration Engine", "8": "Compass BI Portal"}}},
+        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "practice_management", "2": "EHR", "3": "RCM", "4": "clearinghouse", "5": "EMPI", "6": "warehouse", "7": "integration", "8": "BI"}}},
+        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "patients/scheduling/coverage", "2": "encounters/clinical documentation", "3": "charges/claims/remittances", "4": "claim transit", "5": "patient identity", "6": "reporting", "7": "integration", "8": "dashboards"}}},
+        {"name": "business_owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.5,tier2=0.38,tier3=0.12"},
+        {"name": "contains_phi_flag", "type": "boolean", "gen": "bool:0.75"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "12 clinics; the flagship multispecialty hub carries an outsized share of the panel via zipf clinic assignment on patients.",
+      "schema": "ref", "name": "clinic", "layer": "source",
+      "purpose": "Clinic site master for the ambulatory network.",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["clinic_id"], "natural_key": ["clinic_code"],
+      "rows": 12, "scale_exempt": true,
+      "columns": [
+        {"name": "clinic_id", "type": "integer"},
+        {"name": "clinic_code", "type": "string", "gen": {"type": "pattern", "pattern": "CL-###", "unique": true}},
+        {"name": "clinic_name", "type": "string", "gen": {"type": "company_name", "flavor": "healthcare", "unique": true}},
+        {"name": "clinic_type", "type": "string", "gen": "choice:multispecialty_hub=0.25,primary_care=0.42,urgent_care=0.17,pediatrics=0.16"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "exam_rooms", "type": "integer", "gen": "int:uniform(6,26)"},
+        {"name": "opened_year", "type": "integer", "gen": "int:uniform(1998,2022)"},
+        {"name": "weekend_hours_flag", "type": "boolean", "gen": {"type": "case", "on": "clinic_type", "cases": {"urgent_care": 1}, "default": {"type": "boolean", "p_true": 0.08}}}
+      ]
+    },
+    {
+      "_note": "Payer master with per-payer contracted rates. 'Self-Pay / Patient Direct' is a configured financial class like real PM systems use, so self-pay visits flow through the same claim machinery with zero payer payment.",
+      "schema": "ref", "name": "payer", "layer": "source",
+      "purpose": "Payer / financial-class master with contracted reimbursement rates.",
+      "source_system": "BrightBill RCM",
+      "primary_key": ["payer_id"], "rows": 10, "scale_exempt": true,
+      "columns": [
+        {"name": "payer_id", "type": "integer"},
+        {"name": "payer_code", "type": "string", "gen": {"type": "case", "on": "payer_id", "cases": {"1": "MCR-B", "2": "MCR-ADV", "3": "MCD-ST", "4": "MCD-MGD", "5": "COM-BLU", "6": "COM-SEN", "7": "COM-HBR", "8": "SELF", "9": "WC-KEY", "10": "SUP-SLV"}}},
+        {"name": "payer_name", "type": "string", "gen": {"type": "case", "on": "payer_id", "cases": {"1": "Lakeshire Medicare Part B", "2": "Granite Peak Medicare Advantage", "3": "State Medicaid Program", "4": "Caring Bridge Medicaid Managed", "5": "Bluestem Health PPO", "6": "Sentinel Mutual Health", "7": "Harborview Employer Trust", "8": "Self-Pay / Patient Direct", "9": "Keystone Workers Comp Fund", "10": "Silverline Medigap Supplement"}}},
+        {"name": "payer_type", "type": "string", "gen": {"type": "case", "on": "payer_id", "cases": {"1": "medicare", "2": "medicare", "3": "medicaid", "4": "medicaid", "5": "commercial", "6": "commercial", "7": "commercial", "8": "self_pay", "9": "workers_comp", "10": "supplement"}}},
+        {"name": "contracted_rate_pct", "type": "decimal", "gen": {"type": "case", "on": "payer_id", "cases": {"1": 0.34, "2": 0.36, "3": 0.26, "4": 0.27, "5": 0.54, "6": 0.5, "7": 0.57, "8": 0.75, "9": 0.62, "10": 0.3}}},
+        {"name": "timely_filing_days", "type": "integer", "gen": {"type": "case", "on": "payer_type", "cases": {"medicare": 365, "medicaid": 180, "self_pay": 365, "workers_comp": 180, "supplement": 365}, "default": 90}},
+        {"name": "remit_method", "type": "string", "gen": "choice:EFT=0.8,check=0.2"}
+      ]
+    },
+    {
+      "_note": "Chargemaster: category drawn first, then description and fee both condition on it. Fees are whole-dollar (price_endings [0.0]) like a real fee schedule, which also gives downstream amounts honest duplicate mass.",
+      "schema": "ref", "name": "fee_schedule", "layer": "source",
+      "purpose": "Chargemaster / fee schedule for billable services.",
+      "source_system": "BrightBill RCM",
+      "primary_key": ["fee_item_id"], "natural_key": ["charge_code"],
+      "rows": 110, "scale_exempt": true,
+      "columns": [
+        {"name": "fee_item_id", "type": "integer"},
+        {"name": "charge_code", "type": "string", "gen": {"type": "pattern", "pattern": "CHG-#####", "unique": true}},
+        {"name": "category", "type": "string", "gen": "choice:em_visit=0.30,lab=0.24,minor_procedure=0.16,imaging=0.10,immunization=0.10,preventive=0.10"},
+        {"name": "description", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"em_visit": {"type": "text_template", "templates": ["{em_visit_desc}"]}, "preventive": {"type": "text_template", "templates": ["{preventive_desc}"]}, "minor_procedure": {"type": "text_template", "templates": ["{procedure_desc}"]}, "lab": {"type": "text_template", "templates": ["{lab_desc}"]}, "imaging": {"type": "text_template", "templates": ["{imaging_desc}"]}, "immunization": {"type": "text_template", "templates": ["{immunization_desc}"]}}}},
+        {"name": "standard_fee", "type": "decimal", "gen": {"type": "case", "on": "category", "cases": {"em_visit": {"type": "money", "median": 140, "sigma": 0.25, "price_endings": [0.0]}, "preventive": {"type": "money", "median": 200, "sigma": 0.25, "price_endings": [0.0]}, "minor_procedure": {"type": "money", "median": 420, "sigma": 0.6, "price_endings": [0.0]}, "lab": {"type": "money", "median": 38, "sigma": 0.5, "min": 12, "price_endings": [0.0]}, "imaging": {"type": "money", "median": 320, "sigma": 0.5, "price_endings": [0.0]}, "immunization": {"type": "money", "median": 55, "sigma": 0.35, "price_endings": [0.0]}}}},
+        {"name": "rvu", "type": "decimal", "gen": {"type": "expression", "expression": "round(standard_fee / 36.2, 2)"}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.94"}
+      ]
+    },
+    {
+      "_note": "Diagnosis reference: ICD-10-style code prefix conditions on the clinical category (J respiratory, E metabolic, I cardio, M msk, F mental health, Z preventive, S injury), as does the chronic flag.",
+      "schema": "ref", "name": "diagnosis_code", "layer": "source",
+      "purpose": "Diagnosis code reference used by encounter coding.",
+      "source_system": "MeadowPoint EHR",
+      "primary_key": ["diagnosis_code_id"], "natural_key": ["dx_code"],
+      "rows": 140, "scale_exempt": true,
+      "columns": [
+        {"name": "diagnosis_code_id", "type": "integer"},
+        {"name": "category", "type": "string", "gen": "choice:respiratory=0.15,metabolic=0.17,cardiovascular=0.16,musculoskeletal=0.14,mental_health=0.10,preventive=0.17,injury=0.11"},
+        {"name": "dx_code", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"respiratory": {"type": "pattern", "pattern": "J##.#", "unique": true}, "metabolic": {"type": "pattern", "pattern": "E##.#", "unique": true}, "cardiovascular": {"type": "pattern", "pattern": "I##.#", "unique": true}, "musculoskeletal": {"type": "pattern", "pattern": "M##.#", "unique": true}, "mental_health": {"type": "pattern", "pattern": "F##.#", "unique": true}, "preventive": {"type": "pattern", "pattern": "Z##.#", "unique": true}, "injury": {"type": "pattern", "pattern": "S##.#", "unique": true}}}},
+        {"name": "description", "type": "string", "gen": {"type": "case", "on": "category", "cases": {"respiratory": {"type": "text_template", "templates": ["{respiratory_dx}"]}, "metabolic": {"type": "text_template", "templates": ["{metabolic_dx}"]}, "cardiovascular": {"type": "text_template", "templates": ["{cardiovascular_dx}"]}, "musculoskeletal": {"type": "text_template", "templates": ["{musculoskeletal_dx}"]}, "mental_health": {"type": "text_template", "templates": ["{mental_health_dx}"]}, "preventive": {"type": "text_template", "templates": ["{preventive_dx}"]}, "injury": {"type": "text_template", "templates": ["{injury_dx}"]}}}},
+        {"name": "chronic_flag", "type": "boolean", "gen": {"type": "case", "on": "category", "cases": {"metabolic": {"type": "boolean", "p_true": 0.75}, "cardiovascular": {"type": "boolean", "p_true": 0.7}, "respiratory": {"type": "boolean", "p_true": 0.45}, "mental_health": {"type": "boolean", "p_true": 0.6}, "musculoskeletal": {"type": "boolean", "p_true": 0.35}}, "default": {"type": "boolean", "p_true": 0.04}}}
+      ]
+    },
+    {
+      "_note": "Providers carry the npi identifier kind (9xxxxxxxxx range can never be a real NPI but keeps the 80840 Luhn check digit). Clinic assignment is zipf so the hub clinic staffs the most providers, matching its patient share.",
+      "schema": "provider", "name": "provider", "layer": "source",
+      "purpose": "Rendering providers (physicians and APPs) across the network.",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["provider_id"], "natural_key": ["npi"],
+      "rows": 70, "scale_exempt": true,
+      "columns": [
+        {"name": "provider_id", "type": "integer"},
+        {"name": "npi", "type": "string", "gen": "identifier:npi"},
+        {"name": "provider_name", "type": "string", "gen": "person_full"},
+        {"name": "credential", "type": "string", "gen": "choice:MD=0.5,DO=0.13,NP=0.23,PA=0.14"},
+        {"name": "specialty", "type": "string", "gen": "choice:family_medicine=0.30,internal_medicine=0.22,pediatrics=0.12,behavioral_health=0.08,cardiology=0.07,orthopedics=0.06,dermatology=0.05,ob_gyn=0.06,sports_medicine=0.04"},
+        {"name": "clinic_id", "type": "integer", "gen": "fk:ref.clinic@zipf"},
+        {"name": "fte", "type": "number", "gen": {"type": "number", "distribution": "uniform", "min": 0.5, "max": 1.0, "decimals": 2}},
+        {"name": "telehealth_enabled", "type": "boolean", "gen": "bool:0.6"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.93"}
+      ]
+    },
+    {
+      "_note": "Patient master. NO real PII: surrogate MRN, persona-pool names, birth_year only (no DOB), reserved-range phone, example.com email. created_at is sorted with 70% backfill so MRN sequence correlates with registration date and the panel is tenured rather than ramping from zero. utilization_tier + a heavy-tailed per-patient multiplier on appointments produce the chronic/complex whale cohort.",
+      "schema": "patient", "name": "patient", "layer": "source",
+      "purpose": "Practice management patient master (registration system of record).",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["patient_id"], "natural_key": ["mrn"],
+      "rows": 6200, "traits": ["audited"],
+      "indexes": [["last_name"], ["patient_status"]],
+      "columns": [
+        {"name": "patient_id", "type": "integer"},
+        {"name": "mrn", "type": "string", "gen": {"type": "pattern", "pattern": "MRN-#######", "unique": true}},
+        {"name": "first_name", "type": "string"},
+        {"name": "last_name", "type": "string"},
+        {"name": "sex", "type": "string", "gen": "choice:F=0.55,M=0.44,X=0.01"},
+        {"name": "birth_year", "type": "integer", "gen": {"type": "int", "distribution": "normal", "mean": 1972, "stdev": 24, "min": 1930, "max": 2024}},
+        {"name": "street_address", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "postal_code", "type": "string"},
+        {"name": "phone", "type": "string"},
+        {"name": "email", "type": "string", "null_rate": 0.18},
+        {"name": "home_clinic_id", "type": "integer", "_note": "zipf: the flagship hub holds roughly a third of the panel, satellites tail off.", "gen": "fk:ref.clinic@zipf"},
+        {"name": "utilization_tier", "type": "string", "gen": "choice:low=0.44,moderate=0.36,high=0.15,complex=0.05"},
+        {"name": "primary_language", "type": "string", "gen": "choice:en=0.83,es=0.11,vi=0.02,zh=0.02,other=0.02"},
+        {"name": "patient_status", "type": "string", "gen": "choice:active=0.85,inactive=0.13,deceased=0.02"},
+        {"name": "created_at", "type": "timestamp", "_note": "sorted + backfill: registrations predate the data window for 85% of the panel, so in-window encounter volume grows at a believable ~20-30%/yr (panel growth + 5% calendar trend) instead of doubling.", "gen": {"type": "timestamp", "sorted": true, "backfill_share": 0.85, "backfill_start": "2016-01-01"}}
+      ]
+    },
+    {
+      "_note": "Coverage: rank 1 is the billed primary (payer mix ~ Medicare .37 / Medicaid .16 / commercial .37 / self-pay .06), rank 2+ are supplements/secondaries. payer_id uses fk affinity matching on payer_type with a 2% leak (mis-mapped plans at registration). term_date mostly null/future; the stale_mapping imperfection retro-terms 4% to feed eligibility-denial DQ-005.",
+      "schema": "patient", "name": "coverage", "layer": "source",
+      "purpose": "Insurance coverage on file per patient.",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["coverage_id"],
+      "rows": {"per_parent": "patient.patient", "distribution": {"distribution": "poisson", "lam": 0.45}, "min": 1, "max": 3},
+      "traits": ["audited"],
+      "indexes": [["patient_id"], ["coverage_rank"]],
+      "columns": [
+        {"name": "coverage_id", "type": "integer", "gen": "seq"},
+        {"name": "patient_id", "type": "integer", "gen": "parent_key"},
+        {"name": "coverage_rank", "type": "integer", "gen": "child_index"},
+        {"name": "coverage_type", "type": "string", "gen": {"type": "case", "on": "coverage_rank", "cases": {"1": {"type": "choice", "values": ["medicare", "medicaid", "commercial", "self_pay", "workers_comp"], "weights": [0.37, 0.16, 0.37, 0.06, 0.04]}}, "default": {"type": "choice", "values": ["supplement", "medicaid", "commercial"], "weights": [0.5, 0.28, 0.22]}}},
+        {"name": "payer_id", "type": "integer", "gen": {"type": "fk", "ref": "ref.payer", "match": {"parent_column": "payer_type", "local_column": "coverage_type", "leak_rate": 0.02}}},
+        {"name": "member_id", "type": "string", "gen": {"type": "pattern", "pattern": "MBR-#########", "unique": true}},
+        {"name": "group_number", "type": "string", "null_rate": 0.3, "gen": "pattern:GRP-#####"},
+        {"name": "effective_date", "type": "date", "gen": {"type": "date", "min": "parent.created_at"}},
+        {"name": "term_date", "type": "date", "nullable": true, "null_rate": 0.65, "gen": {"type": "date_offset", "from": "effective_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 540, "sigma": 0.4, "min": 60, "max": 1100}, "clamp_as_of": false, "as": "date"}},
+        {"name": "copay_amount", "type": "decimal", "gen": {"type": "case", "on": "coverage_type", "cases": {"commercial": {"type": "choice", "values": [0, 20, 30, 40], "weights": [0.12, 0.36, 0.34, 0.18]}}, "default": 0}},
+        {"name": "verified_flag", "type": "boolean", "gen": "bool:0.9"}
+      ]
+    },
+    {
+      "_note": "THE central table: every appointment, kept or not. Two machines run here. Machine 1 (scheduling) anchors on appointment_date: ~12% no-show, ~12% cancel, 1.5% never reconciled (stale 'scheduled' backlog -> DQ-010). Machine 2 (visit billing / claim lifecycle) anchors on completed_at, which machine 1 writes first - rows that never completed are skipped and legitimately stay 'not_billed'. Volume is segment-conditioned (complex patients ~12x low utilizers) with a heavy-tailed per-patient multiplier.",
+      "schema": "scheduling", "name": "appointment", "layer": "transaction",
+      "purpose": "Appointments across all clinics, including no-shows and cancellations.",
+      "grain": "one row per scheduled appointment",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["appointment_id"], "natural_key": ["appointment_number"],
+      "rows": {"per_parent": "patient.patient", "distribution": {"distribution": "lognormal", "median": 3.3, "sigma": 0.85}, "scale_by": {"parent_column": "utilization_tier", "factors": {"low": 0.5, "moderate": 1.0, "high": 2.4, "complex": 6.0}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.7}, "min": 0, "max": 90},
+      "traits": ["audited"],
+      "indexes": [["patient_id"], ["appointment_date"], ["status"], ["billing_status"]],
+      "columns": [
+        {"name": "appointment_id", "type": "integer", "gen": "seq"},
+        {"name": "appointment_number", "type": "string", "gen": {"type": "pattern", "pattern": "APT-########", "unique": true}},
+        {"name": "patient_id", "type": "integer", "gen": "parent_key"},
+        {"name": "home_clinic_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "home_clinic_id"}},
+        {"name": "clinic_id", "type": "integer", "_note": "Affinity match on the patient's home clinic with a 6% leak (urgent-care walk-ins, coverage at sister sites).", "gen": {"type": "fk", "ref": "ref.clinic", "match": {"parent_column": "clinic_id", "local_column": "home_clinic_id", "leak_rate": 0.06}}},
+        {"name": "provider_id", "type": "integer", "_note": "Provider drawn from the visit clinic's own staff with a 5% float-pool leak.", "gen": {"type": "fk", "ref": "provider.provider", "match": {"parent_column": "clinic_id", "local_column": "clinic_id", "leak_rate": 0.05}}},
+        {"name": "appointment_type", "type": "string", "gen": "choice:office_visit=0.54,follow_up=0.20,annual_physical=0.08,procedure_visit=0.07,telehealth=0.07,nurse_visit=0.04"},
+        {"name": "appointment_date", "type": "date", "_note": "Calendar-weighted (Monday peak, near-zero weekends, winter bump) and never before the patient registered.", "gen": {"type": "date", "min": "parent.created_at"}},
+        {"name": "duration_minutes", "type": "integer", "gen": {"type": "case", "on": "appointment_type", "cases": {"office_visit": {"type": "choice", "values": [20, 30], "weights": [0.6, 0.4]}, "follow_up": {"type": "choice", "values": [15, 20], "weights": [0.55, 0.45]}, "annual_physical": 40, "procedure_visit": {"type": "choice", "values": [30, 45, 60], "weights": [0.5, 0.35, 0.15]}, "telehealth": 20, "nurse_visit": 15}}},
+        {"name": "eligibility_verified_flag", "type": "boolean", "gen": "bool:0.92"},
+        {"name": "eligibility_override_flag", "type": "boolean", "gen": "const:0"},
+        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"},
+        {"name": "status", "type": "string", "gen": "const:scheduled"},
+        {"name": "checked_in_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "completed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "no_show_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "cancelled_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "billing_status", "type": "string", "gen": "const:not_billed"},
+        {"name": "charges_entered_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "claim_submitted_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "payer_accepted_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "paid_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "denied_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resubmitted_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "appealed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "written_off_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "_note": "Services booked WITH the appointment (schedulers book specific services), so rows legitimately exist for visits that later no-show or cancel. The fee snapshot is fk_copy'd from the chargemaster and booked_amount = fee x integer units - the required price-realism pattern. Documented procedures derive from these for completed visits only.",
+      "schema": "scheduling", "name": "appointment_service", "layer": "transaction",
+      "purpose": "Service lines booked on each appointment, priced from the fee schedule.",
+      "grain": "one row per appointment per booked service line",
+      "source_system": "ClearSlate PM",
+      "primary_key": ["service_id"],
+      "rows": {"per_parent": "scheduling.appointment", "distribution": {"distribution": "lognormal", "median": 1.4, "sigma": 0.55}, "min": 1, "max": 8},
+      "indexes": [["appointment_id"]],
+      "columns": [
+        {"name": "service_id", "type": "integer", "gen": "seq"},
+        {"name": "appointment_id", "type": "integer", "gen": "parent_key"},
+        {"name": "line_number", "type": "integer", "gen": "child_index"},
+        {"name": "visit_date", "type": "date", "gen": {"type": "parent_copy", "source_column": "appointment_date"}},
+        {"name": "fee_item_id", "type": "integer", "_note": "zipf(0.5): popular services (level-3/4 E/M, flu shots, lipid panels) lead without one code dominating.", "gen": "fk:ref.fee_schedule@zipf(0.5)"},
+        {"name": "charge_code", "type": "string", "gen": {"type": "fk_copy", "column": "fee_item_id", "ref": "ref.fee_schedule", "source_column": "charge_code"}},
+        {"name": "service_category", "type": "string", "gen": {"type": "fk_copy", "column": "fee_item_id", "ref": "ref.fee_schedule", "source_column": "category"}},
+        {"name": "fee_snapshot", "type": "decimal", "gen": {"type": "fk_copy", "column": "fee_item_id", "ref": "ref.fee_schedule", "source_column": "standard_fee"}},
+        {"name": "units", "type": "integer", "gen": {"type": "choice", "values": [1, 2, 3, 4], "weights": [0.84, 0.11, 0.04, 0.01]}},
+        {"name": "booked_amount", "type": "decimal", "gen": "expr:round(fee_snapshot * units, 2)"}
+      ]
+    },
+    {
+      "schema": "scheduling", "name": "appointment_event", "layer": "event",
+      "purpose": "Scheduling status history emitted by the appointment lifecycle machine.",
+      "grain": "one row per appointment per scheduling state entered",
+      "source": "state_machine",
+      "primary_key": ["appointment_id", "event_seq"],
+      "indexes": [["appointment_id"]],
+      "columns": [
+        {"name": "appointment_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "billing", "name": "visit_billing_event", "layer": "event",
+      "purpose": "Visit billing / claim lifecycle history emitted by the claim machine.",
+      "grain": "one row per completed visit per billing state entered",
+      "source": "state_machine",
+      "primary_key": ["appointment_id", "event_seq"],
+      "indexes": [["appointment_id"]],
+      "columns": [
+        {"name": "appointment_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Interface engine batch run log.",
+      "source_system": "FlowMerge Integration Engine",
+      "primary_key": ["run_id"], "rows": 600,
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": "choice:pm_patient_extract=0.18,ehr_encounter_feed=0.22,charge_interface=0.20,clearinghouse_submit_837=0.15,remit_835_import=0.15,warehouse_refresh=0.10"},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.93,failed=0.04,partial=0.03"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=3500,sigma=1.0,min=0)"},
+        {"name": "error_note", "type": "string", "null_rate": 0.88, "gen": "text:exception_note"}
+      ]
+    },
+    {
+      "schema": "dq", "name": "rule", "layer": "dq",
+      "purpose": "Data quality rule catalog (live results come from the dq_rule_result_current view).",
+      "primary_key": ["rule_id"], "rows": 10, "scale_exempt": true,
+      "columns": [
+        {"name": "rule_id", "type": "integer"},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "completed encounter with no posted charges", "2": "procedure references missing encounter", "3": "patient missing source identifier mapping", "4": "unparseable raw registration date", "5": "claim service date after coverage termination", "6": "staging last name disagrees with PM source", "7": "duplicate interface job delivery", "8": "charge posted more than 5 days after service", "9": "possible duplicate patient registration", "10": "past appointment never reconciled from scheduled"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "clinical.encounter", "2": "clinical.procedure", "3": "xref.patient_identifier", "4": "raw.pm_patient_extract", "5": "claims.claim", "6": "stg.pm_patient", "7": "integration.job_run", "8": "billing.charge", "9": "patient.patient", "10": "scheduling.appointment"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "warning"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "schema": "control", "name": "control_catalog", "layer": "control",
+      "purpose": "Reconciliation control catalog (break rows come from the control_recon_charge_claim view).",
+      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "columns": [
+        {"name": "control_id", "type": "integer"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Claim billed ties to posted charges", "2": "Remit disposition sums to billed", "3": "EMPI patients tie to source mappings"}}},
+        {"name": "source_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claims.claim_line", "2": "claims.remittance", "3": "patient.patient"}}},
+        {"name": "target_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "billing.charge", "2": "claims.claim", "3": "xref.patient_identifier"}}},
+        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claim", "2": "remittance line", "3": "patient"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.01", "3": "0"}}},
+        {"name": "frequency", "type": "string", "gen": "const:daily"},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_charge_claim", "2": "n/a (identity by construction)", "3": "dq_rule_result_current (DQ-003)"}}}
+      ]
+    },
+    {
+      "_note": "Everything below derives via SQL from the tables above - real lineage, not parallel-faked data.",
+      "schema": "raw", "name": "pm_patient_extract", "layer": "raw",
+      "purpose": "Nightly PM patient extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["patient_id"],
+      "columns": [
+        {"name": "patient_id", "type": "string"},
+        {"name": "mrn", "type": "string"},
+        {"name": "first_name", "type": "string"},
+        {"name": "last_name", "type": "string"},
+        {"name": "sex", "type": "string"},
+        {"name": "birth_year", "type": "string"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "registration_date", "type": "string"},
+        {"name": "extract_batch", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "pm_patient", "layer": "staging",
+      "purpose": "Typed/cleaned PM patients; normalizes raw extract dates.",
+      "source": "derivation", "primary_key": ["patient_id"],
+      "columns": [
+        {"name": "patient_id", "type": "integer"},
+        {"name": "mrn", "type": "string"},
+        {"name": "first_name", "type": "string"},
+        {"name": "last_name", "type": "string"},
+        {"name": "sex", "type": "string"},
+        {"name": "birth_year", "type": "integer"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "registered_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "xref", "name": "patient_identifier", "layer": "xref",
+      "purpose": "EMPI identifier crosswalk: PM MRN and EHR person id per canonical patient.",
+      "source": "derivation", "primary_key": ["identifier_id"],
+      "indexes": [["canonical_patient_id"]],
+      "columns": [
+        {"name": "identifier_id", "type": "integer"},
+        {"name": "entity_type", "type": "string"},
+        {"name": "canonical_patient_id", "type": "integer"},
+        {"name": "source_system", "type": "string"},
+        {"name": "identifier_type", "type": "string"},
+        {"name": "identifier_value", "type": "string"},
+        {"name": "valid_from", "type": "date"},
+        {"name": "valid_to", "type": "date", "nullable": true},
+        {"name": "active_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "core", "name": "patient", "layer": "canonical",
+      "purpose": "Canonical (EMPI golden) patient joining staging and the crosswalk.",
+      "source": "derivation", "primary_key": ["patient_uid"],
+      "columns": [
+        {"name": "patient_uid", "type": "integer"},
+        {"name": "mrn", "type": "string"},
+        {"name": "full_name", "type": "string"},
+        {"name": "sex", "type": "string"},
+        {"name": "birth_year", "type": "integer"},
+        {"name": "city", "type": "string"},
+        {"name": "state", "type": "string"},
+        {"name": "home_clinic_id", "type": "integer"},
+        {"name": "utilization_tier", "type": "string"},
+        {"name": "patient_status", "type": "string"},
+        {"name": "ehr_person_id", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Encounters exist only for appointments that actually checked in - coherence by construction, never a random FK.",
+      "schema": "clinical", "name": "encounter", "layer": "transaction",
+      "purpose": "EHR encounters derived 1:1 from checked-in appointments.",
+      "grain": "one row per checked-in visit",
+      "source": "derivation", "source_system": "MeadowPoint EHR",
+      "primary_key": ["encounter_id"],
+      "indexes": [["patient_id"], ["encounter_date"], ["clinic_id"]],
+      "columns": [
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "appointment_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "provider_id", "type": "integer"},
+        {"name": "clinic_id", "type": "integer"},
+        {"name": "encounter_type", "type": "string"},
+        {"name": "encounter_date", "type": "date"},
+        {"name": "checked_in_at", "type": "timestamp"},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "visit_status", "type": "string"},
+        {"name": "duration_minutes", "type": "integer", "nullable": true}
+      ]
+    },
+    {
+      "schema": "clinical", "name": "diagnosis", "layer": "transaction",
+      "purpose": "Encounter diagnoses: every encounter has a principal dx, 60% a second, 25% a third; code popularity is banded so chronic heavy-hitters dominate.",
+      "grain": "one row per encounter per diagnosis rank",
+      "source": "derivation", "source_system": "MeadowPoint EHR",
+      "primary_key": ["diagnosis_id"],
+      "indexes": [["encounter_id"], ["diagnosis_code_id"]],
+      "columns": [
+        {"name": "diagnosis_id", "type": "integer"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "diagnosis_code_id", "type": "integer"},
+        {"name": "diagnosis_rank", "type": "integer"},
+        {"name": "documented_by", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "clinical", "name": "procedure", "layer": "transaction",
+      "purpose": "Documented procedures: the booked services of visits that completed.",
+      "grain": "one row per documented service on a completed encounter",
+      "source": "derivation", "source_system": "MeadowPoint EHR",
+      "primary_key": ["procedure_id"],
+      "indexes": [["encounter_id"], ["fee_item_id"]],
+      "columns": [
+        {"name": "procedure_id", "type": "integer"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "fee_item_id", "type": "integer"},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "service_date", "type": "date"},
+        {"name": "units", "type": "integer"},
+        {"name": "fee_snapshot", "type": "decimal"},
+        {"name": "expected_amount", "type": "decimal"},
+        {"name": "performed_by", "type": "integer"}
+      ]
+    },
+    {
+      "schema": "billing", "name": "charge", "layer": "transaction",
+      "purpose": "Charge lines posted from documented procedures; 'pending' rows are captured but not yet posted (DNFB).",
+      "grain": "one row per charge line (restatement pairs append)",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["charge_id"],
+      "indexes": [["encounter_id"], ["service_date"], ["charge_status"]],
+      "columns": [
+        {"name": "charge_id", "type": "integer"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer", "nullable": true},
+        {"name": "service_date", "type": "date"},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "units", "type": "integer"},
+        {"name": "charge_amount", "type": "decimal"},
+        {"name": "posted_at", "type": "timestamp", "nullable": true},
+        {"name": "charge_status", "type": "string"},
+        {"name": "adjustment_reason", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "claims", "name": "claim", "layer": "transaction",
+      "purpose": "Professional claims generated from submitted visits; status mirrors the visit billing machine, payer comes from the patient's primary coverage.",
+      "grain": "one row per claim (one claim per billed encounter)",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["claim_id"], "natural_key": ["claim_number"],
+      "indexes": [["encounter_id"], ["payer_id"], ["submitted_date"], ["claim_status"]],
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "claim_number", "type": "string"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "coverage_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer"},
+        {"name": "service_date", "type": "date"},
+        {"name": "submitted_date", "type": "date"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "claim_status", "type": "string"},
+        {"name": "denial_reason", "type": "string", "nullable": true},
+        {"name": "eligibility_override_flag", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "claims", "name": "claim_line", "layer": "transaction",
+      "purpose": "Claim lines snapshotted from posted charges at claim generation (later charge corrections create recon breaks).",
+      "grain": "one row per claim per line",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["claim_line_id"],
+      "indexes": [["claim_id"]],
+      "columns": [
+        {"name": "claim_line_id", "type": "integer"},
+        {"name": "claim_id", "type": "integer"},
+        {"name": "line_number", "type": "integer"},
+        {"name": "charge_id", "type": "integer"},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "units", "type": "integer"},
+        {"name": "billed_amount", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "claims", "name": "resubmission", "layer": "transaction",
+      "purpose": "Corrected resubmissions of denied claims with outcome.",
+      "grain": "one row per resubmitted claim",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["resubmission_id"],
+      "indexes": [["original_claim_id"]],
+      "columns": [
+        {"name": "resubmission_id", "type": "integer"},
+        {"name": "original_claim_id", "type": "integer"},
+        {"name": "resubmitted_date", "type": "date"},
+        {"name": "corrected_reason", "type": "string"},
+        {"name": "outcome", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Remittances derive from PAID claims. The disposition identity holds exactly by construction: paid + contractual adjustment + patient responsibility = billed. Self-pay 'remits' carry zero payer payment with the balance as patient responsibility after the uninsured discount.",
+      "schema": "claims", "name": "remittance", "layer": "transaction",
+      "purpose": "835-style remittances for paid claims with full payment disposition.",
+      "grain": "one row per remittance (one per paid claim)",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["remittance_id"], "natural_key": ["remit_number"],
+      "indexes": [["claim_id"], ["remit_date"]],
+      "columns": [
+        {"name": "remittance_id", "type": "integer"},
+        {"name": "remit_number", "type": "string"},
+        {"name": "claim_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer"},
+        {"name": "remit_date", "type": "date"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "allowed_amount", "type": "decimal"},
+        {"name": "contractual_adjustment", "type": "decimal"},
+        {"name": "patient_responsibility", "type": "decimal"},
+        {"name": "paid_amount", "type": "decimal"},
+        {"name": "payment_method", "type": "string"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "denial_worklist", "layer": "workflow",
+      "purpose": "Open denial follow-up queue routed by root-cause reason; carries the registration override flag for root-cause analysis.",
+      "grain": "one row per open denied claim",
+      "source": "derivation", "source_system": "BrightBill RCM",
+      "primary_key": ["case_id"],
+      "indexes": [["queue"]],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "claim_id", "type": "integer"},
+        {"name": "denial_reason", "type": "string"},
+        {"name": "payer_id", "type": "integer"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "opened_date", "type": "date"},
+        {"name": "age_days", "type": "integer"},
+        {"name": "queue", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "eligibility_override_flag", "type": "boolean"},
+        {"name": "assigned_to", "type": "string"},
+        {"name": "case_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension.",
+      "source": "derivation", "primary_key": ["date_key"],
+      "columns": [
+        {"name": "date_key", "type": "date"},
+        {"name": "year_num", "type": "integer"},
+        {"name": "month_num", "type": "integer"},
+        {"name": "day_num", "type": "integer"},
+        {"name": "weekday_num", "type": "integer"},
+        {"name": "is_weekend", "type": "boolean"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_patient", "layer": "warehouse_dimension",
+      "purpose": "Patient dimension from the canonical EMPI layer.",
+      "source": "derivation", "primary_key": ["patient_key"],
+      "columns": [
+        {"name": "patient_key", "type": "integer"},
+        {"name": "mrn", "type": "string"},
+        {"name": "sex", "type": "string"},
+        {"name": "birth_year", "type": "integer"},
+        {"name": "age_band", "type": "string"},
+        {"name": "home_clinic_name", "type": "string", "nullable": true},
+        {"name": "utilization_tier", "type": "string"},
+        {"name": "patient_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_provider", "layer": "warehouse_dimension",
+      "purpose": "Provider dimension.",
+      "source": "derivation", "primary_key": ["provider_key"],
+      "columns": [
+        {"name": "provider_key", "type": "integer"},
+        {"name": "provider_name", "type": "string"},
+        {"name": "npi", "type": "string"},
+        {"name": "credential", "type": "string"},
+        {"name": "specialty", "type": "string"},
+        {"name": "clinic_name", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_encounter", "layer": "warehouse_fact",
+      "purpose": "Encounter fact with payer attribution and gross charges.",
+      "grain": "one row per encounter (checked-in visit)",
+      "source": "derivation", "primary_key": ["encounter_id"],
+      "indexes": [["encounter_date"], ["patient_key"], ["clinic_id"], ["payer_key"]],
+      "columns": [
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "encounter_date", "type": "date"},
+        {"name": "patient_key", "type": "integer"},
+        {"name": "provider_key", "type": "integer"},
+        {"name": "clinic_id", "type": "integer"},
+        {"name": "payer_key", "type": "integer", "nullable": true},
+        {"name": "encounter_type", "type": "string"},
+        {"name": "visit_status", "type": "string"},
+        {"name": "procedure_count", "type": "integer"},
+        {"name": "gross_charges", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_charge", "layer": "warehouse_fact",
+      "purpose": "Charge-line fact (warehouse refresh snapshot; intentionally lags post-load charge corrections, which the recon view surfaces).",
+      "grain": "one row per charge line as of the warehouse refresh",
+      "source": "derivation", "primary_key": ["charge_id"],
+      "indexes": [["service_date"], ["patient_key"], ["payer_key"]],
+      "columns": [
+        {"name": "charge_id", "type": "integer"},
+        {"name": "service_date", "type": "date"},
+        {"name": "posted_date", "type": "date", "nullable": true},
+        {"name": "patient_key", "type": "integer"},
+        {"name": "provider_key", "type": "integer"},
+        {"name": "clinic_id", "type": "integer"},
+        {"name": "payer_key", "type": "integer", "nullable": true},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "units", "type": "integer"},
+        {"name": "charge_amount", "type": "decimal"},
+        {"name": "charge_status", "type": "string"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_claim", "layer": "warehouse_fact",
+      "purpose": "Claim fact with adjudication outcome and payment disposition.",
+      "grain": "one row per claim (latest adjudication snapshot)",
+      "source": "derivation", "primary_key": ["claim_id"],
+      "indexes": [["submitted_date"], ["payer_key"], ["claim_status"]],
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "submitted_date", "type": "date"},
+        {"name": "service_date", "type": "date"},
+        {"name": "patient_key", "type": "integer"},
+        {"name": "payer_key", "type": "integer"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "paid_amount", "type": "decimal", "nullable": true},
+        {"name": "contractual_adjustment", "type": "decimal", "nullable": true},
+        {"name": "patient_responsibility", "type": "decimal", "nullable": true},
+        {"name": "claim_status", "type": "string"},
+        {"name": "denial_reason", "type": "string", "nullable": true},
+        {"name": "days_to_pay", "type": "integer", "nullable": true}
+      ]
+    }
+  ],
+  "state_machines": [
+    {
+      "_note": "Machine order matters: the scheduling machine writes completed_at, which the claim machine (next) anchors on. Residual 1.5% of past appointments never leave 'scheduled' - the front-desk reconciliation backlog that DQ-010 works.",
+      "name": "appointment_lifecycle",
+      "table": "scheduling.appointment",
+      "status_column": "status",
+      "start_column": "appointment_date",
+      "entry_state": "scheduled",
+      "states": ["scheduled", "checked_in", "completed", "no_show", "cancelled"],
+      "transitions": [
+        {"from": "scheduled", "to": "checked_in", "probability": 0.755, "dwell": {"distribution": "lognormal", "median": 0.6, "sigma": 0.7, "unit": "hours"}},
+        {"from": "scheduled", "to": "no_show", "probability": 0.115, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.4, "unit": "hours"}},
+        {"from": "scheduled", "to": "cancelled", "probability": 0.115, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 1.0, "unit": "hours"}},
+        {"from": "checked_in", "to": "completed", "probability": 0.985, "dwell": {"distribution": "lognormal", "median": 0.55, "sigma": 0.45, "unit": "hours"}},
+        {"from": "checked_in", "to": "cancelled", "probability": 0.005, "dwell": {"distribution": "lognormal", "median": 1.2, "sigma": 0.5, "unit": "hours"}}
+      ],
+      "timestamp_columns": {"checked_in": "checked_in_at", "completed": "completed_at", "no_show": "no_show_at", "cancelled": "cancelled_at"},
+      "history_table": "scheduling.appointment_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "_note": "Claim lifecycle on the same table, anchored on completed_at: rows that never completed are skipped and stay 'not_billed'. Denial rate ~11% of adjudicated; denied claims resubmit (45%), appeal (20%), or write off (28%), with residual open denials feeding the worklist. Right-censoring leaves recent claims mid-adjudication (open AR).",
+      "name": "claim_lifecycle",
+      "table": "scheduling.appointment",
+      "status_column": "billing_status",
+      "start_column": "completed_at",
+      "entry_state": "not_billed",
+      "states": ["not_billed", "charges_entered", "scrub_hold", "claim_submitted", "rejected_front_end", "payer_accepted", "paid", "denied", "resubmitted", "appealed", "denied_final", "written_off"],
+      "transitions": [
+        {"from": "not_billed", "to": "charges_entered", "probability": 0.985, "dwell": {"distribution": "lognormal", "median": 28, "sigma": 0.9, "unit": "hours"}},
+        {"from": "charges_entered", "to": "claim_submitted", "probability": 0.91, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.6, "unit": "days"}},
+        {"from": "charges_entered", "to": "scrub_hold", "probability": 0.09, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.5, "unit": "days"}},
+        {"from": "scrub_hold", "to": "claim_submitted", "probability": 0.96, "dwell": {"distribution": "lognormal", "median": 2.5, "sigma": 0.5, "unit": "days"}},
+        {"from": "claim_submitted", "to": "payer_accepted", "probability": 0.965, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.5, "unit": "days"}},
+        {"from": "claim_submitted", "to": "rejected_front_end", "probability": 0.035, "dwell": {"distribution": "lognormal", "median": 5, "sigma": 0.4, "unit": "days"}},
+        {"from": "rejected_front_end", "to": "claim_submitted", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.5, "unit": "days"}},
+        {"from": "payer_accepted", "to": "paid", "probability": 0.835, "dwell": {"distribution": "lognormal", "median": 24, "sigma": 0.55, "unit": "days"}},
+        {"from": "payer_accepted", "to": "denied", "probability": 0.105, "dwell": {"distribution": "lognormal", "median": 20, "sigma": 0.5, "unit": "days"}},
+        {"from": "denied", "to": "resubmitted", "probability": 0.45, "dwell": {"distribution": "lognormal", "median": 12, "sigma": 0.5, "unit": "days"}},
+        {"from": "denied", "to": "appealed", "probability": 0.2, "dwell": {"distribution": "lognormal", "median": 20, "sigma": 0.4, "unit": "days"}},
+        {"from": "denied", "to": "written_off", "probability": 0.28, "dwell": {"distribution": "lognormal", "median": 35, "sigma": 0.4, "unit": "days"}},
+        {"from": "resubmitted", "to": "paid", "probability": 0.66, "dwell": {"distribution": "lognormal", "median": 24, "sigma": 0.5, "unit": "days"}},
+        {"from": "resubmitted", "to": "denied_final", "probability": 0.26, "dwell": {"distribution": "lognormal", "median": 28, "sigma": 0.4, "unit": "days"}},
+        {"from": "appealed", "to": "paid", "probability": 0.5, "dwell": {"distribution": "lognormal", "median": 38, "sigma": 0.4, "unit": "days"}},
+        {"from": "appealed", "to": "denied_final", "probability": 0.38, "dwell": {"distribution": "lognormal", "median": 45, "sigma": 0.35, "unit": "days"}},
+        {"from": "denied_final", "to": "written_off", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 25, "sigma": 0.5, "unit": "days"}}
+      ],
+      "timestamp_columns": {"charges_entered": "charges_entered_at", "claim_submitted": "claim_submitted_at", "payer_accepted": "payer_accepted_at", "paid": "paid_at", "denied": "denied_at", "resubmitted": "resubmitted_at", "appealed": "appealed_at", "written_off": "written_off_at"},
+      "history_table": "billing.visit_billing_event",
+      "truncate_at_as_of": true
+    }
+  ],
+  "derivations": [
+    {
+      "name": "raw_pm_patient_extract",
+      "_note": "Raw landing copy with US-format dates; the post-derivation format_drift imperfection corrupts a slice, which DQ-004 catches.",
+      "sql": [
+        "insert into raw.pm_patient_extract",
+        "select cast(patient_id as text), mrn, first_name, last_name, sex, cast(birth_year as text),",
+        "       city, state, strftime('%m/%d/%Y', created_at), 'BATCH-PM-NIGHTLY'",
+        "from patient.patient;"
+      ]
+    },
+    {
+      "name": "stg_pm_patient",
+      "sql": [
+        "insert into stg.pm_patient",
+        "select cast(patient_id as integer), mrn, trim(first_name), trim(last_name), upper(sex),",
+        "       cast(birth_year as integer), city, state,",
+        "       case when registration_date like '__/__/____'",
+        "            then substr(registration_date,7,4) || '-' || substr(registration_date,1,2) || '-' || substr(registration_date,4,2)",
+        "            else null end",
+        "from raw.pm_patient_extract;"
+      ]
+    },
+    {
+      "name": "xref_patient_identifier",
+      "_note": "A crosswalk that maps a single system is not a crosswalk - both PM and EHR identifiers are mapped; missing_xref later deletes ~2% to feed DQ-003.",
+      "sql": [
+        "insert into xref.patient_identifier",
+        "select row_number() over (order by patient_id), 'patient', patient_id, 'ClearSlate PM',",
+        "       'mrn', mrn, date(created_at), null, 1",
+        "from patient.patient;",
+        "insert into xref.patient_identifier",
+        "select 400000 + row_number() over (order by patient_id), 'patient', patient_id, 'MeadowPoint EHR',",
+        "       'ehr_person_id', 'EHR-' || printf('%07d', patient_id + 1500000), date(created_at), null, 1",
+        "from patient.patient;"
+      ]
+    },
+    {
+      "name": "core_patient",
+      "sql": [
+        "insert into core.patient",
+        "select s.patient_id, s.mrn, s.first_name || ' ' || s.last_name, s.sex, s.birth_year,",
+        "       s.city, s.state, p.home_clinic_id, p.utilization_tier, p.patient_status,",
+        "       (select x.identifier_value from xref.patient_identifier x",
+        "         where x.canonical_patient_id = s.patient_id and x.source_system = 'MeadowPoint EHR'",
+        "           and x.active_flag = 1 limit 1)",
+        "from stg.pm_patient s join patient.patient p on p.patient_id = s.patient_id;"
+      ]
+    },
+    {
+      "name": "clinical_encounter",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into clinical.encounter",
+        "select a.appointment_id, a.appointment_id, a.patient_id, a.provider_id, a.clinic_id,",
+        "       a.appointment_type, date(a.checked_in_at), a.checked_in_at, a.completed_at,",
+        "       case when a.completed_at is not null then 'completed' else 'open' end,",
+        "       case when a.completed_at is not null",
+        "            then cast(round((julianday(a.completed_at) - julianday(a.checked_in_at)) * 1440) as integer)",
+        "            else null end",
+        "from scheduling.appointment a",
+        "where a.checked_in_at is not null;"
+      ]
+    },
+    {
+      "name": "clinical_diagnosis",
+      "_note": "Deterministic id-modulo variety (no random() in derivations). Code popularity is banded: the top 15 codes take 45% of principal diagnoses, ranks 2/3 draw from the mid and tail bands so codes rarely repeat within an encounter.",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into clinical.diagnosis",
+        "select e.encounter_id * 10 + 1, e.encounter_id,",
+        "       case when (e.encounter_id * 17) % 100 < 45 then 1 + ((e.encounter_id * 7) % 15)",
+        "            when (e.encounter_id * 17) % 100 < 80 then 16 + ((e.encounter_id * 7) % 45)",
+        "            else 61 + ((e.encounter_id * 13) % 80) end,",
+        "       1, e.provider_id",
+        "from clinical.encounter e;",
+        "insert into clinical.diagnosis",
+        "select e.encounter_id * 10 + 2, e.encounter_id, 16 + ((e.encounter_id * 11) % 45), 2, e.provider_id",
+        "from clinical.encounter e where e.encounter_id % 10 < 6;",
+        "insert into clinical.diagnosis",
+        "select e.encounter_id * 10 + 3, e.encounter_id, 61 + ((e.encounter_id * 19) % 80), 3, e.provider_id",
+        "from clinical.encounter e where e.encounter_id % 20 < 5;"
+      ]
+    },
+    {
+      "name": "clinical_procedure",
+      "_note": "Documented procedures = the booked service lines of visits that completed. fk_copy fee x units flows through from scheduling.appointment_service.",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into clinical.procedure",
+        "select s.service_id, s.appointment_id, s.fee_item_id, s.charge_code, s.service_category,",
+        "       date(a.checked_in_at), s.units, s.fee_snapshot, s.booked_amount, a.provider_id",
+        "from scheduling.appointment_service s",
+        "join scheduling.appointment a on a.appointment_id = s.appointment_id",
+        "where a.completed_at is not null;"
+      ]
+    },
+    {
+      "name": "billing_charge",
+      "_note": "posted_at follows the billing machine's charges_entered_at with per-line jitter; visits stuck before charge entry stay 'pending' (the DNFB story DQ-001 reports).",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into billing.charge",
+        "select p.procedure_id, p.encounter_id, e.patient_id, cov.payer_id, p.service_date,",
+        "       p.charge_code, p.service_category, p.units, p.expected_amount,",
+        "       case when a.charges_entered_at is not null",
+        "            then datetime(a.charges_entered_at, '+' || (p.procedure_id % 180) || ' minutes')",
+        "            else null end,",
+        "       case when a.charges_entered_at is not null then 'posted' else 'pending' end,",
+        "       null",
+        "from clinical.procedure p",
+        "join clinical.encounter e on e.encounter_id = p.encounter_id",
+        "join scheduling.appointment a on a.appointment_id = p.encounter_id",
+        "left join patient.coverage cov on cov.patient_id = e.patient_id and cov.coverage_rank = 1;"
+      ]
+    },
+    {
+      "name": "claims_claim",
+      "_note": "Claim status maps from the machine's billing_status; denial_reason exists iff the claim was ever denied, with eligibility denials over-represented when registration overrode a failed eligibility check (root-cause coherence).",
+      "expect": {"at_least_rows": 2000},
+      "sql": [
+        "insert into claims.claim",
+        "select a.appointment_id, 'CLM-' || printf('%07d', a.appointment_id), a.appointment_id, a.patient_id,",
+        "       cov.coverage_id, cov.payer_id, date(a.checked_in_at), date(a.claim_submitted_at),",
+        "       (select round(sum(c.charge_amount), 2) from billing.charge c",
+        "         where c.encounter_id = a.appointment_id and c.charge_status = 'posted'),",
+        "       case a.billing_status",
+        "            when 'claim_submitted' then 'submitted'",
+        "            when 'rejected_front_end' then 'rejected'",
+        "            when 'payer_accepted' then 'in_adjudication'",
+        "            else a.billing_status end,",
+        "       case when a.denied_at is null then null",
+        "            when a.eligibility_override_flag = 1 and (a.appointment_id % 10) < 6 then 'eligibility'",
+        "            when (a.appointment_id * 23) % 100 < 25 then 'eligibility'",
+        "            when (a.appointment_id * 23) % 100 < 45 then 'prior_authorization'",
+        "            when (a.appointment_id * 23) % 100 < 65 then 'coding'",
+        "            when (a.appointment_id * 23) % 100 < 80 then 'medical_necessity'",
+        "            when (a.appointment_id * 23) % 100 < 85 then 'timely_filing'",
+        "            else 'other' end,",
+        "       a.eligibility_override_flag",
+        "from scheduling.appointment a",
+        "join patient.coverage cov on cov.patient_id = a.patient_id and cov.coverage_rank = 1",
+        "where a.claim_submitted_at is not null;"
+      ]
+    },
+    {
+      "name": "claims_claim_line",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into claims.claim_line",
+        "select c.charge_id, cl.claim_id,",
+        "       row_number() over (partition by cl.claim_id order by c.charge_id),",
+        "       c.charge_id, c.charge_code, c.service_category, c.units, c.charge_amount",
+        "from billing.charge c",
+        "join claims.claim cl on cl.encounter_id = c.encounter_id",
+        "where c.charge_status = 'posted';"
+      ]
+    },
+    {
+      "name": "claims_resubmission",
+      "sql": [
+        "insert into claims.resubmission",
+        "select a.appointment_id, a.appointment_id, date(a.resubmitted_at),",
+        "       case (a.appointment_id * 7) % 4",
+        "            when 0 then 'corrected member id'",
+        "            when 1 then 'added prior auth number'",
+        "            when 2 then 'corrected diagnosis coding'",
+        "            else 'attached medical records' end,",
+        "       case when a.paid_at is not null then 'paid'",
+        "            when a.billing_status in ('denied_final', 'written_off') then 'denied'",
+        "            else 'pending' end",
+        "from scheduling.appointment a",
+        "where a.resubmitted_at is not null;"
+      ]
+    },
+    {
+      "name": "claims_remittance",
+      "_note": "Disposition identity is exact by construction: contractual = billed - allowed; patient responsibility by payer type (20% coinsurance Medicare, copay-capped commercial, full balance self-pay); paid = allowed - patient responsibility.",
+      "expect": {"at_least_rows": 2000},
+      "sql": [
+        "insert into claims.remittance",
+        "with base as (",
+        "  select cl.claim_id, cl.payer_id, cl.billed_amount, date(a.paid_at) as remit_date,",
+        "         py.payer_type, round(cl.billed_amount * py.contracted_rate_pct, 2) as allowed,",
+        "         coalesce(cov.copay_amount, 0) as copay",
+        "  from claims.claim cl",
+        "  join scheduling.appointment a on a.appointment_id = cl.claim_id",
+        "  join ref.payer py on py.payer_id = cl.payer_id",
+        "  join patient.coverage cov on cov.coverage_id = cl.coverage_id",
+        "  where a.paid_at is not null",
+        ")",
+        "select claim_id, '835-' || printf('%07d', claim_id), claim_id, payer_id, remit_date,",
+        "       billed_amount, allowed,",
+        "       round(billed_amount - allowed, 2),",
+        "       case payer_type when 'self_pay' then allowed",
+        "            when 'medicare' then round(allowed * 0.20, 2)",
+        "            when 'medicaid' then 0",
+        "            else round(min(copay, allowed), 2) end,",
+        "       round(allowed - (case payer_type when 'self_pay' then allowed",
+        "            when 'medicare' then round(allowed * 0.20, 2)",
+        "            when 'medicaid' then 0",
+        "            else round(min(copay, allowed), 2) end), 2),",
+        "       case claim_id % 5 when 0 then 'check' else 'EFT' end",
+        "from base;"
+      ]
+    },
+    {
+      "name": "workflow_denial_worklist",
+      "_note": "Open denials only (stuck 'denied' plus exhausted 'denied_final'); queue routes by root cause, assignees are a small fictional biller pool.",
+      "sql": [
+        "insert into workflow.denial_worklist",
+        "select cl.claim_id, cl.claim_id, cl.denial_reason, cl.payer_id, cl.billed_amount,",
+        "       date(a.denied_at),",
+        "       cast(julianday('2025-12-31') - julianday(a.denied_at) as integer),",
+        "       case cl.denial_reason",
+        "            when 'eligibility' then 'registration_rework'",
+        "            when 'prior_authorization' then 'auth_team'",
+        "            when 'coding' then 'coding_review'",
+        "            when 'medical_necessity' then 'clinical_review'",
+        "            else 'billing_follow_up' end,",
+        "       case when cl.billed_amount >= 600 then 'high'",
+        "            when cl.billed_amount >= 200 then 'medium' else 'low' end,",
+        "       cl.eligibility_override_flag,",
+        "       case cl.claim_id % 6 when 0 then 'D. Acharya' when 1 then 'M. Ferreira'",
+        "            when 2 then 'K. Boswell' when 3 then 'T. Nakagawa'",
+        "            when 4 then 'R. Ellison' else 'S. Mwangi' end,",
+        "       case when cl.claim_status = 'denied_final' and cl.claim_id % 3 = 0 then 'escalated' else 'open' end",
+        "from claims.claim cl",
+        "join scheduling.appointment a on a.appointment_id = cl.claim_id",
+        "where cl.claim_status in ('denied', 'denied_final');"
+      ]
+    },
+    {
+      "name": "wh_dim_date",
+      "sql": [
+        "insert into wh.dim_date",
+        "with recursive d(dt) as (",
+        "  select date('2024-01-01')",
+        "  union all select date(dt, '+1 day') from d where dt < '2025-12-31'",
+        ")",
+        "select dt, cast(strftime('%Y', dt) as integer), cast(strftime('%m', dt) as integer),",
+        "       cast(strftime('%d', dt) as integer), cast(strftime('%w', dt) as integer),",
+        "       case when strftime('%w', dt) in ('0', '6') then 1 else 0 end",
+        "from d;"
+      ]
+    },
+    {
+      "name": "wh_dim_patient",
+      "sql": [
+        "insert into wh.dim_patient",
+        "select c.patient_uid, c.mrn, c.sex, c.birth_year,",
+        "       case when 2025 - c.birth_year < 18 then '0-17'",
+        "            when 2025 - c.birth_year < 40 then '18-39'",
+        "            when 2025 - c.birth_year < 65 then '40-64'",
+        "            else '65+' end,",
+        "       cl.clinic_name, c.utilization_tier, c.patient_status",
+        "from core.patient c",
+        "left join ref.clinic cl on cl.clinic_id = c.home_clinic_id;"
+      ]
+    },
+    {
+      "name": "wh_dim_provider",
+      "sql": [
+        "insert into wh.dim_provider",
+        "select p.provider_id, p.provider_name, p.npi, p.credential, p.specialty, c.clinic_name",
+        "from provider.provider p",
+        "left join ref.clinic c on c.clinic_id = p.clinic_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_encounter",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into wh.fact_encounter",
+        "select e.encounter_id, e.encounter_date, e.patient_id, e.provider_id, e.clinic_id,",
+        "       cov.payer_id, e.encounter_type, e.visit_status,",
+        "       (select count(*) from clinical.procedure p where p.encounter_id = e.encounter_id),",
+        "       (select round(coalesce(sum(c.charge_amount), 0), 2) from billing.charge c",
+        "         where c.encounter_id = e.encounter_id and c.charge_status = 'posted')",
+        "from clinical.encounter e",
+        "left join patient.coverage cov on cov.patient_id = e.patient_id and cov.coverage_rank = 1;"
+      ]
+    },
+    {
+      "name": "wh_fact_charge",
+      "expect": {"at_least_rows": 3000},
+      "sql": [
+        "insert into wh.fact_charge",
+        "select c.charge_id, c.service_date, date(c.posted_at), c.patient_id, e.provider_id,",
+        "       e.clinic_id, c.payer_id, c.charge_code, c.service_category, c.units,",
+        "       c.charge_amount, c.charge_status",
+        "from billing.charge c",
+        "join clinical.encounter e on e.encounter_id = c.encounter_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_claim",
+      "expect": {"at_least_rows": 2000},
+      "sql": [
+        "insert into wh.fact_claim",
+        "select cl.claim_id, cl.submitted_date, cl.service_date, cl.patient_id, cl.payer_id,",
+        "       cl.billed_amount, r.paid_amount, r.contractual_adjustment, r.patient_responsibility,",
+        "       cl.claim_status, cl.denial_reason,",
+        "       case when r.remit_date is not null",
+        "            then cast(julianday(r.remit_date) - julianday(cl.submitted_date) as integer)",
+        "            else null end",
+        "from claims.claim cl",
+        "left join claims.remittance r on r.claim_id = cl.claim_id;"
+      ]
+    },
+    {
+      "name": "mart_clinic_volume_daily",
+      "_note": "Mart as a VIEW so it reflects post-imperfection data. Shows the weekday-clinic shape and the ~12% no-show rate by site.",
+      "sql": [
+        "create view mart_clinic_volume_daily as",
+        "select a.appointment_date, c.clinic_code, c.clinic_name,",
+        "       count(*) as appointments_booked,",
+        "       sum(case when a.status = 'completed' then 1 else 0 end) as visits_completed,",
+        "       sum(case when a.status = 'no_show' then 1 else 0 end) as no_shows,",
+        "       sum(case when a.status = 'cancelled' then 1 else 0 end) as cancellations,",
+        "       round(1.0 * sum(case when a.status = 'no_show' then 1 else 0 end) /",
+        "             nullif(count(*) - sum(case when a.status = 'cancelled' then 1 else 0 end), 0), 3) as no_show_rate",
+        "from scheduling.appointment a",
+        "join ref.clinic c on c.clinic_id = a.clinic_id",
+        "group by 1, 2, 3;"
+      ]
+    },
+    {
+      "name": "mart_revenue_cycle_monthly",
+      "sql": [
+        "create view mart_revenue_cycle_monthly as",
+        "select strftime('%Y-%m', cl.submitted_date) as claim_month,",
+        "       count(*) as claims_submitted,",
+        "       round(sum(cl.billed_amount), 2) as billed_amount,",
+        "       sum(case when cl.denial_reason is not null then 1 else 0 end) as claims_ever_denied,",
+        "       round(1.0 * sum(case when cl.denial_reason is not null then 1 else 0 end) /",
+        "             nullif(sum(case when cl.claim_status in ('paid','denied','denied_final','written_off','resubmitted','appealed') then 1 else 0 end), 0), 3) as denial_rate,",
+        "       round(coalesce(sum(r.paid_amount), 0), 2) as payer_paid,",
+        "       round(avg(case when r.remit_date is not null",
+        "                 then julianday(r.remit_date) - julianday(cl.submitted_date) end), 1) as avg_days_to_pay",
+        "from claims.claim cl",
+        "left join claims.remittance r on r.claim_id = cl.claim_id",
+        "group by 1;"
+      ]
+    },
+    {
+      "name": "control_recon_charge_claim",
+      "_note": "Reconciliation as a VIEW: claim lines are a snapshot at claim generation, while billing.charge keeps moving (post-load restatement pairs and interface drops) - exactly how real charge-to-claim recons break.",
+      "sql": [
+        "create view control_recon_charge_claim as",
+        "select cl.claim_id, cl.encounter_id, cl.billed_amount as claim_billed,",
+        "       round(coalesce(sum(case when c.charge_status = 'posted' then c.charge_amount end), 0), 2) as charges_posted_now,",
+        "       round(cl.billed_amount - coalesce(sum(case when c.charge_status = 'posted' then c.charge_amount end), 0), 2) as break_amount",
+        "from claims.claim cl",
+        "left join billing.charge c on c.encounter_id = cl.encounter_id",
+        "group by cl.claim_id, cl.encounter_id, cl.billed_amount",
+        "having abs(cl.billed_amount - round(coalesce(sum(case when c.charge_status = 'posted' then c.charge_amount end), 0), 2)) > 0.01;"
+      ]
+    },
+    {
+      "name": "dq_rule_result_current",
+      "sql": [
+        "create view dq_rule_result_current as",
+        "select 'DQ-001' as rule_code, 'completed encounter with no posted charges' as issue, cast(e.encounter_id as text) as entity_id",
+        "from clinical.encounter e",
+        "where e.visit_status = 'completed' and e.encounter_date <= date('2025-12-31', '-10 days')",
+        "  and not exists (select 1 from billing.charge c where c.encounter_id = e.encounter_id and c.charge_status = 'posted')",
+        "union all",
+        "select 'DQ-002', 'procedure references missing encounter', cast(p.procedure_id as text)",
+        "from clinical.procedure p",
+        "where not exists (select 1 from clinical.encounter e where e.encounter_id = p.encounter_id)",
+        "union all",
+        "select 'DQ-003', 'patient missing source identifier mapping', cast(p.patient_id as text)",
+        "from patient.patient p",
+        "where (select count(distinct x.source_system) from xref.patient_identifier x",
+        "        where x.canonical_patient_id = p.patient_id and x.active_flag = 1) < 2",
+        "union all",
+        "select 'DQ-004', 'unparseable raw registration date', r.patient_id",
+        "from raw.pm_patient_extract r where r.registration_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-005', 'claim service date after coverage termination', cast(cl.claim_id as text)",
+        "from claims.claim cl join patient.coverage cov on cov.coverage_id = cl.coverage_id",
+        "where cov.term_date is not null and cl.service_date > cov.term_date",
+        "union all",
+        "select 'DQ-006', 'staging last name disagrees with PM source', cast(s.patient_id as text)",
+        "from stg.pm_patient s join patient.patient p on p.patient_id = s.patient_id",
+        "where s.last_name <> p.last_name",
+        "union all",
+        "select 'DQ-007', 'duplicate interface job delivery', cast(jr.run_id as text)",
+        "from integration.job_run jr",
+        "where exists (select 1 from integration.job_run j2",
+        "              where j2.job_name = jr.job_name and j2.run_started_at = jr.run_started_at and j2.run_id <> jr.run_id)",
+        "union all",
+        "select 'DQ-008', 'charge posted more than 5 days after service', cast(c.charge_id as text)",
+        "from billing.charge c",
+        "where c.posted_at is not null and julianday(c.posted_at) - julianday(c.service_date) > 5",
+        "union all",
+        "select 'DQ-009', 'possible duplicate patient registration', cast(p.patient_id as text)",
+        "from patient.patient p",
+        "where exists (select 1 from patient.patient q",
+        "              where q.first_name = p.first_name and q.birth_year = p.birth_year",
+        "                and q.city = p.city and q.patient_id <> p.patient_id)",
+        "union all",
+        "select 'DQ-010', 'past appointment never reconciled from scheduled', cast(a.appointment_id as text)",
+        "from scheduling.appointment a",
+        "where a.status = 'scheduled' and a.appointment_date <= date('2025-12-31', '-7 days');"
+      ]
+    }
+  ],
+  "imperfections": [
+    {"name": "patient_name_typos", "type": "typo", "table": "patient.patient", "rate": 0.012, "stage": "pre_derivation", "params": {"column": "last_name"}, "scenario": "Hand-keyed registrations accumulate name typos; they propagate through the extract into staging and the EMPI."},
+    {"name": "duplicate_patient_registrations", "type": "duplicate_entity", "table": "patient.patient", "rate": 0.012, "stage": "pre_derivation", "params": {"fuzz_columns": ["last_name", "phone"]}, "scenario": "Front desk re-registers patients instead of searching; DQ-009 surfaces the merge candidates for the EMPI queue."},
+    {"name": "coverage_stale_terms", "type": "stale_mapping", "table": "patient.coverage", "rate": 0.04, "stage": "pre_derivation", "params": {"column": "term_date"}, "scenario": "Coverage termed by the employer but still on file at registration; claims billed against it trip DQ-005 (eligibility denials story)."},
+    {"name": "registration_eligibility_overrides", "type": "manual_override", "table": "scheduling.appointment", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "eligibility_override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Registration bypasses failed eligibility checks; the denial worklist carries the flag and those visits skew toward eligibility denials."},
+    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate interface runs; DQ-007 dedups them."},
+    {"name": "raw_extract_date_drift", "type": "format_drift", "table": "raw.pm_patient_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "registration_date", "format": "padded"}, "scenario": "Legacy extract job pads dates after a patch; DQ-004 catches the unparseable slice."},
+    {"name": "stg_name_conflicts", "type": "conflicting_source_values", "table": "stg.pm_patient", "rate": 0.012, "stage": "post_derivation", "params": {"column": "last_name"}, "scenario": "EHR-sourced demographic merge mangles some staged names vs the PM source; DQ-006 reports the disagreement."},
+    {"name": "empi_xref_gaps", "type": "missing_xref", "table": "xref.patient_identifier", "rate": 0.02, "stage": "post_derivation", "scenario": "Mappings lost during the 2024 EMPI migration; DQ-003 counts patients with incomplete crosswalks."},
+    {"name": "orphan_procedures", "type": "orphan_fk", "table": "clinical.procedure", "rate": 0.004, "stage": "post_derivation", "params": {"column": "encounter_id"}, "scenario": "An EHR encounter purge corrupted procedure links; DQ-002 is the orphan-procedure queue."},
+    {"name": "charge_feed_drops", "type": "missing_xref", "table": "billing.charge", "rate": 0.006, "stage": "post_derivation", "scenario": "Charge interface drops lines after claims were generated - encounters lose charges (DQ-001) and claim-vs-charge recon breaks (CTL-001)."},
+    {"name": "charge_restatements", "type": "restatement_reversal", "table": "billing.charge", "rate": 0.008, "stage": "post_derivation", "params": {"amount_columns": ["charge_amount"], "reason_column": "adjustment_reason"}, "scenario": "Charge corrections issued as reversal + restated pairs after claim generation; these create the CTL-001 recon breaks."},
+    {"name": "late_charge_posts", "type": "late_arrival", "table": "billing.charge", "rate": 0.035, "stage": "post_derivation", "params": {"column": "posted_at", "lag_days": {"distribution": "lognormal", "median": 6, "sigma": 0.7}}, "scenario": "Late charge entry beyond the 5-day standard; DQ-008 tracks the late-charge rate."}
+  ],
+  "controls": [
+    {"rule_id": "CTL-001", "rule_name": "Claim billed ties to posted charges", "source_dataset": "claims.claim_line", "target_dataset": "billing.charge", "grain": "claim", "tolerance": "0.01", "frequency": "daily", "owner": "revenue_integrity", "severity": "high", "expected_break_rate": "~2% of claims (charge restatements + interface drops)", "break_view": "control_recon_charge_claim"},
+    {"rule_id": "CTL-002", "rule_name": "Remit disposition sums to billed", "source_dataset": "claims.remittance", "target_dataset": "claims.claim", "grain": "remittance", "tolerance": "0.01", "frequency": "daily", "owner": "cash_posting", "severity": "high", "expected_break_rate": "0 (identity by construction: paid + contractual + patient = billed)", "break_view": "n/a"},
+    {"rule_id": "CTL-003", "rule_name": "EMPI patients tie to source mappings", "source_dataset": "patient.patient", "target_dataset": "xref.patient_identifier", "grain": "patient", "tolerance": "0", "frequency": "weekly", "owner": "data_stewards", "severity": "medium", "expected_break_rate": "~2-4% (logged EMPI migration gaps)", "break_view": "dq_rule_result_current (DQ-003)"}
+  ],
+  "dq_rules": [
+    {"rule_id": "DQ-001", "dataset": "clinical.encounter", "rule_type": "completeness", "condition": "completed encounters have posted charges within 10 days", "severity": "error", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-002", "dataset": "clinical.procedure", "rule_type": "fk_exists", "condition": "procedure encounter exists", "severity": "error", "expected_failure_rate": 0.004},
+    {"rule_id": "DQ-003", "dataset": "xref.patient_identifier", "rule_type": "coverage", "condition": "every patient mapped in both PM and EHR", "severity": "error", "expected_failure_rate": 0.035},
+    {"rule_id": "DQ-004", "dataset": "raw.pm_patient_extract", "rule_type": "format", "condition": "registration date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-005", "dataset": "claims.claim", "rule_type": "consistency", "condition": "claim service date within coverage window", "severity": "error", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-006", "dataset": "stg.pm_patient", "rule_type": "consistency", "condition": "staged last name matches PM source", "severity": "warning", "expected_failure_rate": 0.014},
+    {"rule_id": "DQ-007", "dataset": "integration.job_run", "rule_type": "uniqueness", "condition": "one delivery per job per start time", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-008", "dataset": "billing.charge", "rule_type": "timeliness", "condition": "charges post within 5 days of service", "severity": "warning", "expected_failure_rate": 0.1},
+    {"rule_id": "DQ-009", "dataset": "patient.patient", "rule_type": "uniqueness", "condition": "no duplicate first name + birth year + city registrations", "severity": "warning", "expected_failure_rate": 0.04},
+    {"rule_id": "DQ-010", "dataset": "scheduling.appointment", "rule_type": "timeliness", "condition": "past appointments reconciled out of 'scheduled'", "severity": "warning", "expected_failure_rate": 0.015}
+  ],
+  "dataflows": [
+    {"name": "patient_mastering", "sequence": "patient.patient -> raw.pm_patient_extract -> stg.pm_patient -> xref.patient_identifier -> core.patient -> wh.dim_patient"},
+    {"name": "visit_to_cash", "sequence": "scheduling.appointment (+services) -> scheduling machine -> clinical.encounter/diagnosis/procedure -> billing.charge -> claims.claim/claim_line -> claim machine -> claims.remittance -> wh facts -> marts"},
+    {"name": "denial_management", "sequence": "claim machine (denied) -> claims.claim.denial_reason -> workflow.denial_worklist -> claims.resubmission / appeal outcomes"}
+  ],
+  "validation": {
+    "required_views": ["mart_clinic_volume_daily", "mart_revenue_cycle_monthly", "control_recon_charge_claim", "dq_rule_result_current"],
+    "expected_row_ranges": {
+      "patient.patient": [5600, 6900],
+      "scheduling.appointment": [30000, 65000],
+      "scheduling.appointment_service": [45000, 105000],
+      "clinical.encounter": [22000, 50000],
+      "claims.claim": [18000, 44000]
+    }
+  }
+}

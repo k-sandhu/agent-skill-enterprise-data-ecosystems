@@ -49,9 +49,15 @@ Every example builds deterministically and passes **strict** validation (zero cr
 
 | Example | Industry | What it showcases |
 | --- | --- | --- |
+| [banking](examples/banking/) | Retail and commercial banking | Core banking, cards, payment lifecycle, AML funnel, GL roll-forward, transaction-vs-GL controls |
 | [harborline-provisions](examples/harborline-provisions/) | Foodservice distribution | The canonical pattern: chain accounts, segment economics, derived delivery logistics, credit-terms AR with collections, recon breaks from restatements |
-
-*(table updated as examples land)*
+| [healthcare-clinic](examples/healthcare-clinic/) | Ambulatory healthcare | Appointment and claim lifecycles, revenue cycle, EMPI mastering, denial worklists, charge-to-claim reconciliation |
+| [insurance](examples/insurance/) | Property and casualty insurance | Policy/claim lifecycles, earned premium, reserve development, agency production, written-vs-billed controls |
+| [investment-management](examples/investment-management/) | Investment management | OMS/EMS trades, custodian holdings, security-master mapping, private asset NAVs, guideline breach workflow |
+| [logistics](examples/logistics/) | Freight brokerage and 3PL | Shipment lifecycle, EDI/POD flows, carrier scorecards, accessorials, carrier-invoice reconciliation |
+| [manufacturing](examples/manufacturing/) | Discrete manufacturing | PLM/ERP/MES/CMMS flows, work orders, operations, OEE/yield marts, consumption-vs-BOM controls |
+| [retail](examples/retail/) | Omnichannel retail | Store and ecommerce sales, loyalty-tier economics, fulfillment returns, promotion performance, tender controls |
+| [saas](examples/saas/) | B2B SaaS | Tenant segmentation, trial-to-paid subscription lifecycle, metered billing, support workflow, seat true-up controls |
 
 ## Using it as an agent skill
 
