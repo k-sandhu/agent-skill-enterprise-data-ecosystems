@@ -2258,6 +2258,20 @@ def derivation_authorizer(action: int, arg1: Any, arg2: Any, dbname: Any, source
     return ok
 
 
+def allow_all_authorizer(action: int, arg1: Any, arg2: Any, dbname: Any, source: Any) -> int:
+    return getattr(sqlite3, "SQLITE_OK", 0)
+
+
+def clear_derivation_authorizer(conn: sqlite3.Connection) -> None:
+    try:
+        conn.set_authorizer(None)
+    except TypeError:
+        pass
+    # Python/SQLite combinations differ in how reliably None disables an
+    # authorizer. A permissive callback keeps post-derivation PRAGMAs portable.
+    conn.set_authorizer(allow_all_authorizer)
+
+
 def render_table_ddl(tbl: TableSpec, tables: dict[str, TableSpec]) -> str:
     lines = []
     for col in tbl.columns:
@@ -2604,7 +2618,7 @@ def build(spec_path: Path, out_dir: Path, db_path: Path | None, seed_override: i
                     log(f"  derivation {dname}: " +
                         ("view created" if is_view else f"{affected_total} rows affected"))
             finally:
-                conn.set_authorizer(None)
+                clear_derivation_authorizer(conn)
             conn.executemany(
                 "insert or replace into meta_derivation_stats "
                 "(derivation_name, statement_index, statement_kind, rows_affected) "
