@@ -318,29 +318,114 @@
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 7, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 10, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "account product type mismatch", "2": "customer missing Sentinel AML party mapping", "3": "unparseable raw extract date", "4": "card transaction references unknown merchant", "5": "expired identifier mapping still flagged active", "6": "payment lifecycle events out of sequence", "7": "verified customer missing contact email"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "core account", "2": "xref entity_identifier", "3": "raw customer extract", "4": "cardlink card_transaction", "5": "xref entity_identifier", "6": "paystream payment_event", "7": "corebank customer"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "warning", "4": "error", "5": "warning", "6": "error", "7": "warning"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "account product type mismatch", "2": "customer missing Sentinel AML party mapping", "3": "unparseable raw extract date", "4": "card transaction references unknown merchant", "5": "expired identifier mapping still flagged active", "6": "payment lifecycle events out of sequence", "7": "verified customer missing contact email", "8": "product code missing approved GL mapping", "9": "unparseable raw payment date", "10": "unparseable raw GL date"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "core account", "2": "xref entity_identifier", "3": "raw customer extract", "4": "cardlink card_transaction", "5": "xref entity_identifier", "6": "paystream payment_event", "7": "corebank customer", "8": "manual gl_account_mapping", "9": "raw paystream_payment_extract", "10": "raw ledger_gl_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "warning", "4": "error", "5": "warning", "6": "error", "7": "warning", "8": "error", "9": "warning", "10": "warning"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
     {
       "schema": "control", "name": "recon_control", "layer": "control",
       "purpose": "Reconciliation control register; break details come from the control views.",
-      "primary_key": ["control_id"], "rows": 4, "scale_exempt": true,
+      "primary_key": ["control_id"], "rows": 5, "scale_exempt": true,
       "columns": [
         {"name": "control_id", "type": "integer"},
-        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004"}}},
-        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Posted transactions to GL deposits movement", "2": "Account balance roll-forward equation", "3": "Card settlement file to posted card volume", "4": "AML alert to case linkage completeness"}}},
-        {"name": "grain_desc", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "business_date", "2": "account x posting_date", "3": "settlement batch x day", "4": "alert"}}},
-        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.02", "3": "10.00", "4": "count"}}},
-        {"name": "frequency", "type": "string", "gen": "const:daily"},
-        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_txn_vs_gl", "2": "wh fact_account_balance", "3": "integration file_load", "4": "mart_aml_funnel"}}},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004", "5": "CTL-005"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Posted transactions to GL deposits movement", "2": "Account balance roll-forward equation", "3": "Card settlement file to posted card volume", "4": "AML alert to case linkage completeness", "5": "Finance vs branch-ops total deposits"}}},
+        {"name": "grain_desc", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "business_date", "2": "account x posting_date", "3": "settlement batch x day", "4": "alert", "5": "grand total"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.02", "3": "10.00", "4": "count", "5": "0.01"}}},
+        {"name": "frequency", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"5": "monthly"}, "default": "daily"}},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_txn_vs_gl", "2": "wh fact_account_balance", "3": "integration file_load", "4": "mart_aml_funnel", "5": "control_recon_finance_branchops"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
+      ]
+    },
+    {
+      "_note": "Workflow queues. gl_mapping_request cases are raised when a live product code has no approved GL mapping (the asymmetric-mapping coverage gap). queue is conditioned on case_type. case_lifecycle state machine drives status.",
+      "schema": "workflow", "name": "case", "layer": "workflow",
+      "purpose": "Exception and review queues (AML mapping requests, recon breaks, KYC).",
+      "source_system": "FlowGate Integration",
+      "primary_key": ["case_id"], "rows": 120, "traits": ["audited"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-#####", "unique": true}},
+        {"name": "case_type", "type": "string", "gen": "choice:gl_mapping_request=0.22,recon_break=0.2,kyc_remediation=0.18,duplicate_customer_review=0.16,dispute_intake=0.14,data_correction=0.1"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"gl_mapping_request": "finance_mapping", "recon_break": "finance_controls", "kyc_remediation": "bsa_aml_desk", "duplicate_customer_review": "mdm_queue", "dispute_intake": "card_disputes", "data_correction": "data_stewards"}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.3,medium=0.5,high=0.2"},
+        {"name": "related_entity", "type": "string", "gen": "pattern:ENT-######"},
+        {"name": "status", "type": "string", "gen": "const:open"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case_event", "layer": "workflow",
+      "purpose": "Case status history emitted by the state machine.",
+      "source": "state_machine",
+      "primary_key": ["case_id", "event_seq"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Human-entered mapping table. Finance maintains product code -> GL account hierarchy node in a spreadsheet, uploaded here. Applied asymmetrically: mart_finance_deposits joins it, mart_branchops_deposits uses the raw product code. 12 of 14 live product codes mapped; CHK-STUDENT has only an UNAPPROVED row (stays UNMAPPED); two retired-product rows (effective_end_date in the past); one conflicting SAV-CORE re-upload (last upload wins via row_number).",
+      "schema": "manual", "name": "gl_account_mapping", "layer": "operational",
+      "purpose": "Finance-maintained product-code to GL-account-hierarchy mapping (spreadsheet upload).",
+      "source_system": "Finance GL Workbook",
+      "primary_key": ["mapping_id"], "rows": 16, "scale_exempt": true, "traits": ["audited"],
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_code", "type": "string", "_note": "Live product codes 1-13 cover CHK/SAV/MMA/CD/loans; 14 is a conflicting SAV-CORE re-upload; 15-16 retired codes.", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "CHK-BASIC", "2": "CHK-PLUS", "3": "CHK-BIZ", "4": "SAV-CORE", "5": "SAV-HY", "6": "SAV-YOUTH", "7": "MMA-PREM", "8": "CD-6M", "9": "CD-12M", "10": "LN-AUTO", "11": "LN-PERSONAL", "12": "LN-HELOC", "13": "LN-BIZTERM", "14": "SAV-CORE", "15": "CHK-LEGACY", "16": "SAV-PASSBOOK"}}},
+        {"name": "mapped_code", "type": "string", "_note": "GL account hierarchy node: 2010x deposit liabilities, 1500x loan assets.", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "GL-20100", "2": "GL-20100", "3": "GL-20110", "4": "GL-20200", "5": "GL-20210", "6": "GL-20200", "7": "GL-20300", "8": "GL-20400", "9": "GL-20400", "10": "GL-15010", "11": "GL-15020", "12": "GL-15030", "13": "GL-15040", "14": "GL-20205", "15": "GL-20100", "16": "GL-20200"}}},
+        {"name": "mapped_description", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "Demand deposits - consumer", "2": "Demand deposits - consumer", "3": "Demand deposits - business", "4": "Savings deposits - core", "5": "Savings deposits - high yield", "6": "Savings deposits - core", "7": "Money market deposits", "8": "Time deposits - certificates", "9": "Time deposits - certificates", "10": "Consumer loans - auto", "11": "Consumer loans - personal", "12": "Consumer loans - HELOC", "13": "Commercial loans - term", "14": "Savings deposits - core (restated node)", "15": "Demand deposits - consumer (retired)", "16": "Savings deposits - core (retired)"}}},
+        {"name": "business_unit", "type": "string", "gen": "const:finance"},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_id", "cases": {"14": "2025-04-01", "15": "2020-01-01", "16": "2020-01-01"}, "default": {"type": "constant", "value": "2023-01-01"}}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_id", "cases": {"15": "2022-12-31", "16": "2021-06-30"}, "default": {"type": "constant", "value": null}}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_id", "cases": {"14": {"type": "constant", "value": "2025-04-02 10:20:00"}, "15": {"type": "constant", "value": "2020-02-01 09:00:00"}, "16": {"type": "constant", "value": "2020-02-01 09:05:00"}}, "default": {"type": "constant", "value": "2024-02-01 09:15:00"}}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"14": "gl_account_map_2025Q2.xlsx", "5": "gl_account_map_2025_draft.xlsx"}, "default": {"type": "constant", "value": "gl_account_map_2024Q1.xlsx"}}},
+        {"name": "approved_flag", "type": "boolean", "_note": "Coverage gap (~12/14 live products mapped): CHK-STUDENT has no mapping row at all, and SAV-HY (mapping_id 5) has only this UNAPPROVED draft row -> both fall to UNMAPPED in finance. Retired CHK-LEGACY/SAV-PASSBOOK are approved but effective-ended in the past so they drop out too.", "gen": {"type": "case", "on": "mapping_id", "cases": {"5": {"type": "constant", "value": 0}}, "default": {"type": "constant", "value": 1}}}
+      ]
+    },
+    {
+      "_note": "Job catalog for the code objects below. job_run history references these; procedures/extracts in catalog.code_object name them.",
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled job catalog (ETL feeds, EOD/close procedures, refresh proc, outbound extracts).",
+      "source_system": "FlowGate Integration",
+      "primary_key": ["job_id"], "rows": 10, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "corebank_customer_extract", "2": "card_txn_settlement_load", "3": "payment_stream_extract", "4": "gl_extract_load", "5": "eod_batch_posting", "6": "gl_period_close", "7": "rebuild_mv_eod_balance_snapshot", "8": "deposit_interest_accrual", "9": "regulatory_txn_report_extract", "10": "card_network_settlement_extract"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "etl_script", "2": "etl_script", "3": "etl_script", "4": "etl_script", "5": "procedure", "6": "procedure", "7": "procedure", "8": "function", "9": "extract", "10": "extract"}}},
+        {"name": "code_object", "type": "string", "nullable": true, "gen": {"type": "case", "on": "job_id", "cases": {"5": "eod_batch_posting", "6": "gl_period_close", "7": "rebuild_mv_eod_balance_snapshot", "8": "deposit_interest_accrual", "9": "regulatory_txn_report_extract", "10": "card_network_settlement_extract"}, "default": {"type": "constant", "value": null}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "0 1 * * *", "2": "0 2 * * *", "3": "15 2 * * *", "4": "30 2 * * *", "5": "0 3 * * *", "6": "0 5 1 * *", "7": "0 4 * * *", "8": "0 23 * * *", "9": "0 6 * * *", "10": "0 21 * * *"}}},
+        {"name": "target_object", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "raw.corebank_customer_extract", "2": "raw.cardlink_card_txn_extract", "3": "raw.paystream_payment_extract", "4": "raw.ledger_gl_extract", "5": "core.posted_transaction", "6": "ledger.gl_daily_summary", "7": "mv.eod_balance_snapshot", "8": "wh.fact_account_balance", "9": "regulatory_txn_report_feed", "10": "card_network_settlement_feed"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Batch job run log; each run belongs to a catalog job (uniform fk so no skew check fires), with occasional failures. error_note non-null only when failed/partial.",
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Batch job run history with occasional failures.",
+      "primary_key": ["run_id"], "rows": 720,
+      "indexes": [["job_id"]],
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_id", "type": "integer", "gen": "fk:integration.job"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=4000,sigma=1.0,min=0)"},
+        {"name": "error_note", "type": "string", "nullable": true, "gen": {"type": "case", "on": "run_status", "cases": {"failed": {"type": "lorem_note", "pool": "exception_note"}, "partial": {"type": "lorem_note", "pool": "exception_note"}}, "default": {"type": "constant", "value": null}}}
       ]
     },
     {
@@ -373,6 +458,105 @@
         {"name": "city", "type": "string"},
         {"name": "state", "type": "string"},
         {"name": "onboarded_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Landing layer per feed (rung 1). One raw.* table per source feed beyond the core extract: card transaction file, payment stream events, GL extract. Verbatim text payloads with file/batch ids and ingested_at (clamped <= as_of). format_drift corrupts the date columns post-derivation; the DQ views catch unparseable dates.",
+      "schema": "raw", "name": "cardlink_card_txn_extract", "layer": "raw",
+      "purpose": "Card processor settlement file as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["card_txn_id"],
+      "columns": [
+        {"name": "card_txn_id", "type": "string"},
+        {"name": "card_id", "type": "string"},
+        {"name": "account_id", "type": "string"},
+        {"name": "merchant_id", "type": "string"},
+        {"name": "amount", "type": "string"},
+        {"name": "auth_status", "type": "string"},
+        {"name": "txn_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "paystream_payment_extract", "layer": "raw",
+      "purpose": "Payment hub instruction stream as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["instruction_id"],
+      "columns": [
+        {"name": "instruction_id", "type": "string"},
+        {"name": "payment_ref", "type": "string"},
+        {"name": "account_id", "type": "string"},
+        {"name": "payment_type", "type": "string"},
+        {"name": "direction", "type": "string"},
+        {"name": "amount", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "initiated_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "_note": "GL extract lands from the DERIVED ledger.gl_daily_summary, so its derivation must run after ledger_gl_daily_summary.",
+      "schema": "raw", "name": "ledger_gl_extract", "layer": "raw",
+      "purpose": "GL daily-movement extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["gl_summary_id"],
+      "columns": [
+        {"name": "gl_summary_id", "type": "string"},
+        {"name": "gl_code", "type": "string"},
+        {"name": "total_debit", "type": "string"},
+        {"name": "total_credit", "type": "string"},
+        {"name": "entry_count", "type": "string"},
+        {"name": "business_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Staging layer (rung 2). One stg.* per landing table: typed, trimmed, case-guarded date parse (drifted formats land NULL), row_number dedup against re-sent batches.",
+      "schema": "stg", "name": "cardlink_card_txn", "layer": "staging",
+      "purpose": "Cleaned card transactions; parses landed dates, dedups re-sent batches.",
+      "source": "derivation", "primary_key": ["card_txn_id"],
+      "columns": [
+        {"name": "card_txn_id", "type": "integer"},
+        {"name": "card_id", "type": "integer"},
+        {"name": "account_id", "type": "integer"},
+        {"name": "merchant_id", "type": "integer"},
+        {"name": "amount", "type": "decimal"},
+        {"name": "auth_status", "type": "string"},
+        {"name": "txn_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "paystream_payment", "layer": "staging",
+      "purpose": "Cleaned payment instructions; parses landed dates, dedups re-sent batches.",
+      "source": "derivation", "primary_key": ["instruction_id"],
+      "columns": [
+        {"name": "instruction_id", "type": "integer"},
+        {"name": "payment_ref", "type": "string"},
+        {"name": "account_id", "type": "integer"},
+        {"name": "payment_type", "type": "string"},
+        {"name": "direction", "type": "string"},
+        {"name": "amount", "type": "decimal"},
+        {"name": "status", "type": "string"},
+        {"name": "initiated_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "ledger_gl", "layer": "staging",
+      "purpose": "Cleaned GL daily movement; parses landed dates.",
+      "source": "derivation", "primary_key": ["gl_summary_id"],
+      "columns": [
+        {"name": "gl_summary_id", "type": "integer"},
+        {"name": "gl_code", "type": "string"},
+        {"name": "total_debit", "type": "decimal"},
+        {"name": "total_credit", "type": "decimal"},
+        {"name": "entry_count", "type": "integer"},
+        {"name": "business_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
       ]
     },
     {
@@ -564,6 +748,48 @@
         {"name": "total_debits", "type": "decimal"},
         {"name": "closing_balance", "type": "decimal"}
       ]
+    },
+    {
+      "_note": "Materialized view (rung 8). SQLite has no native matviews -> a mart table refreshed by an insert-select from bv_balance_rollforward. Day-grain bank-wide EOD deposit snapshot: ~730 rows (one per posting date with activity) regardless of multiplier, so scale_exempt. Paired with the rebuild_mv_eod_balance_snapshot code object and its job runs.",
+      "schema": "mv", "name": "eod_balance_snapshot", "layer": "mart",
+      "purpose": "Day-grain bank-wide end-of-day balance snapshot, materialized from bv_balance_rollforward.",
+      "grain": "one row per posting date with account activity",
+      "source": "derivation", "primary_key": ["posting_date"], "scale_exempt": true,
+      "columns": [
+        {"name": "posting_date", "type": "date"},
+        {"name": "active_accounts", "type": "integer"},
+        {"name": "total_credits", "type": "decimal"},
+        {"name": "total_debits", "type": "decimal"},
+        {"name": "total_closing_balance", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Code-object catalog (rung: catalog). Self-registers every view from sqlite_master, plus authored target-platform source for the EOD posting procedure, GL close procedure, mv refresh procedure, interest-accrual function, and the regulatory/card-network outbound extracts.",
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed code objects (views, procedures, functions, extracts) with source text.",
+      "source": "derivation", "primary_key": ["object_name"],
+      "columns": [
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "string"},
+        {"name": "owner", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Lineage edges linking code objects to the tables they read and write.",
+      "source": "derivation", "primary_key": ["edge_id"],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "code_object", "type": "string"},
+        {"name": "operation", "type": "string"},
+        {"name": "table_name", "type": "string"},
+        {"name": "edge_note", "type": "string", "nullable": true}
+      ]
     }
   ],
   "state_machines": [
@@ -607,6 +833,25 @@
       "timestamp_columns": {"triaged": "triaged_at", "escalated": "escalated_at", "closed_false_positive": "closed_at", "closed_no_action": "closed_at", "sar_filed": "sar_filed_at"},
       "history_table": "aml.alert_event",
       "truncate_at_as_of": true
+    },
+    {
+      "_note": "Workflow case lifecycle: open -> triaged -> in_review -> resolved, with an escalation detour. Right-censored so recently opened cases sit mid-flight.",
+      "name": "case_lifecycle",
+      "table": "workflow.case",
+      "status_column": "status",
+      "start_column": "created_at",
+      "entry_state": "open",
+      "states": ["open", "triaged", "in_review", "escalated", "resolved"],
+      "transitions": [
+        {"from": "open", "to": "triaged", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "in_review", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_review", "to": "resolved", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_review", "to": "escalated", "probability": 0.12, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 8, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "resolved": "resolved_at"},
+      "history_table": "workflow.case_event",
+      "truncate_at_as_of": true
     }
   ],
   "derivations": [
@@ -629,6 +874,67 @@
         "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
         "            else null end",
         "from raw.corebank_customer_extract;"
+      ]
+    },
+    {
+      "name": "raw_cardlink_card_txn_extract",
+      "_note": "Card processor settlement file landed verbatim as text with US-format dates; raw_card_date_drift corrupts a slice post-derivation (DQ catches it). ingested_at is the next-morning batch, clamped to as_of.",
+      "sql": [
+        "insert into raw.cardlink_card_txn_extract",
+        "select cast(card_txn_id as text), cast(card_id as text), cast(account_id as text), cast(merchant_id as text),",
+        "       printf('%.2f', amount), auth_status, strftime('%m/%d/%Y', txn_date),",
+        "       'card_settle_' || replace(txn_date, '-', '') || '.csv', 'BATCH-CARD-SETTLE',",
+        "       min(strftime('%Y-%m-%d 02:00:00', txn_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from cardlink.card_transaction;"
+      ]
+    },
+    {
+      "name": "raw_paystream_payment_extract",
+      "_note": "Payment hub stream landed verbatim; raw_payment_date_drift corrupts a slice post-derivation (DQ-009).",
+      "sql": [
+        "insert into raw.paystream_payment_extract",
+        "select cast(instruction_id as text), payment_ref, cast(account_id as text), payment_type, direction,",
+        "       printf('%.2f', amount), status, strftime('%m/%d/%Y', initiated_date),",
+        "       'payments_' || replace(initiated_date, '-', '') || '.json', 'BATCH-PAYSTREAM',",
+        "       min(strftime('%Y-%m-%d 02:15:00', initiated_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from paystream.payment_instruction;"
+      ]
+    },
+    {
+      "name": "stg_cardlink_card_txn",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL); row_number dedup against re-sent settlement batches.",
+      "sql": [
+        "insert into stg.cardlink_card_txn",
+        "select card_txn_id, card_id, account_id, merchant_id, amount, auth_status, txn_date, ingested_at",
+        "from (",
+        "  select cast(card_txn_id as integer) as card_txn_id, cast(card_id as integer) as card_id,",
+        "         cast(account_id as integer) as account_id, cast(merchant_id as integer) as merchant_id,",
+        "         cast(amount as real) as amount, lower(auth_status) as auth_status,",
+        "         case when txn_date_raw like '__/__/____'",
+        "              then substr(txn_date_raw,7,4)||'-'||substr(txn_date_raw,1,2)||'-'||substr(txn_date_raw,4,2)",
+        "              else null end as txn_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(card_txn_id as integer) order by ingested_at desc) as rn",
+        "  from raw.cardlink_card_txn_extract",
+        ") where rn = 1;"
+      ]
+    },
+    {
+      "name": "stg_paystream_payment",
+      "sql": [
+        "insert into stg.paystream_payment",
+        "select instruction_id, payment_ref, account_id, payment_type, direction, amount, status, initiated_date, ingested_at",
+        "from (",
+        "  select cast(instruction_id as integer) as instruction_id, trim(payment_ref) as payment_ref,",
+        "         cast(account_id as integer) as account_id, lower(payment_type) as payment_type, lower(direction) as direction,",
+        "         cast(amount as real) as amount, lower(status) as status,",
+        "         case when initiated_date_raw like '__/__/____'",
+        "              then substr(initiated_date_raw,7,4)||'-'||substr(initiated_date_raw,1,2)||'-'||substr(initiated_date_raw,4,2)",
+        "              else null end as initiated_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(instruction_id as integer) order by ingested_at desc) as rn",
+        "  from raw.paystream_payment_extract",
+        ") where rn = 1;"
       ]
     },
     {
@@ -724,6 +1030,36 @@
       ]
     },
     {
+      "name": "raw_ledger_gl_extract",
+      "_note": "GL extract landed verbatim from the DERIVED gl_daily_summary; runs after ledger_gl_daily_summary so the rows exist. raw_gl_date_drift corrupts a slice post-derivation (DQ-010).",
+      "sql": [
+        "insert into raw.ledger_gl_extract",
+        "select cast(gl_summary_id as text), gl_code, printf('%.2f', total_debit), printf('%.2f', total_credit),",
+        "       cast(entry_count as text), strftime('%m/%d/%Y', business_date),",
+        "       'gl_daily_' || replace(business_date, '-', '') || '.txt', 'BATCH-GL-EXTRACT',",
+        "       min(strftime('%Y-%m-%d 02:30:00', business_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from ledger.gl_daily_summary;"
+      ]
+    },
+    {
+      "name": "stg_ledger_gl",
+      "sql": [
+        "insert into stg.ledger_gl",
+        "select gl_summary_id, gl_code, total_debit, total_credit, entry_count, business_date, ingested_at",
+        "from (",
+        "  select cast(gl_summary_id as integer) as gl_summary_id, trim(gl_code) as gl_code,",
+        "         cast(total_debit as real) as total_debit, cast(total_credit as real) as total_credit,",
+        "         cast(entry_count as integer) as entry_count,",
+        "         case when business_date_raw like '__/__/____'",
+        "              then substr(business_date_raw,7,4)||'-'||substr(business_date_raw,1,2)||'-'||substr(business_date_raw,4,2)",
+        "              else null end as business_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(gl_summary_id as integer) order by ingested_at desc) as rn",
+        "  from raw.ledger_gl_extract",
+        ") where rn = 1;"
+      ]
+    },
+    {
       "name": "aml_case_file",
       "sql": [
         "insert into aml.case_file",
@@ -811,27 +1147,209 @@
       ]
     },
     {
+      "name": "nv_transaction",
+      "_note": "Normalized view (rung 6): wide re-join of the posted-transaction fact to its dims with business column names. No aggregation. left joins because UNKNOWN MERCHANT / unmastered accounts legitimately lose dim rows. account_key and customer_key share the corebank id space with the dims by construction.",
+      "sql": [
+        "create view nv_transaction as",
+        "select f.txn_id, f.txn_date, f.channel, f.txn_type, f.direction, f.amount, f.counterparty,",
+        "       f.account_key, da.account_no, da.account_type, da.product_code, da.segment, da.status as account_status,",
+        "       f.customer_key, dc.customer_no, dc.customer_name, dc.kyc_status",
+        "from wh.fact_transaction f",
+        "left join wh.dim_account da on da.account_key = f.account_key",
+        "left join wh.dim_customer dc on dc.customer_key = f.customer_key;"
+      ]
+    },
+    {
+      "name": "nv_account_balance",
+      "_note": "Normalized view (rung 6): the balance roll-forward fact re-joined to dim_account. Carries product_code, account_type, segment, and a deterministic is_internal flag (account_id % 50 = 0 are bank-internal settlement/suspense accounts) so the finance-vs-branchops exclusion is exact.",
+      "sql": [
+        "create view nv_account_balance as",
+        "select b.balance_id, b.account_key, b.posting_date,",
+        "       b.opening_balance, b.total_credits, b.total_debits, b.closing_balance,",
+        "       da.account_no, da.account_type, da.product_code, da.segment, da.status as account_status,",
+        "       case when b.account_key % 50 = 0 then 1 else 0 end as is_internal",
+        "from wh.fact_account_balance b",
+        "left join wh.dim_account da on da.account_key = b.account_key;"
+      ]
+    },
+    {
+      "name": "nv_gl_posting",
+      "_note": "Normalized view (rung 6): GL daily movement re-joined to the chart of accounts with readable names and account class. No aggregation beyond the source grain.",
+      "sql": [
+        "create view nv_gl_posting as",
+        "select g.gl_summary_id, g.business_date, g.gl_code, ga.gl_name, ga.account_class, ga.is_suspense,",
+        "       g.total_debit, g.total_credit, g.entry_count,",
+        "       round(g.total_credit - g.total_debit, 2) as net_movement",
+        "from ledger.gl_daily_summary g",
+        "left join ledger.gl_account ga on ga.gl_code = g.gl_code;"
+      ]
+    },
+    {
+      "name": "bv_balance_rollforward",
+      "_note": "Business view (rung 7): the roll-forward equation surfaced with a window-lagged opening and a closing recomputed as opening + credits - debits + reversals. Built on nv_account_balance. reversal_adjustment is 0 here (returns already net inside the posting ledger) but the column documents the equation opening + credits - debits + reversals = closing.",
+      "sql": [
+        "create view bv_balance_rollforward as",
+        "select account_key, account_no, account_type, product_code, segment, posting_date,",
+        "       opening_balance, total_credits, total_debits,",
+        "       0.0 as reversal_adjustment,",
+        "       round(opening_balance + total_credits - total_debits + 0.0, 2) as computed_closing,",
+        "       closing_balance,",
+        "       round(opening_balance + total_credits - total_debits - closing_balance, 2) as rollforward_break,",
+        "       row_number() over (partition by account_key order by posting_date desc) as recency_rank",
+        "from nv_account_balance;"
+      ]
+    },
+    {
+      "name": "bv_deposit_portfolio",
+      "_note": "Business view (rung 7): segment x product aggregation of each deposit account's latest (as-of) closing balance. Deposit products only (checking/savings/cd/mma); loans carry negative/liability balances and are excluded. recency_rank = 1 picks the latest roll-forward row per account.",
+      "sql": [
+        "create view bv_deposit_portfolio as",
+        "with latest as (",
+        "  select account_key, account_type, product_code, segment, closing_balance, is_internal",
+        "  from (select account_key, account_type, product_code, segment, closing_balance, is_internal,",
+        "               row_number() over (partition by account_key order by posting_date desc) as rn",
+        "        from nv_account_balance) where rn = 1",
+        ")",
+        "select segment, product_code, account_type,",
+        "       count(*) as accounts,",
+        "       sum(is_internal) as internal_accounts,",
+        "       round(sum(closing_balance), 2) as total_balance,",
+        "       round(sum(case when is_internal = 0 then closing_balance else 0 end), 2) as customer_balance",
+        "from latest",
+        "where account_type in ('checking', 'savings', 'cd')",
+        "group by segment, product_code, account_type;"
+      ]
+    },
+    {
+      "name": "bv_aml_alert_funnel",
+      "_note": "Business view (rung 7): the alert -> investigation -> SAR case ladder counted across the lifecycle, with case linkage and override counts. Built on aml.alert + aml.case_file.",
+      "sql": [
+        "create view bv_aml_alert_funnel as",
+        "select a.status as funnel_stage,",
+        "       case a.status when 'generated' then 1 when 'triaged' then 2",
+        "            when 'escalated' then 3 when 'investigating' then 4",
+        "            when 'closed_false_positive' then 5 when 'closed_no_action' then 6",
+        "            when 'sar_filed' then 7 else 9 end as stage_order",
+        ", count(*) as alerts,",
+        "       sum(a.analyst_override_flag) as analyst_overrides,",
+        "       round(avg(a.risk_score), 1) as avg_risk_score,",
+        "       sum(case when c.case_id is not null then 1 else 0 end) as linked_cases,",
+        "       sum(case when c.sar_filed_date is not null then 1 else 0 end) as sars_filed",
+        "from aml.alert a",
+        "left join aml.case_file c on c.alert_id = a.alert_id",
+        "group by a.status;"
+      ]
+    },
+    {
+      "name": "mv_eod_balance_snapshot",
+      "_note": "Materialized view (rung 8): insert-select from bv_balance_rollforward into the mv.eod_balance_snapshot table. Day-grain bank-wide EOD deposit snapshot (one row per posting date), bounded ~730 rows regardless of multiplier. The rebuild_mv_eod_balance_snapshot code object refreshes it on a schedule.",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into mv.eod_balance_snapshot",
+        "select posting_date,",
+        "       count(distinct account_key) as active_accounts,",
+        "       round(sum(total_credits), 2) as total_credits,",
+        "       round(sum(total_debits), 2) as total_debits,",
+        "       round(sum(closing_balance), 2) as total_closing_balance",
+        "from bv_balance_rollforward",
+        "group by posting_date;"
+      ]
+    },
+    {
       "name": "mart_txn_channel_daily",
+      "_note": "Rewired onto the stack: BU view over the normalized transaction view nv_transaction.",
       "sql": [
         "create view mart_txn_channel_daily as",
         "select txn_date, channel, count(*) as txn_count,",
         "       round(sum(amount), 2) as total_amount,",
         "       round(avg(amount), 2) as avg_amount",
-        "from core.posted_transaction",
+        "from nv_transaction",
         "group by txn_date, channel;"
       ]
     },
     {
       "name": "mart_aml_funnel",
+      "_note": "Rewired onto the stack: BU view over the business view bv_aml_alert_funnel.",
       "sql": [
         "create view mart_aml_funnel as",
-        "select a.status, count(*) as alerts,",
-        "       sum(a.analyst_override_flag) as analyst_overrides,",
-        "       round(avg(a.risk_score), 1) as avg_risk_score,",
-        "       sum(case when c.case_id is not null then 1 else 0 end) as linked_cases",
-        "from aml.alert a",
-        "left join aml.case_file c on c.alert_id = a.alert_id",
-        "group by a.status;"
+        "select funnel_stage as status, alerts, analyst_overrides, avg_risk_score, linked_cases",
+        "from bv_aml_alert_funnel;"
+      ]
+    },
+    {
+      "name": "mart_finance_deposits",
+      "_note": "Business-unit view (rung 9), FINANCE. GL-centric total deposits: applies the human-entered gl_account_mapping (left join + coalesce 'UNMAPPED', dedup the conflicting SAV-CORE re-upload to the latest approved row via row_number) AND EXCLUDES internal/settlement accounts (is_internal = 1). Competes with mart_branchops_deposits. The mapping is total-preserving (coalesce keeps every balance row), so the only difference vs branchops is the documented internal-account exclusion.",
+      "sql": [
+        "create view mart_finance_deposits as",
+        "with mapping as (",
+        "  select source_code, mapped_code, mapped_description,",
+        "         row_number() over (partition by source_code order by uploaded_at desc, mapping_id desc) as rn",
+        "  from manual.gl_account_mapping",
+        "  where approved_flag = 1 and (effective_end_date is null or effective_end_date > '2025-12-31')",
+        "),",
+        "latest as (",
+        "  select account_key, product_code, segment, closing_balance, is_internal",
+        "  from (select account_key, product_code, segment, closing_balance, is_internal,",
+        "               row_number() over (partition by account_key order by posting_date desc) as rn",
+        "        from nv_account_balance where account_type in ('checking', 'savings', 'cd')) where rn = 1",
+        ")",
+        "select coalesce(m.mapped_code, 'UNMAPPED') as gl_account_node,",
+        "       coalesce(m.mapped_description, 'Unmapped product') as gl_account_name,",
+        "       count(*) as deposit_accounts,",
+        "       round(sum(l.closing_balance), 2) as total_deposits",
+        "from latest l",
+        "left join mapping m on m.source_code = l.product_code and m.rn = 1",
+        "where l.is_internal = 0",
+        "group by 1, 2;"
+      ]
+    },
+    {
+      "name": "mart_branchops_deposits",
+      "_note": "Business-unit view (rung 9), BRANCH OPS. Account-centric total deposits: raw product_code, NO GL mapping, and INCLUDES internal/settlement accounts. Legitimately disagrees with finance on the grand total by exactly the internal/settlement balance.",
+      "sql": [
+        "create view mart_branchops_deposits as",
+        "with latest as (",
+        "  select account_key, product_code, segment, closing_balance, is_internal",
+        "  from (select account_key, product_code, segment, closing_balance, is_internal,",
+        "               row_number() over (partition by account_key order by posting_date desc) as rn",
+        "        from nv_account_balance where account_type in ('checking', 'savings', 'cd')) where rn = 1",
+        ")",
+        "select product_code as reported_product_code, segment,",
+        "       count(*) as deposit_accounts,",
+        "       round(sum(closing_balance), 2) as total_deposits",
+        "from latest",
+        "group by product_code, segment;"
+      ]
+    },
+    {
+      "name": "control_recon_finance_branchops",
+      "_note": "Reconciles the competing total-deposits metric. branchops_total (includes internal/settlement, raw product code) minus finance_total (internal excluded, GL-mapped) must equal the internal/settlement balance; unexplained_difference proves it (must be 0). finance_unmapped_deposits quantifies the mapping coverage gap (the CHK-STUDENT + SAV-HY UNMAPPED bucket).",
+      "sql": [
+        "create view control_recon_finance_branchops as",
+        "with latest as (",
+        "  select account_key, product_code, closing_balance, is_internal",
+        "  from (select account_key, product_code, closing_balance, is_internal,",
+        "               row_number() over (partition by account_key order by posting_date desc) as rn",
+        "        from nv_account_balance where account_type in ('checking', 'savings', 'cd')) where rn = 1",
+        "),",
+        "branch as (select round(sum(closing_balance), 2) as total from latest),",
+        "fin as (select round(sum(closing_balance), 2) as total from latest where is_internal = 0),",
+        "internal as (select coalesce(round(sum(closing_balance), 2), 0) as excluded from latest where is_internal = 1),",
+        "unmapped as (",
+        "  select coalesce(round(sum(closing_balance), 2), 0) as unmapped_deposits",
+        "  from latest l",
+        "  where l.is_internal = 0",
+        "    and not exists (select 1 from manual.gl_account_mapping m",
+        "                    where m.source_code = l.product_code and m.approved_flag = 1",
+        "                      and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        ")",
+        "select b.total as branchops_total_deposits,",
+        "       f.total as finance_total_deposits,",
+        "       round(b.total - f.total, 2) as difference,",
+        "       i.excluded as internal_excluded,",
+        "       round(b.total - f.total - i.excluded, 2) as unexplained_difference,",
+        "       u.unmapped_deposits as finance_unmapped_deposits",
+        "from branch b, fin f, internal i, unmapped u;"
       ]
     },
     {
@@ -885,7 +1403,58 @@
         " and e2.entered_at < e1.entered_at",
         "union all",
         "select 'DQ-007', 'verified customer missing contact email', cast(customer_id as text)",
-        "from corebank.customer where kyc_status = 'verified' and (email is null or email = '');"
+        "from corebank.customer where kyc_status = 'verified' and (email is null or email = '')",
+        "union all",
+        "select 'DQ-008', 'product code missing approved GL mapping', p.product_code",
+        "from corebank.product p",
+        "where p.product_type in ('checking', 'savings', 'cd')",
+        "  and not exists (select 1 from manual.gl_account_mapping m",
+        "                  where m.source_code = p.product_code and m.approved_flag = 1",
+        "                    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "union all",
+        "select 'DQ-009', 'unparseable raw payment date', instruction_id",
+        "from raw.paystream_payment_extract where initiated_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-010', 'unparseable raw GL date', gl_summary_id",
+        "from raw.ledger_gl_extract where business_date_raw not like '__/__/____';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "_note": "Lineage edges for the authored procedures/function/extracts -> the tables they read and write.",
+      "sql": [
+        "insert into catalog.lineage_edge (edge_id, code_object, operation, table_name, edge_note) values",
+        "  (1, 'eod_batch_posting', 'reads',  'cardlink.card_transaction', 'Approved card auths'),",
+        "  (2, 'eod_batch_posting', 'reads',  'paystream.payment_instruction', 'Posted ACH/wire instructions'),",
+        "  (3, 'eod_batch_posting', 'writes', 'core.posted_transaction', 'Business-day posting ledger'),",
+        "  (4, 'gl_period_close', 'reads',  'core.posted_transaction', 'Subledger movement'),",
+        "  (5, 'gl_period_close', 'writes', 'ledger.gl_daily_summary', 'Double-entry daily GL'),",
+        "  (6, 'gl_period_close', 'writes', 'workflow.case', 'Opens recon-break cases'),",
+        "  (7, 'rebuild_mv_eod_balance_snapshot', 'reads',  'bv_balance_rollforward', 'Day-grain refresh source'),",
+        "  (8, 'rebuild_mv_eod_balance_snapshot', 'writes', 'mv.eod_balance_snapshot', 'Truncate-and-reload'),",
+        "  (9, 'deposit_interest_accrual', 'reads', 'wh.fact_account_balance', 'EOD balances for accrual basis'),",
+        "  (10, 'mart_finance_deposits', 'reads', 'manual.gl_account_mapping', 'Asymmetric GL mapping join'),",
+        "  (11, 'regulatory_txn_report_extract', 'reads', 'core.posted_transaction', 'Reportable transactions in period'),",
+        "  (12, 'regulatory_txn_report_extract', 'feeds', 'regulatory_txn_report_feed', 'Outbound regulatory file'),",
+        "  (13, 'card_network_settlement_extract', 'reads', 'cardlink.card_transaction', 'Approved card volume for settlement'),",
+        "  (14, 'card_network_settlement_extract', 'feeds', 'card_network_settlement_feed', 'SFTP settlement file to network'),",
+        "  (15, 'deposit_interest_accrual', 'referenced_by', 'gl_period_close', 'Accrual UDF used at close');"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Authored target-platform source for the EOD posting procedure, GL close procedure, mv refresh procedure, interest-accrual function, and the regulatory/card-network outbound extracts, then self-registration of every deployed view from sqlite_master so the catalog provably matches the code. Runs LAST so all views exist. deposit_interest_accrual is intentionally stale (references a renamed column) — noted as known debt.",
+      "sql": [
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes) values",
+        "  ('eod_batch_posting', 'procedure', 'plpgsql', 'create or replace procedure eod_batch_posting(business_date date) language plpgsql as $$ begin insert into core_posted_transaction (account_id, txn_date, channel, txn_type, direction, amount) select c.account_id, c.txn_date, ''card'', ''card_purchase'', ''debit'', c.amount from cardlink_card_transaction c where c.auth_status = ''approved'' and c.txn_date = business_date; insert into core_posted_transaction (account_id, txn_date, channel, txn_type, direction, amount) select p.account_id, date(p.posted_at), case when p.payment_type like ''wire%'' then ''wire'' else ''ach'' end, p.payment_type, p.direction, p.amount from paystream_payment_instruction p where p.posted_at is not null and date(p.posted_at) = business_date; end; $$;', 'core_banking_eng', '2024-01-15 09:00:00', '2025-03-04 11:20:00', 'Nightly end-of-day posting; scheduled by integration.job eod_batch_posting.'),",
+        "  ('gl_period_close', 'procedure', 'plpgsql', 'create or replace procedure gl_period_close(as_of date) language plpgsql as $$ begin insert into ledger_gl_daily_summary (business_date, gl_code, total_debit, total_credit, entry_count) select t.txn_date, ''2010'', sum(case when t.direction=''debit'' then t.amount else 0 end), sum(case when t.direction=''credit'' then t.amount else 0 end), count(*) from core_posted_transaction t where t.txn_date <= as_of group by t.txn_date; insert into workflow_case (case_type, queue, status) select ''recon_break'', ''finance_controls'', ''open'' from control_recon_txn_vs_gl where abs(break_amount) > 0.01; end; $$;', 'finance_controls', '2024-01-20 08:30:00', '2025-02-03 17:45:00', 'Month-end GL close; opens recon-break cases.'),",
+        "  ('rebuild_mv_eod_balance_snapshot', 'procedure', 'sql', 'create or replace procedure rebuild_mv_eod_balance_snapshot() language sql as $$ delete from mv_eod_balance_snapshot; insert into mv_eod_balance_snapshot (posting_date, active_accounts, total_credits, total_debits, total_closing_balance) select posting_date, count(distinct account_key), round(sum(total_credits),2), round(sum(total_debits),2), round(sum(closing_balance),2) from bv_balance_rollforward group by posting_date; $$;', 'data_engineering', '2024-01-18 09:00:00', '2025-01-29 10:10:00', 'Refreshes the EOD balance matview; scheduled daily by integration.job rebuild_mv_eod_balance_snapshot.'),",
+        "  ('deposit_interest_accrual', 'function', 'plpgsql', 'create or replace function deposit_interest_accrual(eod_balance numeric, annual_rate numeric) returns numeric language sql as $$ select round(eod_balance * annual_rate / 365.0, 2); $$;', 'deposits_eng', '2023-10-02 10:00:00', '2023-10-02 10:00:00', 'KNOWN DEBT: an older overload references the retired column account.day_count_basis; flagged for cleanup, still deployed.'),",
+        "  ('regulatory_txn_report_extract', 'extract', 'sql', 'select t.txn_id, t.txn_date, t.account_id, t.channel, t.amount from core_posted_transaction t where t.amount >= 10000 and t.txn_date between date(''now'',''-1 day'') and date(''now''); -- format: fixed-width; destination: sftp://regreporting.example.gov/in/; schedule: 0 6 * * *', 'compliance_eng', '2024-02-10 09:00:00', '2025-05-12 09:15:00', 'Outbound large-transaction regulatory report (job regulatory_txn_report_extract).'),",
+        "  ('card_network_settlement_extract', 'extract', 'sql', 'select c.card_txn_id, c.card_id, c.merchant_id, c.amount, c.txn_date from cardlink_card_transaction c where c.auth_status = ''approved''; -- format: CSV; destination: sftp://network-settle.example.com/out/; schedule: 0 21 * * *', 'integration_eng', '2024-03-01 09:00:00', '2025-04-10 09:15:00', 'Outbound nightly card-network settlement file (job card_network_settlement_extract).');",
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes)",
+        "select name, 'view', 'sql', sql, 'data_engineering', '2024-01-15 09:00:00', '2024-01-15 09:00:00', 'Auto-registered from sqlite_master.'",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';"
       ]
     }
   ],
@@ -901,12 +1470,15 @@
     {"name": "missing_party_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Mappings lost in the Sentinel AML re-platforming; DQ-002 reports customers without an active party mapping."},
     {"name": "stale_party_xref", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired identifier mappings never re-pointed after the core conversion; DQ-005 catches active rows with past valid_to."},
     {"name": "raw_extract_date_drift", "type": "format_drift", "table": "raw.corebank_customer_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_created_date", "format": "padded"}, "scenario": "Legacy fixed-width extract job pads dates after a patch; DQ-003 counts unparseable rows."},
+    {"name": "raw_payment_date_drift", "type": "format_drift", "table": "raw.paystream_payment_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "initiated_date_raw", "format": "padded"}, "scenario": "Payment hub stream extract pads dates after a patch; DQ-009 catches the unparseable ones."},
+    {"name": "raw_gl_date_drift", "type": "format_drift", "table": "raw.ledger_gl_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "business_date_raw", "format": "padded"}, "scenario": "Legacy GL extract date format drifts after a patch; DQ-010 catches it."},
     {"name": "gl_restatements", "type": "restatement_reversal", "table": "core.posted_transaction", "rate": 0.0015, "stage": "post_derivation", "params": {"amount_columns": ["amount"], "reason_column": "description"}, "scenario": "Manual fee reversals posted after the GL summary ran — these create the control_recon_txn_vs_gl breaks."}
   ],
   "controls": [
     {"rule_id": "CTL-001", "rule_name": "Posted transactions tie to GL deposits movement", "source_dataset": "core.posted_transaction", "target_dataset": "ledger.gl_daily_summary", "grain": "business_date", "tolerance": "0.01", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "~10-15% of dates break (late restatement reversals)", "break_view": "control_recon_txn_vs_gl"},
     {"rule_id": "CTL-002", "rule_name": "Balance roll-forward equation holds", "source_dataset": "wh.fact_account_balance", "target_dataset": "wh.fact_account_balance", "grain": "account x posting_date", "tolerance": "0.02", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "0 (holds by construction via window sums)"},
-    {"rule_id": "CTL-003", "rule_name": "Every AML case references an alert", "source_dataset": "aml.case_file", "target_dataset": "aml.alert", "grain": "case", "tolerance": "count", "frequency": "daily", "owner": "financial_crimes", "severity": "high", "expected_break_rate": "0 (cases derive from escalated alerts)"}
+    {"rule_id": "CTL-003", "rule_name": "Every AML case references an alert", "source_dataset": "aml.case_file", "target_dataset": "aml.alert", "grain": "case", "tolerance": "count", "frequency": "daily", "owner": "financial_crimes", "severity": "high", "expected_break_rate": "0 (cases derive from escalated alerts)"},
+    {"rule_id": "CTL-005", "rule_name": "Finance total deposits reconciles to branch-ops total deposits", "source_dataset": "mart_branchops_deposits", "target_dataset": "mart_finance_deposits", "grain": "grand total", "tolerance": "0.01", "frequency": "monthly", "owner": "finance_controls", "severity": "medium", "expected_break_rate": "difference equals internal/settlement balance; unexplained_difference must be 0", "break_view": "control_recon_finance_branchops"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "core.account", "rule_type": "consistency", "condition": "account_type matches product_type", "severity": "warning", "expected_failure_rate": 0.02},
@@ -915,20 +1487,33 @@
     {"rule_id": "DQ-004", "dataset": "cardlink.card_transaction", "rule_type": "fk_exists", "condition": "merchant exists in merchant master", "severity": "error", "expected_failure_rate": 0.004},
     {"rule_id": "DQ-005", "dataset": "xref.entity_identifier", "rule_type": "validity", "condition": "active mappings have no past valid_to", "severity": "warning", "expected_failure_rate": 0.02},
     {"rule_id": "DQ-006", "dataset": "paystream.payment_event", "rule_type": "sequence", "condition": "entered_at monotonic per instruction", "severity": "error", "expected_failure_rate": 0.004},
-    {"rule_id": "DQ-007", "dataset": "corebank.customer", "rule_type": "required_field", "condition": "verified customers have contact email", "severity": "warning", "expected_failure_rate": 0.04}
+    {"rule_id": "DQ-007", "dataset": "corebank.customer", "rule_type": "required_field", "condition": "verified customers have contact email", "severity": "warning", "expected_failure_rate": 0.04},
+    {"rule_id": "DQ-008", "dataset": "manual.gl_account_mapping", "rule_type": "coverage", "condition": "every live deposit product code has an approved GL mapping", "severity": "error", "expected_failure_rate": 0.2},
+    {"rule_id": "DQ-009", "dataset": "raw.paystream_payment_extract", "rule_type": "format", "condition": "initiated date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-010", "dataset": "raw.ledger_gl_extract", "rule_type": "format", "condition": "business date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03}
   ],
   "dataflows": [
     {"name": "customer_mastering", "sequence": "corebank.customer -> raw extract -> staging -> xref -> core.customer -> wh.dim_customer"},
     {"name": "payment_lifecycle", "sequence": "paystream.payment_instruction -> state machine -> paystream.payment_event -> core.posted_transaction (business-day posting) -> wh.fact_transaction"},
     {"name": "card_clearing", "sequence": "cardlink.card_transaction (auth) -> core.posted_transaction (approved only) -> ledger.gl_daily_summary -> control_recon_txn_vs_gl"},
-    {"name": "balance_rollforward", "sequence": "core.posted_transaction -> window sums -> wh.fact_account_balance (opening + credits - debits = closing)"},
+    {"name": "balance_rollforward", "sequence": "core.posted_transaction -> window sums -> wh.fact_account_balance -> nv_account_balance -> bv_balance_rollforward -> mv_eod_balance_snapshot"},
+    {"name": "landing_staging", "sequence": "core/card/payment/GL feeds -> raw.* (verbatim text) -> stg.* (typed, parsed, deduped) -> DQ format rules"},
+    {"name": "view_stack", "sequence": "wh facts/dims -> nv_transaction/nv_account_balance/nv_gl_posting -> bv_balance_rollforward/bv_deposit_portfolio/bv_aml_alert_funnel -> mv_eod_balance_snapshot / mart_finance_deposits / mart_branchops_deposits / mart_txn_channel_daily / mart_aml_funnel"},
+    {"name": "deposit_mapping", "sequence": "manual.gl_account_mapping -> mart_finance_deposits (applied + internal excluded) vs mart_branchops_deposits (raw + internal included) -> control_recon_finance_branchops + DQ-008 + workflow gl_mapping_request"},
+    {"name": "code_catalog", "sequence": "sqlite_master views + authored procs/function/extracts -> catalog.code_object; catalog.lineage_edge; integration.job -> integration.job_run"},
     {"name": "aml_funnel", "sequence": "paystream.payment_instruction -> aml.alert -> state machine -> aml.case_file -> SAR filings"}
   ],
   "validation": {
-    "required_views": ["mart_txn_channel_daily", "mart_aml_funnel", "control_recon_txn_vs_gl", "dq_rule_result_current"],
+    "required_views": [
+      "nv_transaction", "nv_account_balance", "nv_gl_posting",
+      "bv_balance_rollforward", "bv_deposit_portfolio", "bv_aml_alert_funnel",
+      "mart_txn_channel_daily", "mart_aml_funnel", "mart_finance_deposits", "mart_branchops_deposits",
+      "control_recon_txn_vs_gl", "control_recon_finance_branchops", "dq_rule_result_current"
+    ],
     "expected_row_ranges": {
       "corebank.customer": [1450, 1800],
       "corebank.account": [2100, 3500],
+      "mv.eod_balance_snapshot": [300, 740],
       "cardlink.card_transaction": [30000, 95000],
       "paystream.payment_instruction": [11000, 34000],
       "wh.fact_transaction": [40000, 120000]
