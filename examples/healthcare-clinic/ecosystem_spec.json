@@ -184,6 +184,7 @@
         {"name": "coverage_rank", "type": "integer", "gen": "child_index"},
         {"name": "coverage_type", "type": "string", "gen": {"type": "case", "on": "coverage_rank", "cases": {"1": {"type": "choice", "values": ["medicare", "medicaid", "commercial", "self_pay", "workers_comp"], "weights": [0.37, 0.16, 0.37, 0.06, 0.04]}}, "default": {"type": "choice", "values": ["supplement", "medicaid", "commercial"], "weights": [0.5, 0.28, 0.22]}}},
         {"name": "payer_id", "type": "integer", "gen": {"type": "fk", "ref": "ref.payer", "match": {"parent_column": "payer_type", "local_column": "coverage_type", "leak_rate": 0.02}}},
+        {"name": "plan_code", "type": "string", "_note": "The payer's plan/product code as keyed at registration. The revenue-cycle team groups these into financial classes via manual.payer_plan_grouping. ~14 distinct codes (payer plus a product family); one live code (HBR-EPO) is left UNMAPPED by the mapping table, two map to retired financial classes.", "gen": {"type": "case", "on": "payer_id", "cases": {"1": "MCR-B-TRAD", "2": {"type": "choice", "values": ["MCR-ADV-HMO", "MCR-ADV-PPO"], "weights": [0.6, 0.4]}, "3": "MCD-ST-FFS", "4": "MCD-MGD-HMO", "5": {"type": "choice", "values": ["BLU-PPO", "BLU-HDHP"], "weights": [0.65, 0.35]}, "6": "SEN-PPO", "7": {"type": "choice", "values": ["HBR-PPO", "HBR-EPO"], "weights": [0.7, 0.3]}, "8": "SELF-DIRECT", "9": "WC-KEY-IND", "10": "SUP-SLV-MG"}}},
         {"name": "member_id", "type": "string", "gen": {"type": "pattern", "pattern": "MBR-#########", "unique": true}},
         {"name": "group_number", "type": "string", "null_rate": 0.3, "gen": "pattern:GRP-#####"},
         {"name": "effective_date", "type": "date", "gen": {"type": "date", "min": "parent.created_at"}},
@@ -283,46 +284,48 @@
     },
     {
       "schema": "integration", "name": "job_run", "layer": "integration",
-      "purpose": "Interface engine batch run log.",
+      "purpose": "Interface engine batch run log; each run belongs to a catalog job, with occasional failures.",
       "source_system": "FlowMerge Integration Engine",
       "primary_key": ["run_id"], "rows": 600,
+      "indexes": [["job_id"]],
       "columns": [
         {"name": "run_id", "type": "integer"},
-        {"name": "job_name", "type": "string", "gen": "choice:pm_patient_extract=0.18,ehr_encounter_feed=0.22,charge_interface=0.20,clearinghouse_submit_837=0.15,remit_835_import=0.15,warehouse_refresh=0.10"},
+        {"name": "job_id", "type": "integer", "_note": "uniform (not zipf): runs spread evenly across the job catalog, no skew check.", "gen": "fk:integration.job"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
         {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
         {"name": "run_status", "type": "string", "gen": "choice:success=0.93,failed=0.04,partial=0.03"},
         {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=3500,sigma=1.0,min=0)"},
-        {"name": "error_note", "type": "string", "null_rate": 0.88, "gen": "text:exception_note"}
+        {"name": "error_note", "type": "string", "nullable": true, "_note": "Non-null only when the run failed or ran partially.", "gen": {"type": "case", "on": "run_status", "cases": {"failed": {"type": "lorem_note", "pool": "exception_note"}, "partial": {"type": "lorem_note", "pool": "exception_note"}}, "default": {"type": "constant", "value": null}}}
       ]
     },
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (live results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 10, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 13, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "completed encounter with no posted charges", "2": "procedure references missing encounter", "3": "patient missing source identifier mapping", "4": "unparseable raw registration date", "5": "claim service date after coverage termination", "6": "staging last name disagrees with PM source", "7": "duplicate interface job delivery", "8": "charge posted more than 5 days after service", "9": "possible duplicate patient registration", "10": "past appointment never reconciled from scheduled"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "clinical.encounter", "2": "clinical.procedure", "3": "xref.patient_identifier", "4": "raw.pm_patient_extract", "5": "claims.claim", "6": "stg.pm_patient", "7": "integration.job_run", "8": "billing.charge", "9": "patient.patient", "10": "scheduling.appointment"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "warning"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012", "13": "DQ-013"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "completed encounter with no posted charges", "2": "procedure references missing encounter", "3": "patient missing source identifier mapping", "4": "unparseable raw registration date", "5": "claim service date after coverage termination", "6": "staging last name disagrees with PM source", "7": "duplicate interface job delivery", "8": "charge posted more than 5 days after service", "9": "possible duplicate patient registration", "10": "past appointment never reconciled from scheduled", "11": "billable plan code missing approved financial-class mapping", "12": "unparseable raw 837 claim service date", "13": "re-sent 837 claim file superseded by later batch"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "clinical.encounter", "2": "clinical.procedure", "3": "xref.patient_identifier", "4": "raw.pm_patient_extract", "5": "claims.claim", "6": "stg.pm_patient", "7": "integration.job_run", "8": "billing.charge", "9": "patient.patient", "10": "scheduling.appointment", "11": "manual.payer_plan_grouping", "12": "raw.clearinghouse_837_extract", "13": "raw.clearinghouse_837_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "warning", "11": "error", "12": "warning", "13": "warning"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
     {
       "schema": "control", "name": "control_catalog", "layer": "control",
-      "purpose": "Reconciliation control catalog (break rows come from the control_recon_charge_claim view).",
-      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "purpose": "Reconciliation control catalog (break rows come from the control_recon_* views).",
+      "primary_key": ["control_id"], "rows": 4, "scale_exempt": true,
       "columns": [
         {"name": "control_id", "type": "integer"},
-        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
-        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Claim billed ties to posted charges", "2": "Remit disposition sums to billed", "3": "EMPI patients tie to source mappings"}}},
-        {"name": "source_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claims.claim_line", "2": "claims.remittance", "3": "patient.patient"}}},
-        {"name": "target_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "billing.charge", "2": "claims.claim", "3": "xref.patient_identifier"}}},
-        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claim", "2": "remittance line", "3": "patient"}}},
-        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.01", "3": "0"}}},
-        {"name": "frequency", "type": "string", "gen": "const:daily"},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Claim billed ties to posted charges", "2": "Remit disposition sums to billed", "3": "EMPI patients tie to source mappings", "4": "Revenue-cycle billable encounters reconcile to clinical-ops completed encounters"}}},
+        {"name": "source_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claims.claim_line", "2": "claims.remittance", "3": "patient.patient", "4": "mart_clinicalops_encounter_volume"}}},
+        {"name": "target_dataset", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "billing.charge", "2": "claims.claim", "3": "xref.patient_identifier", "4": "mart_revcycle_encounter_volume"}}},
+        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "claim", "2": "remittance line", "3": "patient", "4": "grand total"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "0.01", "2": "0.01", "3": "0", "4": "0"}}},
+        {"name": "frequency", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"4": "monthly"}, "default": {"type": "constant", "value": "daily"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"},
-        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_charge_claim", "2": "n/a (identity by construction)", "3": "dq_rule_result_current (DQ-003)"}}}
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_charge_claim", "2": "n/a (identity by construction)", "3": "dq_rule_result_current (DQ-003)", "4": "control_recon_revcycle_clinicalops"}}}
       ]
     },
     {
@@ -552,22 +555,24 @@
     },
     {
       "schema": "workflow", "name": "denial_worklist", "layer": "workflow",
-      "purpose": "Open denial follow-up queue routed by root-cause reason; carries the registration override flag for root-cause analysis.",
-      "grain": "one row per open denied claim",
+      "purpose": "Open denial follow-up queue plus mapping-request cases, routed by root-cause reason / case type; carries the registration override flag for root-cause analysis.",
+      "grain": "one row per open denied claim or per unmapped billable plan code",
       "source": "derivation", "source_system": "BrightBill RCM",
       "primary_key": ["case_id"],
       "indexes": [["queue"]],
       "columns": [
         {"name": "case_id", "type": "integer"},
-        {"name": "claim_id", "type": "integer"},
-        {"name": "denial_reason", "type": "string"},
-        {"name": "payer_id", "type": "integer"},
-        {"name": "billed_amount", "type": "decimal"},
+        {"name": "case_type", "type": "string"},
+        {"name": "claim_id", "type": "integer", "nullable": true},
+        {"name": "related_entity", "type": "string", "nullable": true},
+        {"name": "denial_reason", "type": "string", "nullable": true},
+        {"name": "payer_id", "type": "integer", "nullable": true},
+        {"name": "billed_amount", "type": "decimal", "nullable": true},
         {"name": "opened_date", "type": "date"},
         {"name": "age_days", "type": "integer"},
         {"name": "queue", "type": "string"},
         {"name": "priority", "type": "string"},
-        {"name": "eligibility_override_flag", "type": "boolean"},
+        {"name": "eligibility_override_flag", "type": "boolean", "nullable": true},
         {"name": "assigned_to", "type": "string"},
         {"name": "case_status", "type": "string"}
       ]
@@ -626,6 +631,7 @@
         {"name": "provider_key", "type": "integer"},
         {"name": "clinic_id", "type": "integer"},
         {"name": "payer_key", "type": "integer", "nullable": true},
+        {"name": "plan_code", "type": "string", "nullable": true},
         {"name": "encounter_type", "type": "string"},
         {"name": "visit_status", "type": "string"},
         {"name": "procedure_count", "type": "integer"},
@@ -672,6 +678,242 @@
         {"name": "claim_status", "type": "string"},
         {"name": "denial_reason", "type": "string", "nullable": true},
         {"name": "days_to_pay", "type": "integer", "nullable": true}
+      ]
+    },
+    {
+      "_note": "Landing layer (rung 1). One raw.* table per source feed, beyond the PM patient extract above: the EHR encounter extract, the BrightBill charge interface, the clearinghouse 837 professional-claim file, and the 835 remittance file. Verbatim text payloads, US-format dates, file/batch ids, ingested_at. format_drift corrupts the date columns post-derivation; the DQ views read these live and catch unparseable dates and superseded re-sends.",
+      "schema": "raw", "name": "ehr_encounter_extract", "layer": "raw",
+      "purpose": "Nightly EHR encounter extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["encounter_id"],
+      "columns": [
+        {"name": "encounter_id", "type": "string"},
+        {"name": "appointment_id", "type": "string"},
+        {"name": "patient_id", "type": "string"},
+        {"name": "provider_id", "type": "string"},
+        {"name": "clinic_id", "type": "string"},
+        {"name": "encounter_type", "type": "string"},
+        {"name": "visit_status", "type": "string"},
+        {"name": "encounter_date_raw", "type": "string"},
+        {"name": "completed_at_raw", "type": "string", "nullable": true},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "rcm_charge_extract", "layer": "raw",
+      "purpose": "BrightBill charge-interface extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["charge_id"],
+      "columns": [
+        {"name": "charge_id", "type": "string"},
+        {"name": "encounter_id", "type": "string"},
+        {"name": "patient_id", "type": "string"},
+        {"name": "payer_id", "type": "string", "nullable": true},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "units", "type": "string"},
+        {"name": "charge_amount", "type": "string"},
+        {"name": "charge_status", "type": "string"},
+        {"name": "service_date_raw", "type": "string"},
+        {"name": "posted_at_raw", "type": "string", "nullable": true},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "_note": "837 professional-claim file from the clearinghouse. Re-sends are real: when a batch rejects, the whole file is resubmitted under a new batch_id, so the same claim_id lands twice. landing_id is a single-column surrogate PK (the same claim_id can appear under two batch_ids) so format_drift can target individual landed rows. The stg layer dedups to the latest batch via row_number; DQ-013 reports the superseded duplicates.",
+      "schema": "raw", "name": "clearinghouse_837_extract", "layer": "raw",
+      "purpose": "Clearinghouse 837 professional-claim file as landed: all text, US-format dates, re-sent batches.",
+      "source": "derivation", "primary_key": ["landing_id"],
+      "columns": [
+        {"name": "landing_id", "type": "integer"},
+        {"name": "claim_id", "type": "string"},
+        {"name": "claim_number", "type": "string"},
+        {"name": "encounter_id", "type": "string"},
+        {"name": "patient_id", "type": "string"},
+        {"name": "payer_id", "type": "string"},
+        {"name": "billed_amount", "type": "string"},
+        {"name": "claim_status", "type": "string"},
+        {"name": "service_date_raw", "type": "string"},
+        {"name": "submitted_date_raw", "type": "string", "nullable": true},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "remit_835_extract", "layer": "raw",
+      "purpose": "835 remittance file as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["remittance_id"],
+      "columns": [
+        {"name": "remittance_id", "type": "string"},
+        {"name": "remit_number", "type": "string"},
+        {"name": "claim_id", "type": "string"},
+        {"name": "payer_id", "type": "string"},
+        {"name": "billed_amount", "type": "string"},
+        {"name": "allowed_amount", "type": "string"},
+        {"name": "contractual_adjustment", "type": "string"},
+        {"name": "patient_responsibility", "type": "string"},
+        {"name": "paid_amount", "type": "string"},
+        {"name": "remit_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Staging layer (rung 2). One stg.* per landing table: typed, trimmed, case-guarded date parse (drifted formats land NULL), row_number dedup against re-sent batches.",
+      "schema": "stg", "name": "ehr_encounter", "layer": "staging",
+      "purpose": "Cleaned EHR encounters; parses landed dates.",
+      "source": "derivation", "primary_key": ["encounter_id"],
+      "columns": [
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "appointment_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "provider_id", "type": "integer"},
+        {"name": "clinic_id", "type": "integer"},
+        {"name": "encounter_type", "type": "string"},
+        {"name": "visit_status", "type": "string"},
+        {"name": "encounter_date", "type": "date", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "rcm_charge", "layer": "staging",
+      "purpose": "Cleaned charge lines; parses landed dates.",
+      "source": "derivation", "primary_key": ["charge_id"],
+      "columns": [
+        {"name": "charge_id", "type": "integer"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer", "nullable": true},
+        {"name": "charge_code", "type": "string"},
+        {"name": "service_category", "type": "string"},
+        {"name": "units", "type": "integer"},
+        {"name": "charge_amount", "type": "decimal"},
+        {"name": "charge_status", "type": "string"},
+        {"name": "service_date", "type": "date", "nullable": true},
+        {"name": "posted_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "claim_837", "layer": "staging",
+      "purpose": "Cleaned 837 claims; parses landed dates and dedups re-sent batches to the latest.",
+      "source": "derivation", "primary_key": ["claim_id"],
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "claim_number", "type": "string"},
+        {"name": "encounter_id", "type": "integer"},
+        {"name": "patient_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "claim_status", "type": "string"},
+        {"name": "service_date", "type": "date", "nullable": true},
+        {"name": "submitted_date", "type": "date", "nullable": true},
+        {"name": "source_batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "remit_835", "layer": "staging",
+      "purpose": "Cleaned 835 remittances; parses landed dates.",
+      "source": "derivation", "primary_key": ["remittance_id"],
+      "columns": [
+        {"name": "remittance_id", "type": "integer"},
+        {"name": "remit_number", "type": "string"},
+        {"name": "claim_id", "type": "integer"},
+        {"name": "payer_id", "type": "integer"},
+        {"name": "billed_amount", "type": "decimal"},
+        {"name": "allowed_amount", "type": "decimal"},
+        {"name": "contractual_adjustment", "type": "decimal"},
+        {"name": "patient_responsibility", "type": "decimal"},
+        {"name": "paid_amount", "type": "decimal"},
+        {"name": "remit_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Human-entered mapping table. The revenue-cycle team maintains payer plan code -> payer group / financial class in a spreadsheet, uploaded here. Applied asymmetrically: mart_revcycle_* joins it (financial-class grouping), mart_clinicalops_* uses the raw plan code. 12 of 13 live plan codes mapped; HBR-EPO has ONLY an UNAPPROVED row (approved_flag=0) so it stays UNMAPPED. Two retired-plan rows for codes no longer billed (LIB-HMO, TRI-CHOICE, effective_end_date past). One conflicting MCR-ADV-PPO re-upload: two APPROVED active rows, different mapped_code, the later uploaded_at wins via row_number. TOTAL-PRESERVING: every billable encounter counts once, mapped or UNMAPPED, so the recon's unexplained_difference is exactly 0.",
+      "schema": "manual", "name": "payer_plan_grouping", "layer": "operational",
+      "purpose": "Revenue-cycle-maintained payer plan code to financial-class mapping (spreadsheet upload).",
+      "source_system": "Revenue Cycle Workbook",
+      "primary_key": ["mapping_id"], "rows": 16, "scale_exempt": true, "traits": ["audited"],
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "MCR-B-TRAD", "2": "MCR-ADV-HMO", "3": "MCR-ADV-PPO", "4": "MCD-ST-FFS", "5": "MCD-MGD-HMO", "6": "BLU-PPO", "7": "BLU-HDHP", "8": "SEN-PPO", "9": "HBR-PPO", "10": "SELF-DIRECT", "11": "WC-KEY-IND", "12": "SUP-SLV-MG", "13": "MCR-ADV-PPO", "14": "HBR-EPO", "15": "LIB-HMO", "16": "TRI-CHOICE"}}},
+        {"name": "mapped_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "FC-MCR", "2": "FC-MCR-ADV", "3": "FC-MCR-ADV-OLD", "4": "FC-MCD", "5": "FC-MCD-MGD", "6": "FC-COMM", "7": "FC-COMM-HDHP", "8": "FC-COMM", "9": "FC-COMM", "10": "FC-SELFPAY", "11": "FC-WORKCOMP", "12": "FC-SUPPLEMENT", "13": "FC-MCR-ADV", "14": "FC-COMM", "15": "FC-COMM", "16": "FC-COMM"}}},
+        {"name": "mapped_description", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "Medicare Traditional", "2": "Medicare Advantage", "3": "Medicare Advantage (legacy grouping)", "4": "Medicaid Fee-for-Service", "5": "Medicaid Managed Care", "6": "Commercial", "7": "Commercial High-Deductible", "8": "Commercial", "9": "Commercial", "10": "Self-Pay / Patient Direct", "11": "Workers Compensation", "12": "Medigap Supplement", "13": "Medicare Advantage", "14": "Commercial", "15": "Commercial (retired plan)", "16": "Commercial (retired plan)"}}},
+        {"name": "business_unit", "type": "string", "gen": "const:revenue_cycle"},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_id", "cases": {"3": "2023-01-01", "13": "2025-04-01", "14": "2025-05-01", "15": "2021-01-01", "16": "2021-01-01"}, "default": {"type": "constant", "value": "2023-01-01"}}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_id", "cases": {"15": "2023-12-31", "16": "2024-03-31"}, "default": {"type": "constant", "value": null}}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_id", "cases": {"3": {"type": "constant", "value": "2023-02-01 09:00:00"}, "13": {"type": "constant", "value": "2025-04-02 11:15:00"}, "14": {"type": "constant", "value": "2025-05-02 16:40:00"}, "15": {"type": "constant", "value": "2021-02-01 09:00:00"}, "16": {"type": "constant", "value": "2021-02-01 09:05:00"}}, "default": {"type": "constant", "value": "2024-01-15 10:30:00"}}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"13": "plan_grouping_2025Q2.xlsx", "14": "plan_grouping_2025_draft.xlsx", "15": "plan_grouping_2021.xlsx", "16": "plan_grouping_2021.xlsx"}, "default": {"type": "constant", "value": "plan_grouping_2024.xlsx"}}},
+        {"name": "approved_flag", "type": "boolean", "_note": "mapping_id 14 (HBR-EPO) is the single unapproved draft row -> HBR-EPO stays UNMAPPED in mart_revcycle.", "gen": {"type": "case", "on": "mapping_id", "cases": {"14": {"type": "constant", "value": 0}}, "default": {"type": "constant", "value": 1}}}
+      ]
+    },
+    {
+      "_note": "Job catalog for the code objects below. job_run history references these by job_id; the procedures/function/extracts in catalog.code_object name them. uniform fk from job_run (not zipf) so no skew check fires.",
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled job catalog (ETL feeds, refresh procedures, outbound extracts).",
+      "source_system": "FlowMerge Integration Engine",
+      "primary_key": ["job_id"], "rows": 11, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "pm_patient_extract", "2": "ehr_encounter_feed", "3": "charge_interface", "4": "clearinghouse_submit_837", "5": "remit_835_import", "6": "warehouse_refresh", "7": "nightly_claim_scrub", "8": "month_end_charge_close", "9": "refresh_mv_month_end_ar_snapshot", "10": "outbound_837_submission", "11": "state_immunization_registry_extract"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "etl_script", "2": "etl_script", "3": "etl_script", "4": "etl_script", "5": "etl_script", "6": "etl_script", "7": "procedure", "8": "procedure", "9": "procedure", "10": "extract", "11": "extract"}}},
+        {"name": "code_object", "type": "string", "nullable": true, "gen": {"type": "case", "on": "job_id", "cases": {"7": "nightly_claim_scrub", "8": "month_end_charge_close", "9": "refresh_mv_month_end_ar_snapshot", "10": "outbound_837_submission", "11": "state_immunization_registry_extract"}, "default": {"type": "constant", "value": null}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "0 1 * * *", "2": "0 2 * * *", "3": "30 2 * * *", "4": "0 3 * * *", "5": "0 4 * * *", "6": "0 5 * * *", "7": "0 22 * * *", "8": "0 6 1 * *", "9": "30 6 1 * *", "10": "0 23 * * *", "11": "0 1 * * 1"}}},
+        {"name": "target_object", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "raw.pm_patient_extract", "2": "raw.ehr_encounter_extract", "3": "raw.rcm_charge_extract", "4": "raw.clearinghouse_837_extract", "5": "raw.remit_835_extract", "6": "wh.fact_encounter", "7": "billing.charge", "8": "billing.charge", "9": "mv.month_end_ar_snapshot", "10": "claim_837_submission_feed", "11": "state_immunization_registry_feed"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Materialized view (rung 8). SQLite has no native matviews -> a mart table refreshed by an insert-select from bv_ar_by_payer. scale_exempt: ~24 payer-months regardless of multiplier, bounded. Paired with the refresh_mv_month_end_ar_snapshot code object and its job runs.",
+      "schema": "mv", "name": "month_end_ar_snapshot", "layer": "mart",
+      "purpose": "Month-grain AR snapshot by payer, materialized from bv_ar_by_payer.",
+      "grain": "one row per calendar month",
+      "source": "derivation", "primary_key": ["month_key"], "scale_exempt": true,
+      "columns": [
+        {"name": "month_key", "type": "string"},
+        {"name": "open_claims", "type": "integer"},
+        {"name": "ar_billed", "type": "decimal"},
+        {"name": "ar_0_30", "type": "decimal"},
+        {"name": "ar_31_60", "type": "decimal"},
+        {"name": "ar_61_90", "type": "decimal"},
+        {"name": "ar_over_90", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Code-object catalog (rung: catalog). Self-registers every view from sqlite_master, plus authored target-platform source for the nightly claim-scrubbing procedure, month-end charge-close procedure, the mv refresh procedure, the age_at_service function, and the two outbound extracts (837 submission feed, state immunization registry).",
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed code objects (views, procedures, functions, extracts) with source text.",
+      "source": "derivation", "primary_key": ["object_name"],
+      "columns": [
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "string"},
+        {"name": "owner", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Lineage edges linking code objects to the tables they read and write.",
+      "source": "derivation", "primary_key": ["edge_id"],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "code_object", "type": "string"},
+        {"name": "operation", "type": "string"},
+        {"name": "table_name", "type": "string"},
+        {"name": "edge_note", "type": "string", "nullable": true}
       ]
     }
   ],
@@ -935,10 +1177,10 @@
     },
     {
       "name": "workflow_denial_worklist",
-      "_note": "Open denials only (stuck 'denied' plus exhausted 'denied_final'); queue routes by root cause, assignees are a small fictional biller pool.",
+      "_note": "Open denials only (stuck 'denied' plus exhausted 'denied_final'); case_type 'denial_followup'; queue routes by root cause, assignees are a small fictional biller pool. The mapping-request cases (case_type 'plan_mapping_request') are appended later by workflow_mapping_request once nv_encounter exists.",
       "sql": [
         "insert into workflow.denial_worklist",
-        "select cl.claim_id, cl.claim_id, cl.denial_reason, cl.payer_id, cl.billed_amount,",
+        "select cl.claim_id, 'denial_followup', cl.claim_id, 'CLM-' || printf('%07d', cl.claim_id), cl.denial_reason, cl.payer_id, cl.billed_amount,",
         "       date(a.denied_at),",
         "       cast(julianday('2025-12-31') - julianday(a.denied_at) as integer),",
         "       case cl.denial_reason",
@@ -1002,7 +1244,7 @@
       "sql": [
         "insert into wh.fact_encounter",
         "select e.encounter_id, e.encounter_date, e.patient_id, e.provider_id, e.clinic_id,",
-        "       cov.payer_id, e.encounter_type, e.visit_status,",
+        "       cov.payer_id, cov.plan_code, e.encounter_type, e.visit_status,",
         "       (select count(*) from clinical.procedure p where p.encounter_id = e.encounter_id),",
         "       (select round(coalesce(sum(c.charge_amount), 0), 2) from billing.charge c",
         "         where c.encounter_id = e.encounter_id and c.charge_status = 'posted')",
@@ -1038,6 +1280,348 @@
       ]
     },
     {
+      "name": "raw_ehr_encounter_extract",
+      "_note": "EHR encounter feed landed verbatim as text with US-format dates; runs after clinical.encounter so the rows exist. ehr_encounter_date_drift corrupts a slice post-derivation (DQ catches via the staged NULLs).",
+      "sql": [
+        "insert into raw.ehr_encounter_extract",
+        "select cast(encounter_id as text), cast(appointment_id as text), cast(patient_id as text),",
+        "       cast(provider_id as text), cast(clinic_id as text), encounter_type, visit_status,",
+        "       strftime('%m/%d/%Y', encounter_date),",
+        "       case when completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', completed_at) else null end,",
+        "       'ehr_enc_' || replace(encounter_date, '-', '') || '.dat', 'BATCH-EHR-ENC',",
+        "       min(strftime('%Y-%m-%d 02:00:00', encounter_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from clinical.encounter;"
+      ]
+    },
+    {
+      "name": "raw_rcm_charge_extract",
+      "_note": "Charge interface landed verbatim; runs after billing.charge. service_date drift handled by the case-guarded stg parse.",
+      "sql": [
+        "insert into raw.rcm_charge_extract",
+        "select cast(charge_id as text), cast(encounter_id as text), cast(patient_id as text),",
+        "       case when payer_id is null then null else cast(payer_id as text) end,",
+        "       charge_code, service_category, cast(units as text), printf('%.2f', charge_amount), charge_status,",
+        "       strftime('%m/%d/%Y', service_date),",
+        "       case when posted_at is not null then strftime('%m/%d/%Y %H:%M:%S', posted_at) else null end,",
+        "       'rcm_charges_' || replace(service_date, '-', '') || '.csv', 'BATCH-RCM-CHG',",
+        "       min(strftime('%Y-%m-%d 02:30:00', service_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from billing.charge;"
+      ]
+    },
+    {
+      "name": "raw_clearinghouse_837_extract",
+      "_note": "837 claim file landed verbatim from the derived claim table. Re-sends are modeled: claims whose claim_id % 37 = 0 land a SECOND time under a later batch_id (BATCH-837B) with a later ingested_at, simulating a rejected-then-resubmitted file. landing_id = claim_id for batch A, claim_id + 100000000 for batch B. stg dedups to the latest batch; DQ-013 reports the superseded first copy. raw_837_date_drift corrupts service dates post-derivation (DQ-012).",
+      "sql": [
+        "insert into raw.clearinghouse_837_extract",
+        "select claim_id, cast(claim_id as text), claim_number, cast(encounter_id as text), cast(patient_id as text),",
+        "       cast(payer_id as text), printf('%.2f', billed_amount), claim_status,",
+        "       strftime('%m/%d/%Y', service_date),",
+        "       case when submitted_date is not null then strftime('%m/%d/%Y', submitted_date) else null end,",
+        "       'edi837_' || replace(coalesce(submitted_date, service_date), '-', '') || '.x12', 'BATCH-837A',",
+        "       min(strftime('%Y-%m-%d 03:00:00', coalesce(submitted_date, service_date), '+1 day'), '2025-12-31 23:59:59')",
+        "from claims.claim;",
+        "insert into raw.clearinghouse_837_extract",
+        "select claim_id + 100000000, cast(claim_id as text), claim_number, cast(encounter_id as text), cast(patient_id as text),",
+        "       cast(payer_id as text), printf('%.2f', billed_amount), claim_status,",
+        "       strftime('%m/%d/%Y', service_date),",
+        "       case when submitted_date is not null then strftime('%m/%d/%Y', submitted_date) else null end,",
+        "       'edi837_' || replace(coalesce(submitted_date, service_date), '-', '') || '_resend.x12', 'BATCH-837B',",
+        "       min(strftime('%Y-%m-%d 04:00:00', coalesce(submitted_date, service_date), '+2 day'), '2025-12-31 23:59:59')",
+        "from claims.claim where claim_id % 37 = 0;"
+      ]
+    },
+    {
+      "name": "raw_remit_835_extract",
+      "_note": "835 remittance file landed verbatim from the derived remittance table; runs after claims.remittance.",
+      "sql": [
+        "insert into raw.remit_835_extract",
+        "select cast(remittance_id as text), remit_number, cast(claim_id as text), cast(payer_id as text),",
+        "       printf('%.2f', billed_amount), printf('%.2f', allowed_amount), printf('%.2f', contractual_adjustment),",
+        "       printf('%.2f', patient_responsibility), printf('%.2f', paid_amount),",
+        "       strftime('%m/%d/%Y', remit_date),",
+        "       'edi835_' || replace(remit_date, '-', '') || '.x12', 'BATCH-835',",
+        "       min(strftime('%Y-%m-%d 05:00:00', remit_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from claims.remittance;"
+      ]
+    },
+    {
+      "name": "stg_ehr_encounter",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL).",
+      "sql": [
+        "insert into stg.ehr_encounter",
+        "select cast(encounter_id as integer), cast(appointment_id as integer), cast(patient_id as integer),",
+        "       cast(provider_id as integer), cast(clinic_id as integer), lower(encounter_type), lower(visit_status),",
+        "       case when encounter_date_raw like '__/__/____'",
+        "            then substr(encounter_date_raw,7,4)||'-'||substr(encounter_date_raw,1,2)||'-'||substr(encounter_date_raw,4,2)",
+        "            else null end,",
+        "       case when completed_at_raw like '__/__/____ %'",
+        "            then substr(completed_at_raw,7,4)||'-'||substr(completed_at_raw,1,2)||'-'||substr(completed_at_raw,4,2)||substr(completed_at_raw,11)",
+        "            else null end,",
+        "       ingested_at",
+        "from raw.ehr_encounter_extract;"
+      ]
+    },
+    {
+      "name": "stg_rcm_charge",
+      "sql": [
+        "insert into stg.rcm_charge",
+        "select cast(charge_id as integer), cast(encounter_id as integer), cast(patient_id as integer),",
+        "       case when payer_id is null then null else cast(payer_id as integer) end,",
+        "       trim(charge_code), lower(service_category), cast(units as integer), cast(charge_amount as real), lower(charge_status),",
+        "       case when service_date_raw like '__/__/____'",
+        "            then substr(service_date_raw,7,4)||'-'||substr(service_date_raw,1,2)||'-'||substr(service_date_raw,4,2)",
+        "            else null end,",
+        "       case when posted_at_raw like '__/__/____ %'",
+        "            then substr(posted_at_raw,7,4)||'-'||substr(posted_at_raw,1,2)||'-'||substr(posted_at_raw,4,2)",
+        "            else null end,",
+        "       ingested_at",
+        "from raw.rcm_charge_extract;"
+      ]
+    },
+    {
+      "name": "stg_claim_837",
+      "_note": "Dedup of re-sent clearinghouse files: row_number partition by claim_id ordered by ingested_at desc keeps the latest batch only. The superseded first copy is what DQ-013 reports.",
+      "sql": [
+        "insert into stg.claim_837",
+        "select claim_id, claim_number, encounter_id, patient_id, payer_id, billed_amount, claim_status, service_date, submitted_date, source_batch_id, ingested_at",
+        "from (",
+        "  select cast(claim_id as integer) as claim_id, trim(claim_number) as claim_number,",
+        "         cast(encounter_id as integer) as encounter_id, cast(patient_id as integer) as patient_id,",
+        "         cast(payer_id as integer) as payer_id, cast(billed_amount as real) as billed_amount,",
+        "         lower(claim_status) as claim_status,",
+        "         case when service_date_raw like '__/__/____'",
+        "              then substr(service_date_raw,7,4)||'-'||substr(service_date_raw,1,2)||'-'||substr(service_date_raw,4,2)",
+        "              else null end as service_date,",
+        "         case when submitted_date_raw like '__/__/____'",
+        "              then substr(submitted_date_raw,7,4)||'-'||substr(submitted_date_raw,1,2)||'-'||substr(submitted_date_raw,4,2)",
+        "              else null end as submitted_date,",
+        "         batch_id as source_batch_id, ingested_at,",
+        "         row_number() over (partition by cast(claim_id as integer) order by ingested_at desc, batch_id desc) as rn",
+        "  from raw.clearinghouse_837_extract",
+        ") where rn = 1;"
+      ]
+    },
+    {
+      "name": "stg_remit_835",
+      "sql": [
+        "insert into stg.remit_835",
+        "select cast(remittance_id as integer), trim(remit_number), cast(claim_id as integer), cast(payer_id as integer),",
+        "       cast(billed_amount as real), cast(allowed_amount as real), cast(contractual_adjustment as real),",
+        "       cast(patient_responsibility as real), cast(paid_amount as real),",
+        "       case when remit_date_raw like '__/__/____'",
+        "            then substr(remit_date_raw,7,4)||'-'||substr(remit_date_raw,1,2)||'-'||substr(remit_date_raw,4,2)",
+        "            else null end,",
+        "       ingested_at",
+        "from raw.remit_835_extract;"
+      ]
+    },
+    {
+      "name": "nv_encounter",
+      "_note": "Normalized view (rung 6): the central wide re-join of the encounter fact to its patient/provider/payer/date dims with business column names. No aggregation. left joins because EMPI-unmastered patients and missing-coverage encounters legitimately lose dim rows. BOTH competing BU views build on this view. payer_key/plan_code carried as degenerate keys; payer name resolved from ref.payer (small dim, fully covered). billable_flag is the documented exclusion: a completed encounter with posted charges > 0.",
+      "sql": [
+        "create view nv_encounter as",
+        "select f.encounter_id, f.encounter_date,",
+        "       f.patient_key, dp.mrn, dp.age_band, dp.utilization_tier, dp.patient_status,",
+        "       f.provider_key, dpr.provider_name, dpr.specialty,",
+        "       f.clinic_id, cl.clinic_name, cl.clinic_type,",
+        "       f.payer_key, py.payer_name, py.payer_type, f.plan_code,",
+        "       f.encounter_type, f.visit_status, f.procedure_count, f.gross_charges,",
+        "       dd.year_num, dd.month_num,",
+        "       case when f.visit_status = 'completed' and f.gross_charges > 0 then 1 else 0 end as billable_flag",
+        "from wh.fact_encounter f",
+        "left join wh.dim_patient dp on dp.patient_key = f.patient_key",
+        "left join wh.dim_provider dpr on dpr.provider_key = f.provider_key",
+        "left join ref.clinic cl on cl.clinic_id = f.clinic_id",
+        "left join ref.payer py on py.payer_id = f.payer_key",
+        "left join wh.dim_date dd on dd.date_key = f.encounter_date;"
+      ]
+    },
+    {
+      "name": "workflow_mapping_request",
+      "_note": "Mapping-request cases: one per distinct billable plan code with no approved active financial-class mapping (the same UNMAPPED population mart_revcycle drops to UNMAPPED and DQ-011 reports). case_id offset by 9,000,000 so it never collides with claim-derived case_ids. Routed to the revenue-cycle mapping queue.",
+      "sql": [
+        "insert into workflow.denial_worklist",
+        "select 9000000 + row_number() over (order by n.plan_code), 'plan_mapping_request', null, n.plan_code, null, null, null,",
+        "       '2025-12-31', 0, 'rev_cycle_mapping', 'medium', null, 'P. Okafor', 'open'",
+        "from (select distinct plan_code from nv_encounter where billable_flag = 1 and plan_code is not null) n",
+        "where not exists (select 1 from manual.payer_plan_grouping m",
+        "                  where m.source_code = n.plan_code and m.approved_flag = 1",
+        "                    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'));"
+      ]
+    },
+    {
+      "name": "nv_charge",
+      "_note": "Normalized charge-line view over fact_charge re-joined to patient/payer dims. No aggregation.",
+      "sql": [
+        "create view nv_charge as",
+        "select f.charge_id, f.service_date, f.posted_date, f.patient_key, dp.mrn,",
+        "       f.provider_key, dpr.provider_name, f.clinic_id, cl.clinic_name,",
+        "       f.payer_key, py.payer_name, py.payer_type,",
+        "       f.charge_code, f.service_category, f.units, f.charge_amount, f.charge_status",
+        "from wh.fact_charge f",
+        "left join wh.dim_patient dp on dp.patient_key = f.patient_key",
+        "left join wh.dim_provider dpr on dpr.provider_key = f.provider_key",
+        "left join ref.clinic cl on cl.clinic_id = f.clinic_id",
+        "left join ref.payer py on py.payer_id = f.payer_key;"
+      ]
+    },
+    {
+      "name": "nv_claim",
+      "_note": "Normalized claim view over fact_claim re-joined to patient/payer dims and the staged 837 (the deduped clearinghouse copy). No aggregation.",
+      "sql": [
+        "create view nv_claim as",
+        "select f.claim_id, f.submitted_date, f.service_date, f.patient_key, dp.mrn,",
+        "       f.payer_key, py.payer_name, py.payer_type,",
+        "       f.billed_amount, f.paid_amount, f.contractual_adjustment, f.patient_responsibility,",
+        "       f.claim_status, f.denial_reason, f.days_to_pay,",
+        "       s.source_batch_id, s.claim_number",
+        "from wh.fact_claim f",
+        "left join wh.dim_patient dp on dp.patient_key = f.patient_key",
+        "left join ref.payer py on py.payer_id = f.payer_key",
+        "left join stg.claim_837 s on s.claim_id = f.claim_id;"
+      ]
+    },
+    {
+      "name": "bv_revenue_cycle_funnel",
+      "_note": "Business view (rung 7): charge -> claim -> remit funnel by claim with lag windows. lag() over service-date order computes the gap to the prior claim's submission for trend context; the charge/claim/remit lag-day columns measure the revenue-cycle latency at each hop. Built on nv_claim joined to staged charge and remit.",
+      "sql": [
+        "create view bv_revenue_cycle_funnel as",
+        "with claim_charge as (",
+        "  select c.claim_id, c.service_date, c.submitted_date, c.payer_name, c.payer_type, c.billed_amount, c.claim_status,",
+        "         (select min(rc.posted_date) from stg.rcm_charge rc where rc.encounter_id = c.claim_id and rc.charge_status = 'posted') as first_charge_posted,",
+        "         r.remit_date",
+        "  from nv_claim c",
+        "  left join stg.remit_835 r on r.claim_id = c.claim_id",
+        ")",
+        "select claim_id, service_date, submitted_date, payer_name, payer_type, billed_amount, claim_status,",
+        "       first_charge_posted, remit_date,",
+        "       case when first_charge_posted is not null and submitted_date is not null",
+        "            then cast(julianday(submitted_date) - julianday(first_charge_posted) as integer) end as charge_to_submit_days,",
+        "       case when remit_date is not null and submitted_date is not null",
+        "            then cast(julianday(remit_date) - julianday(submitted_date) as integer) end as submit_to_remit_days,",
+        "       cast(julianday(submitted_date) - julianday(",
+        "            lag(submitted_date) over (partition by payer_name order by submitted_date, claim_id)) as integer) as days_since_prior_payer_claim",
+        "from claim_charge;"
+      ]
+    },
+    {
+      "name": "bv_ar_by_payer",
+      "_note": "Business view: open accounts-receivable aging case ladder by payer over nv_claim. Open AR = claims submitted but not yet paid/written off. Aging buckets via a case ladder on days since submission as of the as_of date.",
+      "sql": [
+        "create view bv_ar_by_payer as",
+        "select payer_key, payer_name, payer_type,",
+        "       count(*) as open_claims,",
+        "       round(sum(billed_amount), 2) as ar_billed,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) <= 30 then billed_amount else 0 end), 2) as ar_0_30,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) between 31 and 60 then billed_amount else 0 end), 2) as ar_31_60,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) between 61 and 90 then billed_amount else 0 end), 2) as ar_61_90,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) > 90 then billed_amount else 0 end), 2) as ar_over_90",
+        "from nv_claim",
+        "where claim_status not in ('paid', 'written_off') and submitted_date is not null",
+        "group by payer_key, payer_name, payer_type;"
+      ]
+    },
+    {
+      "name": "bv_provider_productivity",
+      "_note": "Business view: window-ranked provider productivity over nv_encounter. Completed encounters and RVUs per provider, with rank() and ntile() tiers. RVUs come from the chargemaster via the procedure lines on completed encounters.",
+      "sql": [
+        "create view bv_provider_productivity as",
+        "with prod as (",
+        "  select n.provider_key, n.provider_name, n.specialty,",
+        "         count(*) filter (where n.visit_status = 'completed') as completed_encounters,",
+        "         round(coalesce(sum(n.gross_charges), 0), 2) as gross_charges,",
+        "         coalesce((select round(sum(fs.rvu * pr.units), 2)",
+        "                    from clinical.procedure pr",
+        "                    join ref.fee_schedule fs on fs.fee_item_id = pr.fee_item_id",
+        "                    join wh.fact_encounter fe on fe.encounter_id = pr.encounter_id",
+        "                    where fe.provider_key = n.provider_key), 0) as total_rvu",
+        "  from nv_encounter n",
+        "  where n.provider_key is not null",
+        "  group by n.provider_key, n.provider_name, n.specialty",
+        ")",
+        "select provider_key, provider_name, specialty, completed_encounters, gross_charges, total_rvu,",
+        "       rank() over (order by completed_encounters desc) as encounter_rank,",
+        "       ntile(4) over (order by total_rvu desc) as rvu_quartile",
+        "from prod;"
+      ]
+    },
+    {
+      "name": "mv_month_end_ar_snapshot",
+      "_note": "Materialized view (rung 8): insert-select from bv_ar_by_payer rolled to month grain over the claim submission month. The refresh_mv_month_end_ar_snapshot code object refreshes it on a schedule. ~24 months, scale_exempt.",
+      "expect": {"at_least_rows": 12},
+      "sql": [
+        "insert into mv.month_end_ar_snapshot",
+        "select strftime('%Y-%m', submitted_date) as month_key,",
+        "       count(*) as open_claims,",
+        "       round(sum(billed_amount), 2) as ar_billed,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) <= 30 then billed_amount else 0 end), 2) as ar_0_30,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) between 31 and 60 then billed_amount else 0 end), 2) as ar_31_60,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) between 61 and 90 then billed_amount else 0 end), 2) as ar_61_90,",
+        "       round(sum(case when cast(julianday('2025-12-31') - julianday(submitted_date) as integer) > 90 then billed_amount else 0 end), 2) as ar_over_90",
+        "from nv_claim",
+        "where claim_status not in ('paid', 'written_off') and submitted_date is not null",
+        "group by strftime('%Y-%m', submitted_date);"
+      ]
+    },
+    {
+      "name": "mart_clinicalops_encounter_volume",
+      "_note": "Business-unit view (rung 9), CLINICAL OPS. Counts ALL completed encounters with the RAW plan code (no financial-class mapping, no billable exclusion). Competes with mart_revcycle_encounter_volume on encounter volume.",
+      "sql": [
+        "create view mart_clinicalops_encounter_volume as",
+        "select n.plan_code as reported_plan_code, n.payer_name,",
+        "       count(*) as completed_encounters,",
+        "       round(coalesce(sum(n.gross_charges), 0), 2) as gross_charges",
+        "from nv_encounter n",
+        "where n.visit_status = 'completed'",
+        "group by n.plan_code, n.payer_name;"
+      ]
+    },
+    {
+      "name": "mart_revcycle_encounter_volume",
+      "_note": "Business-unit view (rung 9), REVENUE CYCLE. Counts BILLABLE encounters only (billable_flag = 1: completed AND gross_charges > 0, i.e. excludes zero-charge / no-show-converted completed visits) AND applies the human-entered payer_plan_grouping (left join + coalesce to UNMAPPED), deduping the conflicting MCR-ADV-PPO re-upload to the latest approved active row via row_number. TOTAL-PRESERVING grouping: every billable encounter counts once under its financial class or UNMAPPED.",
+      "sql": [
+        "create view mart_revcycle_encounter_volume as",
+        "with mapping as (",
+        "  select source_code, mapped_code, mapped_description,",
+        "         row_number() over (partition by source_code order by uploaded_at desc, mapping_id desc) as rn",
+        "  from manual.payer_plan_grouping",
+        "  where approved_flag = 1 and (effective_end_date is null or effective_end_date > '2025-12-31')",
+        ")",
+        "select coalesce(m.mapped_code, 'UNMAPPED') as financial_class,",
+        "       coalesce(m.mapped_description, 'Unmapped plan code') as financial_class_name,",
+        "       count(*) as billable_encounters,",
+        "       round(coalesce(sum(n.gross_charges), 0), 2) as gross_charges",
+        "from nv_encounter n",
+        "left join mapping m on m.source_code = n.plan_code and m.rn = 1",
+        "where n.billable_flag = 1",
+        "group by 1, 2;"
+      ]
+    },
+    {
+      "name": "control_recon_revcycle_clinicalops",
+      "_note": "Reconciles the competing encounter-volume metric (complements control_recon_charge_claim). clinicalops counts all completed encounters; revcycle counts billable only. difference = clinicalops - revcycle; excluded_count = completed non-billable (zero-charge) encounters; unexplained_difference = difference - excluded_count MUST be 0 (the mapping is total-preserving, so the only legitimate gap is the documented billable exclusion). revcycle_unmapped is the count of billable encounters that fell to the UNMAPPED financial class.",
+      "sql": [
+        "create view control_recon_revcycle_clinicalops as",
+        "with co as (select count(*) as clinicalops_encounters from nv_encounter where visit_status = 'completed'),",
+        "     rc as (select count(*) as revcycle_encounters from nv_encounter where billable_flag = 1),",
+        "     ex as (select count(*) as excluded_count from nv_encounter where visit_status = 'completed' and billable_flag = 0),",
+        "     um as (",
+        "       select count(*) as revcycle_unmapped",
+        "       from nv_encounter n",
+        "       where n.billable_flag = 1",
+        "         and not exists (select 1 from manual.payer_plan_grouping m",
+        "                         where m.source_code = n.plan_code and m.approved_flag = 1",
+        "                           and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "     )",
+        "select co.clinicalops_encounters, rc.revcycle_encounters,",
+        "       co.clinicalops_encounters - rc.revcycle_encounters as difference,",
+        "       ex.excluded_count,",
+        "       co.clinicalops_encounters - rc.revcycle_encounters - ex.excluded_count as unexplained_difference,",
+        "       um.revcycle_unmapped",
+        "from co, rc, ex, um;"
+      ]
+    },
+    {
       "name": "mart_clinic_volume_daily",
       "_note": "Mart as a VIEW so it reflects post-imperfection data. Shows the weekday-clinic shape and the ~12% no-show rate by site.",
       "sql": [
@@ -1056,6 +1640,7 @@
     },
     {
       "name": "mart_revenue_cycle_monthly",
+      "_note": "Rewired onto the stack: BU view over nv_claim (the normalized claim view), joined to staged remittances for cash and days-to-pay.",
       "sql": [
         "create view mart_revenue_cycle_monthly as",
         "select strftime('%Y-%m', cl.submitted_date) as claim_month,",
@@ -1067,8 +1652,9 @@
         "       round(coalesce(sum(r.paid_amount), 0), 2) as payer_paid,",
         "       round(avg(case when r.remit_date is not null",
         "                 then julianday(r.remit_date) - julianday(cl.submitted_date) end), 1) as avg_days_to_pay",
-        "from claims.claim cl",
-        "left join claims.remittance r on r.claim_id = cl.claim_id",
+        "from nv_claim cl",
+        "left join stg.remit_835 r on r.claim_id = cl.claim_id",
+        "where cl.submitted_date is not null",
         "group by 1;"
       ]
     },
@@ -1132,7 +1718,59 @@
         "union all",
         "select 'DQ-010', 'past appointment never reconciled from scheduled', cast(a.appointment_id as text)",
         "from scheduling.appointment a",
-        "where a.status = 'scheduled' and a.appointment_date <= date('2025-12-31', '-7 days');"
+        "where a.status = 'scheduled' and a.appointment_date <= date('2025-12-31', '-7 days')",
+        "union all",
+        "select 'DQ-011', 'billable plan code missing approved financial-class mapping', n.plan_code",
+        "from (select distinct plan_code from nv_encounter where billable_flag = 1 and plan_code is not null) n",
+        "where not exists (select 1 from manual.payer_plan_grouping m",
+        "                  where m.source_code = n.plan_code and m.approved_flag = 1",
+        "                    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "union all",
+        "select 'DQ-012', 'unparseable raw 837 claim service date', claim_id",
+        "from raw.clearinghouse_837_extract where service_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-013', 're-sent 837 claim file superseded by later batch', r.claim_id || '|' || r.batch_id",
+        "from raw.clearinghouse_837_extract r",
+        "where exists (select 1 from raw.clearinghouse_837_extract r2",
+        "              where r2.claim_id = r.claim_id and r2.ingested_at > r.ingested_at);"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "_note": "Lineage edges for the authored procedures/function/extracts -> the tables they read and write.",
+      "sql": [
+        "insert into catalog.lineage_edge (edge_id, code_object, operation, table_name, edge_note) values",
+        "  (1, 'nightly_claim_scrub', 'reads',  'billing.charge', 'Posted charges awaiting submission'),",
+        "  (2, 'nightly_claim_scrub', 'reads',  'patient.coverage', 'Eligibility / plan validation'),",
+        "  (3, 'nightly_claim_scrub', 'writes', 'claims.claim', 'Sets scrub_hold / clears for submission'),",
+        "  (4, 'month_end_charge_close', 'reads',  'clinical.encounter', 'Completed visits in period'),",
+        "  (5, 'month_end_charge_close', 'reads',  'billing.charge', 'Posted vs pending (DNFB)'),",
+        "  (6, 'month_end_charge_close', 'writes', 'workflow.denial_worklist', 'Opens DNFB / mapping cases at close'),",
+        "  (7, 'refresh_mv_month_end_ar_snapshot', 'reads',  'bv_ar_by_payer', 'Monthly AR refresh source'),",
+        "  (8, 'refresh_mv_month_end_ar_snapshot', 'writes', 'mv.month_end_ar_snapshot', 'Truncate-and-reload'),",
+        "  (9, 'age_at_service', 'referenced_by', 'month_end_charge_close', 'UDF used for patient age math'),",
+        "  (10, 'outbound_837_submission', 'reads', 'claims.claim', 'Submitted claims in batch'),",
+        "  (11, 'outbound_837_submission', 'reads', 'claims.claim_line', 'Line detail for the 837'),",
+        "  (12, 'outbound_837_submission', 'feeds', 'claim_837_submission_feed', 'X12 837P to clearinghouse SFTP'),",
+        "  (13, 'state_immunization_registry_extract', 'reads', 'clinical.procedure', 'Immunization procedures'),",
+        "  (14, 'state_immunization_registry_extract', 'feeds', 'state_immunization_registry_feed', 'HL7 to state IIS'),",
+        "  (15, 'mart_revcycle_encounter_volume', 'reads', 'manual.payer_plan_grouping', 'Asymmetric financial-class mapping join');"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Authored target-platform source for the procedures/function/extracts, then self-registration of every deployed view from sqlite_master so the catalog provably matches the code. Runs LAST so all views exist. age_at_service is intentionally stale (references a retired column) - noted as known debt.",
+      "sql": [
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes) values",
+        "  ('nightly_claim_scrub', 'procedure', 'plpgsql', 'create or replace procedure nightly_claim_scrub() language plpgsql as $$ begin update claims_claim set claim_status = ''scrub_hold'' where claim_status = ''submitted'' and exists (select 1 from patient_coverage cov where cov.patient_id = claims_claim.patient_id and cov.coverage_rank = 1 and cov.verified_flag = 0); end; $$;', 'revenue_integrity', '2024-01-18 09:00:00', '2025-03-04 14:10:00', 'Scheduled nightly by integration.job nightly_claim_scrub; holds claims failing eligibility scrub.'),",
+        "  ('month_end_charge_close', 'procedure', 'plpgsql', 'create or replace procedure month_end_charge_close(as_of date) language plpgsql as $$ begin insert into workflow_denial_worklist (case_type, queue, case_status, opened_date) select ''dnfb_followup'', ''billing_follow_up'', ''open'', as_of from clinical_encounter e where e.visit_status = ''completed'' and not exists (select 1 from billing_charge c where c.encounter_id = e.encounter_id and c.charge_status = ''posted'') and age_at_service(e.patient_id, e.encounter_date) >= 0; end; $$;', 'revenue_integrity', '2024-01-25 08:30:00', '2025-01-31 18:05:00', 'Month-end DNFB sweep; opens follow-up cases for completed visits with no posted charges; calls age_at_service.'),",
+        "  ('refresh_mv_month_end_ar_snapshot', 'procedure', 'sql', 'create or replace procedure refresh_mv_month_end_ar_snapshot() language sql as $$ delete from mv_month_end_ar_snapshot; insert into mv_month_end_ar_snapshot (month_key, open_claims, ar_billed, ar_0_30, ar_31_60, ar_61_90, ar_over_90) select strftime(''%Y-%m'', submitted_date), count(*), round(sum(billed_amount),2), 0, 0, 0, 0 from nv_claim where claim_status not in (''paid'',''written_off'') and submitted_date is not null group by 1; $$;', 'data_engineering', '2024-02-02 09:00:00', '2025-02-03 11:20:00', 'Monthly matview rebuild scheduled by integration.job refresh_mv_month_end_ar_snapshot.'),",
+        "  ('age_at_service', 'function', 'sql', 'create or replace function age_at_service(p_patient_id integer, p_service_date date) returns integer language sql as $$ select cast(strftime(''%Y'', p_service_date) as integer) - p.date_of_birth_year from patient_patient p where p.patient_id = p_patient_id; $$;', 'data_engineering', '2023-10-12 10:00:00', '2023-10-12 10:00:00', 'KNOWN DEBT: references retired column patient.date_of_birth_year (renamed to birth_year in the 2024 PM upgrade); flagged for cleanup.'),",
+        "  ('outbound_837_submission', 'extract', 'sql', 'select c.claim_number, c.service_date, c.payer_id, c.billed_amount, l.charge_code, l.units, l.billed_amount as line_amount from claims_claim c join claims_claim_line l on l.claim_id = c.claim_id where c.claim_status in (''submitted'',''in_adjudication'') order by c.claim_number, l.line_number; -- format: X12 837P; destination: sftp://atlas-clearing.example.com/out/; schedule: 0 23 * * *', 'integration_eng', '2024-03-05 09:00:00', '2025-04-12 09:15:00', 'Outbound professional-claim feed to the clearinghouse (job outbound_837_submission).'),",
+        "  ('state_immunization_registry_extract', 'extract', 'sql', 'select pr.service_date, pr.charge_code, pr.units, e.patient_id, pr.performed_by from clinical_procedure pr join clinical_encounter e on e.encounter_id = pr.encounter_id where pr.service_category = ''immunization''; -- format: HL7 VXU; destination: sftp://state-iis.example.gov/in/; schedule: 0 1 * * 1', 'integration_eng', '2024-04-01 09:00:00', '2025-05-02 10:00:00', 'Weekly state immunization registry submission (job state_immunization_registry_extract).');",
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes)",
+        "select name, 'view', 'sql', sql, 'data_engineering', '2024-01-15 09:00:00', '2024-01-15 09:00:00', 'Auto-registered from sqlite_master.'",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';"
       ]
     }
   ],
@@ -1148,12 +1786,15 @@
     {"name": "orphan_procedures", "type": "orphan_fk", "table": "clinical.procedure", "rate": 0.004, "stage": "post_derivation", "params": {"column": "encounter_id"}, "scenario": "An EHR encounter purge corrupted procedure links; DQ-002 is the orphan-procedure queue."},
     {"name": "charge_feed_drops", "type": "missing_xref", "table": "billing.charge", "rate": 0.006, "stage": "post_derivation", "scenario": "Charge interface drops lines after claims were generated - encounters lose charges (DQ-001) and claim-vs-charge recon breaks (CTL-001)."},
     {"name": "charge_restatements", "type": "restatement_reversal", "table": "billing.charge", "rate": 0.008, "stage": "post_derivation", "params": {"amount_columns": ["charge_amount"], "reason_column": "adjustment_reason"}, "scenario": "Charge corrections issued as reversal + restated pairs after claim generation; these create the CTL-001 recon breaks."},
-    {"name": "late_charge_posts", "type": "late_arrival", "table": "billing.charge", "rate": 0.035, "stage": "post_derivation", "params": {"column": "posted_at", "lag_days": {"distribution": "lognormal", "median": 6, "sigma": 0.7}}, "scenario": "Late charge entry beyond the 5-day standard; DQ-008 tracks the late-charge rate."}
+    {"name": "late_charge_posts", "type": "late_arrival", "table": "billing.charge", "rate": 0.035, "stage": "post_derivation", "params": {"column": "posted_at", "lag_days": {"distribution": "lognormal", "median": 6, "sigma": 0.7}}, "scenario": "Late charge entry beyond the 5-day standard; DQ-008 tracks the late-charge rate."},
+    {"name": "raw_837_date_format_drift", "type": "format_drift", "table": "raw.clearinghouse_837_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "service_date_raw", "format": "padded"}, "scenario": "Clearinghouse 837 service-date format drifts after an edit-rule version bump; DQ-012 catches the unparseable slice and the stg parse lands NULL."},
+    {"name": "raw_encounter_date_format_drift", "type": "format_drift", "table": "raw.ehr_encounter_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "encounter_date_raw", "format": "padded"}, "scenario": "EHR encounter extract pads dates differently after a patch; the case-guarded stg parse lands those NULL."}
   ],
   "controls": [
     {"rule_id": "CTL-001", "rule_name": "Claim billed ties to posted charges", "source_dataset": "claims.claim_line", "target_dataset": "billing.charge", "grain": "claim", "tolerance": "0.01", "frequency": "daily", "owner": "revenue_integrity", "severity": "high", "expected_break_rate": "~2% of claims (charge restatements + interface drops)", "break_view": "control_recon_charge_claim"},
     {"rule_id": "CTL-002", "rule_name": "Remit disposition sums to billed", "source_dataset": "claims.remittance", "target_dataset": "claims.claim", "grain": "remittance", "tolerance": "0.01", "frequency": "daily", "owner": "cash_posting", "severity": "high", "expected_break_rate": "0 (identity by construction: paid + contractual + patient = billed)", "break_view": "n/a"},
-    {"rule_id": "CTL-003", "rule_name": "EMPI patients tie to source mappings", "source_dataset": "patient.patient", "target_dataset": "xref.patient_identifier", "grain": "patient", "tolerance": "0", "frequency": "weekly", "owner": "data_stewards", "severity": "medium", "expected_break_rate": "~2-4% (logged EMPI migration gaps)", "break_view": "dq_rule_result_current (DQ-003)"}
+    {"rule_id": "CTL-003", "rule_name": "EMPI patients tie to source mappings", "source_dataset": "patient.patient", "target_dataset": "xref.patient_identifier", "grain": "patient", "tolerance": "0", "frequency": "weekly", "owner": "data_stewards", "severity": "medium", "expected_break_rate": "~2-4% (logged EMPI migration gaps)", "break_view": "dq_rule_result_current (DQ-003)"},
+    {"rule_id": "CTL-004", "rule_name": "Revenue-cycle billable encounters reconcile to clinical-ops completed encounters", "source_dataset": "mart_clinicalops_encounter_volume", "target_dataset": "mart_revcycle_encounter_volume", "grain": "grand total", "tolerance": "0", "frequency": "monthly", "owner": "revenue_integrity", "severity": "medium", "expected_break_rate": "difference equals the non-billable (zero-charge) completed-encounter count; unexplained_difference must be 0", "break_view": "control_recon_revcycle_clinicalops"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "clinical.encounter", "rule_type": "completeness", "condition": "completed encounters have posted charges within 10 days", "severity": "error", "expected_failure_rate": 0.02},
@@ -1165,21 +1806,38 @@
     {"rule_id": "DQ-007", "dataset": "integration.job_run", "rule_type": "uniqueness", "condition": "one delivery per job per start time", "severity": "warning", "expected_failure_rate": 0.02},
     {"rule_id": "DQ-008", "dataset": "billing.charge", "rule_type": "timeliness", "condition": "charges post within 5 days of service", "severity": "warning", "expected_failure_rate": 0.1},
     {"rule_id": "DQ-009", "dataset": "patient.patient", "rule_type": "uniqueness", "condition": "no duplicate first name + birth year + city registrations", "severity": "warning", "expected_failure_rate": 0.04},
-    {"rule_id": "DQ-010", "dataset": "scheduling.appointment", "rule_type": "timeliness", "condition": "past appointments reconciled out of 'scheduled'", "severity": "warning", "expected_failure_rate": 0.015}
+    {"rule_id": "DQ-010", "dataset": "scheduling.appointment", "rule_type": "timeliness", "condition": "past appointments reconciled out of 'scheduled'", "severity": "warning", "expected_failure_rate": 0.015},
+    {"rule_id": "DQ-011", "dataset": "manual.payer_plan_grouping", "rule_type": "coverage", "condition": "every billable plan code has an approved financial-class mapping", "severity": "error", "expected_failure_rate": 0.11},
+    {"rule_id": "DQ-012", "dataset": "raw.clearinghouse_837_extract", "rule_type": "format", "condition": "837 service date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-013", "dataset": "raw.clearinghouse_837_extract", "rule_type": "uniqueness", "condition": "one effective 837 copy per claim (latest batch supersedes)", "severity": "warning", "expected_failure_rate": 0.03}
   ],
   "dataflows": [
     {"name": "patient_mastering", "sequence": "patient.patient -> raw.pm_patient_extract -> stg.pm_patient -> xref.patient_identifier -> core.patient -> wh.dim_patient"},
     {"name": "visit_to_cash", "sequence": "scheduling.appointment (+services) -> scheduling machine -> clinical.encounter/diagnosis/procedure -> billing.charge -> claims.claim/claim_line -> claim machine -> claims.remittance -> wh facts -> marts"},
-    {"name": "denial_management", "sequence": "claim machine (denied) -> claims.claim.denial_reason -> workflow.denial_worklist -> claims.resubmission / appeal outcomes"}
+    {"name": "encounter_landing", "sequence": "clinical.encounter -> raw.ehr_encounter_extract -> stg.ehr_encounter"},
+    {"name": "charge_landing", "sequence": "billing.charge -> raw.rcm_charge_extract -> stg.rcm_charge"},
+    {"name": "claim_837_landing", "sequence": "claims.claim -> raw.clearinghouse_837_extract (with BATCH-837B re-sends) -> stg.claim_837 (row_number dedup) -> DQ-013"},
+    {"name": "remit_835_landing", "sequence": "claims.remittance -> raw.remit_835_extract -> stg.remit_835"},
+    {"name": "view_stack", "sequence": "wh facts/dims -> nv_encounter/nv_charge/nv_claim -> bv_revenue_cycle_funnel/bv_ar_by_payer/bv_provider_productivity -> mv_month_end_ar_snapshot / mart_revcycle_encounter_volume / mart_clinicalops_encounter_volume / mart_revenue_cycle_monthly"},
+    {"name": "denial_management", "sequence": "claim machine (denied) -> claims.claim.denial_reason -> workflow.denial_worklist (denial_followup) -> claims.resubmission / appeal outcomes"},
+    {"name": "plan_grouping", "sequence": "manual.payer_plan_grouping -> mart_revcycle_encounter_volume (applied) vs mart_clinicalops_encounter_volume (not) -> control_recon_revcycle_clinicalops + DQ-011 + workflow.denial_worklist (plan_mapping_request)"},
+    {"name": "code_catalog", "sequence": "sqlite_master views + authored procs/function/extracts -> catalog.code_object; catalog.lineage_edge; integration.job -> integration.job_run"}
   ],
   "validation": {
-    "required_views": ["mart_clinic_volume_daily", "mart_revenue_cycle_monthly", "control_recon_charge_claim", "dq_rule_result_current"],
+    "required_views": [
+      "nv_encounter", "nv_charge", "nv_claim",
+      "bv_revenue_cycle_funnel", "bv_ar_by_payer", "bv_provider_productivity",
+      "mart_clinicalops_encounter_volume", "mart_revcycle_encounter_volume",
+      "mart_clinic_volume_daily", "mart_revenue_cycle_monthly",
+      "control_recon_charge_claim", "control_recon_revcycle_clinicalops", "dq_rule_result_current"
+    ],
     "expected_row_ranges": {
       "patient.patient": [5600, 6900],
       "scheduling.appointment": [30000, 65000],
       "scheduling.appointment_service": [45000, 105000],
       "clinical.encounter": [22000, 50000],
-      "claims.claim": [18000, 44000]
+      "claims.claim": [18000, 44000],
+      "mv.month_end_ar_snapshot": [20, 26]
     }
   }
 }
