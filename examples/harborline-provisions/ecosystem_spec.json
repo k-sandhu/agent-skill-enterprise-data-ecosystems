@@ -290,8 +290,8 @@
       "columns": [
         {"name": "case_id", "type": "integer"},
         {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-#####", "unique": true}},
-        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.22,recon_break=0.26,failed_delivery=0.2,credit_hold=0.17,data_correction=0.15"},
-        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "recon_break": "finance_controls", "failed_delivery": "ops_exceptions", "credit_hold": "credit_desk", "data_correction": "data_stewards"}}},
+        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.2,recon_break=0.24,failed_delivery=0.18,credit_hold=0.15,data_correction=0.13,gl_mapping_request=0.1"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "recon_break": "finance_controls", "failed_delivery": "ops_exceptions", "credit_hold": "credit_desk", "data_correction": "data_stewards", "gl_mapping_request": "finance_mapping"}}},
         {"name": "priority", "type": "string", "gen": "choice:low=0.3,medium=0.5,high=0.2"},
         {"name": "related_entity", "type": "string", "gen": "pattern:ENT-######"},
         {"name": "status", "type": "string", "gen": "const:open"},
@@ -331,27 +331,29 @@
     },
     {
       "schema": "integration", "name": "job_run", "layer": "integration",
-      "purpose": "Batch job run log.",
+      "purpose": "Batch job run log; each run belongs to a catalog job, with occasional failures.",
       "primary_key": ["run_id"], "rows": 700,
+      "indexes": [["job_id"]],
       "columns": [
         {"name": "run_id", "type": "integer"},
-        {"name": "job_name", "type": "string", "gen": "choice:crm_account_extract=0.2,erp_order_load=0.25,wms_inventory_sync=0.2,tms_pod_import=0.15,warehouse_refresh=0.2"},
+        {"name": "job_id", "type": "integer", "gen": "fk:integration.job"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
         {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
         {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
         {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=4000,sigma=1.0,min=0)"},
-        {"name": "error_note", "type": "string", "null_rate": 0.85, "gen": "text:exception_note"}
+        {"name": "error_note", "type": "string", "nullable": true, "_note": "Non-null only when the run failed or ran partially.", "gen": {"type": "case", "on": "run_status", "cases": {"failed": {"type": "lorem_note", "pool": "exception_note"}, "partial": {"type": "lorem_note", "pool": "exception_note"}}, "default": {"type": "constant", "value": null}}}
       ]
     },
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (results come from the dq.rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 4, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 8, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active account missing email", "2": "order line references unknown product", "3": "erp customer missing xref mapping", "4": "unparseable raw account date"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.account", "2": "erp.sales_order_line", "3": "xref.entity_identifier", "4": "raw.crm_account_extract"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active account missing email", "2": "order line references unknown product", "3": "erp customer missing xref mapping", "4": "unparseable raw account date", "5": "product category missing approved GL mapping", "6": "unparseable raw order date", "7": "unparseable raw inventory date", "8": "lot past expiry still available"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.account", "2": "erp.sales_order_line", "3": "xref.entity_identifier", "4": "raw.crm_account_extract", "5": "manual.gl_product_category_mapping", "6": "raw.erp_order_extract", "7": "raw.wms_inventory_extract", "8": "stg.wms_inventory"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
@@ -552,6 +554,189 @@
         {"name": "extended_amount", "type": "decimal"},
         {"name": "invoice_status", "type": "string"}
       ]
+    },
+    {
+      "_note": "Landing layer (rung 1). One raw.* table per source feed: verbatim text payloads with file/batch ids and ingested_at. format_drift corrupts the date columns post-derivation; the DQ views read these live and catch unparseable dates.",
+      "schema": "raw", "name": "erp_order_extract", "layer": "raw",
+      "purpose": "Nightly ERP sales-order header extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["order_id"],
+      "columns": [
+        {"name": "order_id", "type": "string"},
+        {"name": "order_number", "type": "string"},
+        {"name": "customer_id", "type": "string"},
+        {"name": "crm_account_id", "type": "string"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "warehouse_id", "type": "string"},
+        {"name": "channel", "type": "string"},
+        {"name": "order_status", "type": "string"},
+        {"name": "order_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "erp_invoice_extract", "layer": "raw",
+      "purpose": "Nightly ERP invoice extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["invoice_id"],
+      "columns": [
+        {"name": "invoice_id", "type": "string"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "customer_id", "type": "string"},
+        {"name": "invoice_status", "type": "string"},
+        {"name": "invoice_total", "type": "string"},
+        {"name": "invoice_date_raw", "type": "string"},
+        {"name": "due_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "wms_inventory_extract", "layer": "raw",
+      "purpose": "Nightly WMS inventory-lot extract as landed: all text, US-format dates.",
+      "source": "derivation", "primary_key": ["lot_id"],
+      "columns": [
+        {"name": "lot_id", "type": "string"},
+        {"name": "product_id", "type": "string"},
+        {"name": "warehouse_id", "type": "string"},
+        {"name": "lot_code", "type": "string"},
+        {"name": "lot_status", "type": "string"},
+        {"name": "qty_received", "type": "string"},
+        {"name": "received_date_raw", "type": "string"},
+        {"name": "expiry_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "_note": "Staging layer (rung 2). One stg.* table per landing table: typed, trimmed, case-guarded date parse (drifted formats land NULL), row_number dedup against re-sent batches.",
+      "schema": "stg", "name": "erp_order", "layer": "staging",
+      "purpose": "Cleaned ERP sales-order headers; parses landed dates.",
+      "source": "derivation", "primary_key": ["order_id"],
+      "columns": [
+        {"name": "order_id", "type": "integer"},
+        {"name": "order_number", "type": "string"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "crm_account_id", "type": "integer"},
+        {"name": "sales_region", "type": "string"},
+        {"name": "warehouse_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "order_status", "type": "string"},
+        {"name": "order_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "erp_invoice", "layer": "staging",
+      "purpose": "Cleaned ERP invoices; parses landed dates.",
+      "source": "derivation", "primary_key": ["invoice_id"],
+      "columns": [
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "invoice_status", "type": "string"},
+        {"name": "invoice_total", "type": "decimal"},
+        {"name": "invoice_date", "type": "date", "nullable": true},
+        {"name": "due_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "wms_inventory", "layer": "staging",
+      "purpose": "Cleaned WMS inventory lots; parses landed dates.",
+      "source": "derivation", "primary_key": ["lot_id"],
+      "columns": [
+        {"name": "lot_id", "type": "integer"},
+        {"name": "product_id", "type": "integer"},
+        {"name": "warehouse_id", "type": "integer"},
+        {"name": "lot_code", "type": "string"},
+        {"name": "lot_status", "type": "string"},
+        {"name": "qty_received", "type": "integer"},
+        {"name": "received_date", "type": "date", "nullable": true},
+        {"name": "expiry_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Human-entered mapping table. Finance maintains category -> GL revenue line in a spreadsheet, uploaded here. Applied asymmetrically: mart_finance_revenue joins it, mart_salesops_demand_revenue uses raw category. 6 of 7 live categories mapped (disposables only has an unapproved row -> stays UNMAPPED); two retired-category rows; one conflicting beverage re-upload (last upload wins via row_number).",
+      "schema": "manual", "name": "gl_product_category_mapping", "layer": "operational",
+      "purpose": "Finance-maintained product-category to GL-revenue-line mapping (spreadsheet upload).",
+      "source_system": "Finance GL Workbook",
+      "primary_key": ["mapping_id"], "rows": 10, "scale_exempt": true, "traits": ["audited"],
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "protein", "2": "produce", "3": "dairy", "4": "dry_goods", "5": "frozen", "6": "beverage", "7": "beverage", "8": "tobacco", "9": "floral", "10": "disposables"}}},
+        {"name": "mapped_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "GL-4100", "2": "GL-4200", "3": "GL-4300", "4": "GL-4400", "5": "GL-4500", "6": "GL-4600", "7": "GL-4650", "8": "GL-4900", "9": "GL-4950", "10": "GL-4700"}}},
+        {"name": "mapped_description", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "Protein Sales", "2": "Produce Sales", "3": "Dairy Sales", "4": "Dry Goods Sales", "5": "Frozen Sales", "6": "Beverage Sales", "7": "Beverage & Concentrates", "8": "Tobacco Sales (retired)", "9": "Floral (retired)", "10": "Disposables Sales"}}},
+        {"name": "business_unit", "type": "string", "gen": "const:finance"},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_id", "cases": {"7": "2025-03-01", "8": "2022-01-01", "9": "2022-01-01", "10": "2025-06-01"}, "default": {"type": "constant", "value": "2023-01-01"}}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_id", "cases": {"6": "2025-02-28", "8": "2023-12-31", "9": "2023-06-30"}, "default": {"type": "constant", "value": null}}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_id", "cases": {"7": {"type": "constant", "value": "2025-03-10 10:20:00"}, "8": {"type": "constant", "value": "2022-02-01 09:00:00"}, "9": {"type": "constant", "value": "2022-02-01 09:05:00"}, "10": {"type": "constant", "value": "2025-06-01 14:30:00"}}, "default": {"type": "constant", "value": "2024-02-01 09:15:00"}}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"7": "gl_category_map_2025Q1.xlsx", "10": "gl_category_map_2025_draft.xlsx"}, "default": {"type": "constant", "value": "gl_category_map_2024Q1.xlsx"}}},
+        {"name": "approved_flag", "type": "boolean", "gen": {"type": "case", "on": "mapping_id", "cases": {"10": {"type": "constant", "value": 0}}, "default": {"type": "constant", "value": 1}}}
+      ]
+    },
+    {
+      "_note": "Job catalog for the code objects below. job_run history references these; procedures/extracts in catalog.code_object name them.",
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled job catalog (ETL feeds, refresh procedures, outbound extracts).",
+      "source_system": "FlowBridge Integration",
+      "primary_key": ["job_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "crm_account_extract", "2": "erp_order_load", "3": "erp_invoice_extract", "4": "wms_inventory_sync", "5": "warehouse_refresh", "6": "rebuild_mv_sales_month_snapshot", "7": "period_end_ar_close", "8": "nightly_invoice_rebate_extract"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "etl_script", "2": "etl_script", "3": "etl_script", "4": "etl_script", "5": "etl_script", "6": "procedure", "7": "procedure", "8": "extract"}}},
+        {"name": "code_object", "type": "string", "nullable": true, "gen": {"type": "case", "on": "job_id", "cases": {"6": "rebuild_mv_sales_month_snapshot", "7": "period_end_ar_close", "8": "nightly_invoice_rebate_extract"}, "default": {"type": "constant", "value": null}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "0 1 * * *", "2": "0 2 * * *", "3": "30 2 * * *", "4": "0 3 * * *", "5": "0 4 * * *", "6": "0 5 1 * *", "7": "0 6 1 * *", "8": "0 23 * * *"}}},
+        {"name": "target_object", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "raw.crm_account_extract", "2": "raw.erp_order_extract", "3": "raw.erp_invoice_extract", "4": "raw.wms_inventory_extract", "5": "wh.fact_order_line", "6": "mv.sales_month_snapshot", "7": "mart_ar_aging", "8": "rebate_processor_feed"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "_note": "Materialized view (rung 8). SQLite has no native matviews -> a mart table refreshed by an insert-select from bv_revenue_daily. scale_exempt: ~24 months regardless of multiplier. Paired with the rebuild_mv_sales_month_snapshot code object and its job runs.",
+      "schema": "mv", "name": "sales_month_snapshot", "layer": "mart",
+      "purpose": "Month-grain sales snapshot, materialized from bv_revenue_daily.",
+      "grain": "one row per calendar month",
+      "source": "derivation", "primary_key": ["month_key"], "scale_exempt": true,
+      "columns": [
+        {"name": "month_key", "type": "string"},
+        {"name": "active_days", "type": "integer"},
+        {"name": "orders", "type": "integer"},
+        {"name": "units", "type": "integer"},
+        {"name": "revenue", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Code-object catalog (rung: catalog). Self-registers every view from sqlite_master, plus authored target-platform source for the refresh procedure, AR-close procedure, business_days_between function, and the outbound rebate extract.",
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed code objects (views, procedures, functions, extracts) with source text.",
+      "source": "derivation", "primary_key": ["object_name"],
+      "columns": [
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "string"},
+        {"name": "owner", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Lineage edges linking code objects to the tables they read and write.",
+      "source": "derivation", "primary_key": ["edge_id"],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "code_object", "type": "string"},
+        {"name": "operation", "type": "string"},
+        {"name": "table_name", "type": "string"},
+        {"name": "edge_note", "type": "string", "nullable": true}
+      ]
     }
   ],
   "state_machines": [
@@ -609,6 +794,31 @@
       ]
     },
     {
+      "name": "raw_erp_order_extract",
+      "_note": "ERP order header feed landed verbatim as text with US-format dates; raw_order_date_drift corrupts a slice post-derivation (DQ-006 catches it).",
+      "sql": [
+        "insert into raw.erp_order_extract",
+        "select cast(order_id as text), order_number, cast(customer_id as text), cast(crm_account_id as text),",
+        "       region, cast(warehouse_id as text), channel, status,",
+        "       strftime('%m/%d/%Y', order_date),",
+        "       'erp_orders_' || replace(order_date, '-', '') || '.csv', 'BATCH-ERP-ORD',",
+        "       min(strftime('%Y-%m-%d 02:00:00', order_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from erp.sales_order;"
+      ]
+    },
+    {
+      "name": "raw_wms_inventory_extract",
+      "_note": "WMS inventory-lot feed landed verbatim; raw_inventory_date_drift corrupts received dates post-derivation (DQ-007).",
+      "sql": [
+        "insert into raw.wms_inventory_extract",
+        "select cast(lot_id as text), cast(product_id as text), cast(warehouse_id as text), lot_code, lot_status,",
+        "       cast(qty_received as text), strftime('%m/%d/%Y', received_date), strftime('%m/%d/%Y', expiry_date),",
+        "       'wms_lots_' || replace(received_date, '-', '') || '.csv', 'BATCH-WMS-INV',",
+        "       min(strftime('%Y-%m-%d 03:00:00', received_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from wms.inventory_lot;"
+      ]
+    },
+    {
       "name": "stg_crm_account",
       "sql": [
         "insert into stg.crm_account",
@@ -617,6 +827,47 @@
         "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
         "            else null end",
         "from raw.crm_account_extract;"
+      ]
+    },
+    {
+      "name": "stg_erp_order",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL); row_number dedup against re-sent batches.",
+      "sql": [
+        "insert into stg.erp_order",
+        "select order_id, order_number, customer_id, crm_account_id, sales_region, warehouse_id, channel, order_status, order_date, ingested_at",
+        "from (",
+        "  select cast(order_id as integer) as order_id, trim(order_number) as order_number,",
+        "         cast(customer_id as integer) as customer_id, cast(crm_account_id as integer) as crm_account_id,",
+        "         trim(sales_region) as sales_region, cast(warehouse_id as integer) as warehouse_id,",
+        "         lower(channel) as channel, lower(order_status) as order_status,",
+        "         case when order_date_raw like '__/__/____'",
+        "              then substr(order_date_raw,7,4)||'-'||substr(order_date_raw,1,2)||'-'||substr(order_date_raw,4,2)",
+        "              else null end as order_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(order_id as integer) order by ingested_at desc) as rn",
+        "  from raw.erp_order_extract",
+        ") where rn = 1;"
+      ]
+    },
+    {
+      "name": "stg_wms_inventory",
+      "sql": [
+        "insert into stg.wms_inventory",
+        "select lot_id, product_id, warehouse_id, lot_code, lot_status, qty_received, received_date, expiry_date, ingested_at",
+        "from (",
+        "  select cast(lot_id as integer) as lot_id, cast(product_id as integer) as product_id,",
+        "         cast(warehouse_id as integer) as warehouse_id, trim(lot_code) as lot_code, lower(lot_status) as lot_status,",
+        "         cast(qty_received as integer) as qty_received,",
+        "         case when received_date_raw like '__/__/____'",
+        "              then substr(received_date_raw,7,4)||'-'||substr(received_date_raw,1,2)||'-'||substr(received_date_raw,4,2)",
+        "              else null end as received_date,",
+        "         case when expiry_date_raw like '__/__/____'",
+        "              then substr(expiry_date_raw,7,4)||'-'||substr(expiry_date_raw,1,2)||'-'||substr(expiry_date_raw,4,2)",
+        "              else null end as expiry_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(lot_id as integer) order by ingested_at desc) as rn",
+        "  from raw.wms_inventory_extract",
+        ") where rn = 1;"
       ]
     },
     {
@@ -681,6 +932,39 @@
         "insert into erp.invoice_line",
         "select l.order_line_id, i.invoice_id, l.line_number, l.product_id, l.quantity, l.unit_price, l.extended_amount, null",
         "from erp.sales_order_line l join erp.invoice i on i.invoice_id = l.order_id;"
+      ]
+    },
+    {
+      "name": "raw_erp_invoice_extract",
+      "_note": "ERP invoice feed landed verbatim from the derived invoice table; runs after erp_invoice so the invoice rows exist.",
+      "sql": [
+        "insert into raw.erp_invoice_extract",
+        "select cast(invoice_id as text), invoice_number, cast(customer_id as text), invoice_status,",
+        "       printf('%.2f', invoice_total), strftime('%m/%d/%Y', invoice_date), strftime('%m/%d/%Y', due_date),",
+        "       'erp_invoices_' || replace(invoice_date, '-', '') || '.csv', 'BATCH-ERP-INV',",
+        "       min(strftime('%Y-%m-%d 02:30:00', invoice_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from erp.invoice;"
+      ]
+    },
+    {
+      "name": "stg_erp_invoice",
+      "sql": [
+        "insert into stg.erp_invoice",
+        "select invoice_id, invoice_number, customer_id, invoice_status, invoice_total, invoice_date, due_date, ingested_at",
+        "from (",
+        "  select cast(invoice_id as integer) as invoice_id, trim(invoice_number) as invoice_number,",
+        "         cast(customer_id as integer) as customer_id, lower(invoice_status) as invoice_status,",
+        "         cast(invoice_total as real) as invoice_total,",
+        "         case when invoice_date_raw like '__/__/____'",
+        "              then substr(invoice_date_raw,7,4)||'-'||substr(invoice_date_raw,1,2)||'-'||substr(invoice_date_raw,4,2)",
+        "              else null end as invoice_date,",
+        "         case when due_date_raw like '__/__/____'",
+        "              then substr(due_date_raw,7,4)||'-'||substr(due_date_raw,1,2)||'-'||substr(due_date_raw,4,2)",
+        "              else null end as due_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(invoice_id as integer) order by ingested_at desc) as rn",
+        "  from raw.erp_invoice_extract",
+        ") where rn = 1;"
       ]
     },
     {
@@ -800,9 +1084,9 @@
       "sql": [
         "insert into wh.fact_order_line",
         "select l.order_line_id, o.order_id, o.order_date, o.crm_account_id, l.product_id,",
-        "       o.warehouse_id, o.channel, l.quantity, l.unit_price, l.extended_amount, o.status",
+        "       o.warehouse_id, o.channel, l.quantity, l.unit_price, l.extended_amount, o.order_status",
         "from erp.sales_order_line l",
-        "join erp.sales_order o on o.order_id = l.order_id;"
+        "join stg.erp_order o on o.order_id = l.order_id;"
       ]
     },
     {
@@ -810,32 +1094,166 @@
       "expect": {"at_least_rows": 1000},
       "sql": [
         "insert into wh.fact_invoice_line",
-        "select l.invoice_line_id, l.invoice_id, i.invoice_date, i.customer_id, l.product_id,",
+        "select l.invoice_line_id, l.invoice_id, i.invoice_date, cu.crm_account_id, l.product_id,",
         "       l.quantity, l.extended_amount, i.invoice_status",
-        "from erp.invoice_line l join erp.invoice i on i.invoice_id = l.invoice_id;"
+        "from erp.invoice_line l",
+        "join stg.erp_invoice i on i.invoice_id = l.invoice_id",
+        "join erp.customer cu on cu.customer_id = i.customer_id;"
       ]
     },
     {
-      "name": "mart_sales_daily",
+      "name": "nv_order_line",
+      "_note": "Normalized view (rung 6): wide re-join of the order-line fact to its dims with business column names. No aggregation. left joins because orphan products / unmastered customers legitimately lose dim rows.",
       "sql": [
-        "create view mart_sales_daily as",
-        "select order_date, count(distinct order_id) as orders, sum(quantity) as units,",
-        "       round(sum(extended_amount), 2) as revenue",
-        "from wh.fact_order_line where order_status != 'cancelled'",
+        "create view nv_order_line as",
+        "select f.order_line_id, f.order_id, f.order_date,",
+        "       f.customer_key, dc.account_name, dc.segment, dc.sales_region,",
+        "       f.product_key, dp.sku, dp.product_name, dp.category,",
+        "       f.warehouse_id, f.channel, f.quantity, f.unit_price, f.extended_amount, f.order_status",
+        "from wh.fact_order_line f",
+        "left join wh.dim_customer dc on dc.customer_key = f.customer_key",
+        "left join wh.dim_product dp on dp.product_key = f.product_key;"
+      ]
+    },
+    {
+      "name": "nv_invoice_line",
+      "sql": [
+        "create view nv_invoice_line as",
+        "select f.invoice_line_id, f.invoice_id, f.invoice_date,",
+        "       f.customer_key, dc.account_name, dc.segment, dc.sales_region,",
+        "       f.product_key, dp.sku, dp.product_name, dp.category,",
+        "       f.quantity, f.extended_amount, f.invoice_status",
+        "from wh.fact_invoice_line f",
+        "left join wh.dim_customer dc on dc.customer_key = f.customer_key",
+        "left join wh.dim_product dp on dp.product_key = f.product_key;"
+      ]
+    },
+    {
+      "name": "nv_invoice",
+      "_note": "Invoice-header normalization: maps erp customer_id to the crm account key so the AR stack joins dim_customer.",
+      "sql": [
+        "create view nv_invoice as",
+        "select i.invoice_id, i.invoice_number, cu.crm_account_id as customer_key, dc.account_name, dc.segment,",
+        "       i.invoice_date, i.due_date, i.invoice_total, i.invoice_status",
+        "from erp.invoice i",
+        "join erp.customer cu on cu.customer_id = i.customer_id",
+        "left join wh.dim_customer dc on dc.customer_key = cu.crm_account_id;"
+      ]
+    },
+    {
+      "name": "bv_revenue_daily",
+      "_note": "Business view (rung 7): aggregation + running total via sum() over. Built on nv_order_line.",
+      "sql": [
+        "create view bv_revenue_daily as",
+        "select order_date,",
+        "       count(distinct order_id) as orders,",
+        "       sum(quantity) as units,",
+        "       round(sum(extended_amount), 2) as revenue,",
+        "       round(sum(sum(extended_amount)) over (order by order_date rows between unbounded preceding and current row), 2) as revenue_running_total",
+        "from nv_order_line where order_status != 'cancelled'",
         "group by order_date;"
       ]
     },
     {
+      "name": "bv_ar_aging",
+      "_note": "Business view: aging case ladder over nv_invoice.",
+      "sql": [
+        "create view bv_ar_aging as",
+        "select customer_key, account_name, segment, invoice_id, invoice_number, invoice_date, due_date, invoice_total,",
+        "       cast(julianday('2025-12-31') - julianday(due_date) as integer) as days_past_due,",
+        "       case when julianday('2025-12-31') - julianday(due_date) <= 0 then 'current'",
+        "            when julianday('2025-12-31') - julianday(due_date) <= 30 then '1-30'",
+        "            when julianday('2025-12-31') - julianday(due_date) <= 60 then '31-60'",
+        "            when julianday('2025-12-31') - julianday(due_date) <= 90 then '61-90'",
+        "            else '90+' end as aging_bucket",
+        "from nv_invoice where invoice_status not in ('paid', 'written_off');"
+      ]
+    },
+    {
+      "name": "bv_customer_economics",
+      "_note": "Business view: per-customer revenue with window-ranked whale tiers over nv_order_line.",
+      "sql": [
+        "create view bv_customer_economics as",
+        "with cust as (",
+        "  select customer_key, account_name, segment,",
+        "         count(distinct order_id) as orders,",
+        "         round(sum(extended_amount), 2) as revenue",
+        "  from nv_order_line where order_status != 'cancelled'",
+        "  group by customer_key, account_name, segment",
+        ")",
+        "select customer_key, account_name, segment, orders, revenue,",
+        "       rank() over (order by revenue desc) as revenue_rank,",
+        "       ntile(20) over (order by revenue desc) as revenue_ventile,",
+        "       case when ntile(20) over (order by revenue desc) = 1 then 'whale'",
+        "            when ntile(20) over (order by revenue desc) <= 4 then 'key'",
+        "            else 'tail' end as customer_tier",
+        "from cust;"
+      ]
+    },
+    {
+      "name": "mv_sales_month_snapshot",
+      "_note": "Materialized view (rung 8): insert-select from bv_revenue_daily into the mv.sales_month_snapshot table. The rebuild_mv_sales_month_snapshot code object refreshes it on a schedule.",
+      "expect": {"at_least_rows": 12},
+      "sql": [
+        "insert into mv.sales_month_snapshot",
+        "select strftime('%Y-%m', order_date) as month_key,",
+        "       count(*) as active_days,",
+        "       sum(orders) as orders,",
+        "       sum(units) as units,",
+        "       round(sum(revenue), 2) as revenue",
+        "from bv_revenue_daily",
+        "group by strftime('%Y-%m', order_date);"
+      ]
+    },
+    {
+      "name": "mart_sales_daily",
+      "_note": "Rewired onto the stack: BU view over the business view bv_revenue_daily.",
+      "sql": [
+        "create view mart_sales_daily as",
+        "select order_date, orders, units, revenue, revenue_running_total",
+        "from bv_revenue_daily;"
+      ]
+    },
+    {
       "name": "mart_ar_aging",
+      "_note": "Rewired onto the stack: BU view over bv_ar_aging.",
       "sql": [
         "create view mart_ar_aging as",
-        "select i.invoice_id, i.invoice_number, i.customer_id, i.invoice_date, i.due_date, i.invoice_total,",
-        "       cast(julianday('2025-12-31') - julianday(i.due_date) as integer) as days_past_due,",
-        "       case when julianday('2025-12-31') - julianday(i.due_date) <= 0 then 'current'",
-        "            when julianday('2025-12-31') - julianday(i.due_date) <= 30 then '1-30'",
-        "            when julianday('2025-12-31') - julianday(i.due_date) <= 60 then '31-60'",
-        "            else '60+' end as aging_bucket",
-        "from erp.invoice i where i.invoice_status not in ('paid', 'written_off');"
+        "select customer_key, invoice_id, invoice_number, invoice_date, due_date, invoice_total, days_past_due, aging_bucket",
+        "from bv_ar_aging;"
+      ]
+    },
+    {
+      "name": "mart_finance_revenue",
+      "_note": "Business-unit view (rung 9), FINANCE. Applies the human-entered GL mapping (left join + coalesce to UNMAPPED), dedups the conflicting beverage re-upload to the latest approved row, and EXCLUDES written-off invoices. Competes with mart_salesops_demand_revenue.",
+      "sql": [
+        "create view mart_finance_revenue as",
+        "with mapping as (",
+        "  select source_code, mapped_code, mapped_description,",
+        "         row_number() over (partition by source_code order by uploaded_at desc, mapping_id desc) as rn",
+        "  from manual.gl_product_category_mapping",
+        "  where approved_flag = 1 and (effective_end_date is null or effective_end_date > '2025-12-31')",
+        ")",
+        "select coalesce(m.mapped_code, 'UNMAPPED') as gl_revenue_line,",
+        "       coalesce(m.mapped_description, 'Unmapped category') as gl_revenue_line_name,",
+        "       round(sum(n.extended_amount), 2) as net_revenue,",
+        "       count(*) as invoice_lines",
+        "from nv_invoice_line n",
+        "left join mapping m on m.source_code = n.category and m.rn = 1",
+        "where n.invoice_status != 'written_off'",
+        "group by 1, 2;"
+      ]
+    },
+    {
+      "name": "mart_salesops_demand_revenue",
+      "_note": "Business-unit view, SALES OPS. Raw category codes, NO GL mapping, INCLUDES all invoice statuses (write-offs included). Legitimately disagrees with finance on the grand total by exactly the written-off amount.",
+      "sql": [
+        "create view mart_salesops_demand_revenue as",
+        "select n.category as reported_category,",
+        "       round(sum(n.extended_amount), 2) as gross_revenue,",
+        "       count(*) as invoice_lines",
+        "from nv_invoice_line n",
+        "group by n.category;"
       ]
     },
     {
@@ -850,6 +1268,31 @@
         "      from erp.invoice_line l join erp.invoice i on i.invoice_id = l.invoice_id",
         "      group by i.invoice_id) il on il.order_id = ol.order_id",
         "where abs(ol.total - il.total) > 0.01;"
+      ]
+    },
+    {
+      "name": "control_recon_finance_salesops",
+      "_note": "Reconciles the competing revenue metric. salesops_gross (all invoice statuses, raw category) minus finance_net (written-off excluded, GL-mapped) must equal the written-off revenue; unexplained_difference proves it. finance_unmapped_revenue quantifies the mapping coverage gap (the disposables UNMAPPED bucket).",
+      "sql": [
+        "create view control_recon_finance_salesops as",
+        "with sales as (select round(sum(extended_amount), 2) as gross from nv_invoice_line),",
+        "     fin as (select round(sum(extended_amount), 2) as net from nv_invoice_line where invoice_status != 'written_off'),",
+        "     wo as (select coalesce(round(sum(extended_amount), 2), 0) as written_off from nv_invoice_line where invoice_status = 'written_off'),",
+        "     unmapped as (",
+        "       select coalesce(round(sum(n.extended_amount), 2), 0) as unmapped_revenue",
+        "       from nv_invoice_line n",
+        "       where n.invoice_status != 'written_off'",
+        "         and not exists (select 1 from manual.gl_product_category_mapping m",
+        "                         where m.source_code = n.category and m.approved_flag = 1",
+        "                           and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "     )",
+        "select s.gross as salesops_gross_revenue,",
+        "       f.net as finance_net_revenue,",
+        "       round(s.gross - f.net, 2) as revenue_difference,",
+        "       w.written_off as written_off_excluded,",
+        "       round(s.gross - f.net - w.written_off, 2) as unexplained_difference,",
+        "       u.unmapped_revenue as finance_unmapped_revenue",
+        "from sales s, fin f, wo w, unmapped u;"
       ]
     },
     {
@@ -869,7 +1312,54 @@
         "                  where x.source_system = 'LedgerWorks ERP' and x.source_record_id = cast(c.customer_id as text))",
         "union all",
         "select 'DQ-004', 'unparseable raw account date', account_id",
-        "from raw.crm_account_extract where source_created_date not like '__/__/____';"
+        "from raw.crm_account_extract where source_created_date not like '__/__/____'",
+        "union all",
+        "select 'DQ-005', 'product category missing approved GL mapping', c.category",
+        "from (select distinct category from core.product) c",
+        "where not exists (select 1 from manual.gl_product_category_mapping m",
+        "                  where m.source_code = c.category and m.approved_flag = 1",
+        "                    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "union all",
+        "select 'DQ-006', 'unparseable raw order date', order_id",
+        "from raw.erp_order_extract where order_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-007', 'unparseable raw inventory date', lot_id",
+        "from raw.wms_inventory_extract where received_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-008', 'lot past expiry still available', cast(lot_id as text)",
+        "from stg.wms_inventory",
+        "where lot_status = 'available' and expiry_date is not null and expiry_date < '2025-12-31';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "_note": "Lineage edges for the authored procedures/extracts -> the tables they read and write.",
+      "sql": [
+        "insert into catalog.lineage_edge (edge_id, code_object, operation, table_name, edge_note) values",
+        "  (1, 'rebuild_mv_sales_month_snapshot', 'reads',  'bv_revenue_daily', 'Monthly refresh source'),",
+        "  (2, 'rebuild_mv_sales_month_snapshot', 'writes', 'mv.sales_month_snapshot', 'Truncate-and-reload'),",
+        "  (3, 'period_end_ar_close', 'reads',  'erp.invoice', 'Open receivables'),",
+        "  (4, 'period_end_ar_close', 'reads',  'erp.payment', 'Cash applied'),",
+        "  (5, 'period_end_ar_close', 'writes', 'workflow.case', 'Opens collections cases'),",
+        "  (6, 'nightly_invoice_rebate_extract', 'reads', 'erp.invoice', 'Paid invoices in period'),",
+        "  (7, 'nightly_invoice_rebate_extract', 'reads', 'erp.invoice_line', 'Line detail for rebate basis'),",
+        "  (8, 'nightly_invoice_rebate_extract', 'feeds', 'rebate_processor_feed', 'SFTP CSV to rebate processor'),",
+        "  (9, 'mart_finance_revenue', 'reads', 'manual.gl_product_category_mapping', 'Asymmetric GL mapping join'),",
+        "  (10, 'business_days_between', 'referenced_by', 'period_end_ar_close', 'UDF used for aging math');"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Authored target-platform source for the procedures/function/extract, then self-registration of every deployed view from sqlite_master so the catalog provably matches the code. Runs LAST so all views exist. business_days_between is intentionally stale (references a renamed column) — noted as known debt.",
+      "sql": [
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes) values",
+        "  ('rebuild_mv_sales_month_snapshot', 'procedure', 'plpgsql', 'create or replace procedure rebuild_mv_sales_month_snapshot() language sql as $$ delete from mv_sales_month_snapshot; insert into mv_sales_month_snapshot (month_key, active_days, orders, units, revenue) select strftime(''%Y-%m'', order_date), count(*), sum(orders), sum(units), round(sum(revenue),2) from bv_revenue_daily group by 1; $$;', 'data_engineering', '2024-01-15 09:00:00', '2025-02-03 11:20:00', 'Scheduled monthly by integration.job rebuild_mv_sales_month_snapshot.'),",
+        "  ('period_end_ar_close', 'procedure', 'plpgsql', 'create or replace procedure period_end_ar_close(as_of date) language plpgsql as $$ begin insert into workflow_case (case_type, queue, status) select ''credit_hold'', ''credit_desk'', ''open'' from erp_invoice i where i.invoice_status = ''in_collections'' and business_days_between(i.due_date, as_of) > 45; end; $$;', 'finance_controls', '2024-01-20 08:30:00', '2025-01-31 17:45:00', 'Opens collections cases at period end; calls business_days_between.'),",
+        "  ('business_days_between', 'function', 'plpgsql', 'create or replace function business_days_between(d1 date, d2 date) returns integer language sql as $$ select cast(julianday(d2) - julianday(d1) as integer) - 2 * (cast(julianday(d2) - julianday(d1) as integer) / 7); $$;', 'data_engineering', '2023-11-02 10:00:00', '2023-11-02 10:00:00', 'KNOWN DEBT: references retired column invoice.terms_days in an older overload; flagged for cleanup.'),",
+        "  ('nightly_invoice_rebate_extract', 'extract', 'sql', 'select i.invoice_number, i.invoice_date, i.customer_id, round(sum(l.extended_amount),2) as rebate_basis from erp_invoice i join erp_invoice_line l on l.invoice_id = i.invoice_id where i.invoice_status = ''paid'' group by 1,2,3; -- format: CSV; destination: sftp://rebate-processor.example.com/in/; schedule: 0 23 * * *', 'integration_eng', '2024-03-01 09:00:00', '2025-04-10 09:15:00', 'Outbound nightly feed to the rebate processor (job nightly_invoice_rebate_extract).');",
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes)",
+        "select name, 'view', 'sql', sql, 'data_engineering', '2024-01-15 09:00:00', '2024-01-15 09:00:00', 'Auto-registered from sqlite_master.'",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';"
       ]
     }
   ],
@@ -884,28 +1374,47 @@
     {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired mappings never re-pointed."},
     {"name": "stg_name_conflicts", "type": "conflicting_source_values", "table": "stg.crm_account", "rate": 0.02, "stage": "post_derivation", "params": {"column": "account_name"}, "scenario": "Staging dedup logic mangles some names vs source."},
     {"name": "invoice_line_restatements", "type": "restatement_reversal", "table": "erp.invoice_line", "rate": 0.008, "stage": "post_derivation", "params": {"amount_columns": ["extended_amount"], "reason_column": "line_note"}, "scenario": "Billing corrections issued as reversal + restated pairs; these create the order-vs-invoice recon breaks."},
-    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate run records."}
+    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate run records."},
+    {"name": "raw_order_date_format_drift", "type": "format_drift", "table": "raw.erp_order_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "order_date_raw", "format": "padded"}, "scenario": "Legacy ERP order extract pads dates differently; DQ-006 catches the unparseable ones."},
+    {"name": "raw_inventory_date_format_drift", "type": "format_drift", "table": "raw.wms_inventory_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "received_date_raw", "format": "padded"}, "scenario": "WMS extract date format drifts after a patch; DQ-007 catches it."}
   ],
   "controls": [
-    {"rule_id": "CTL-001", "rule_name": "Order lines tie to invoice lines", "source_dataset": "erp.sales_order_line", "target_dataset": "erp.invoice_line", "grain": "order_id", "tolerance": "0.01", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "~0.8% of invoiced orders (restatement reversals)", "break_view": "control_recon_order_invoice"}
+    {"rule_id": "CTL-001", "rule_name": "Order lines tie to invoice lines", "source_dataset": "erp.sales_order_line", "target_dataset": "erp.invoice_line", "grain": "order_id", "tolerance": "0.01", "frequency": "daily", "owner": "finance_controls", "severity": "high", "expected_break_rate": "~0.8% of invoiced orders (restatement reversals)", "break_view": "control_recon_order_invoice"},
+    {"rule_id": "CTL-002", "rule_name": "Finance net revenue reconciles to sales-ops gross demand", "source_dataset": "mart_salesops_demand_revenue", "target_dataset": "mart_finance_revenue", "grain": "grand total", "tolerance": "0.01", "frequency": "monthly", "owner": "finance_controls", "severity": "medium", "expected_break_rate": "difference equals written-off revenue; unexplained_difference must be 0", "break_view": "control_recon_finance_salesops"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "crm.account", "rule_type": "required_field", "condition": "active accounts have email", "severity": "warning", "expected_failure_rate": 0.06},
     {"rule_id": "DQ-002", "dataset": "erp.sales_order_line", "rule_type": "fk_exists", "condition": "product exists", "severity": "error", "expected_failure_rate": 0.004},
     {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every ERP customer mapped", "severity": "error", "expected_failure_rate": 0.03},
-    {"rule_id": "DQ-004", "dataset": "raw.crm_account_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03}
+    {"rule_id": "DQ-004", "dataset": "raw.crm_account_extract", "rule_type": "format", "condition": "date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-005", "dataset": "manual.gl_product_category_mapping", "rule_type": "coverage", "condition": "every live product category has an approved GL mapping", "severity": "error", "expected_failure_rate": 0.14},
+    {"rule_id": "DQ-006", "dataset": "raw.erp_order_extract", "rule_type": "format", "condition": "order date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-007", "dataset": "raw.wms_inventory_extract", "rule_type": "format", "condition": "received date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-008", "dataset": "stg.wms_inventory", "rule_type": "valid_state", "condition": "available lots are not past expiry", "severity": "warning", "expected_failure_rate": 0.05}
   ],
   "dataflows": [
-    {"name": "customer_mastering", "sequence": "crm.account -> raw extract -> staging -> xref -> core.customer -> wh.dim_customer"},
+    {"name": "customer_mastering", "sequence": "crm.account -> raw.crm_account_extract -> stg.crm_account -> xref -> core.customer -> wh.dim_customer"},
+    {"name": "order_landing", "sequence": "erp.sales_order -> raw.erp_order_extract -> stg.erp_order -> wh.fact_order_line"},
+    {"name": "invoice_landing", "sequence": "erp.invoice -> raw.erp_invoice_extract -> stg.erp_invoice -> wh.fact_invoice_line"},
+    {"name": "inventory_landing", "sequence": "wms.inventory_lot -> raw.wms_inventory_extract -> stg.wms_inventory -> DQ-008"},
+    {"name": "view_stack", "sequence": "wh facts/dims -> nv_* -> bv_* -> mv_sales_month_snapshot / mart_sales_daily / mart_ar_aging / mart_finance_revenue / mart_salesops_demand_revenue"},
     {"name": "order_to_cash", "sequence": "erp.sales_order -> state machine -> erp.invoice/invoice_line -> erp.payment -> wh facts -> marts"},
-    {"name": "delivery", "sequence": "erp.sales_order -> tms.route/delivery_stop -> POD notes"}
+    {"name": "delivery", "sequence": "erp.sales_order -> tms.route/delivery_stop -> POD notes"},
+    {"name": "code_catalog", "sequence": "sqlite_master views + authored procs/extracts -> catalog.code_object; catalog.lineage_edge; integration.job -> integration.job_run"},
+    {"name": "gl_mapping", "sequence": "manual.gl_product_category_mapping -> mart_finance_revenue (applied) vs mart_salesops_demand_revenue (not) -> control_recon_finance_salesops + DQ-005 + workflow gl_mapping_request"}
   ],
   "validation": {
-    "required_views": ["mart_sales_daily", "mart_ar_aging", "control_recon_order_invoice", "dq_rule_result_current"],
+    "required_views": [
+      "nv_order_line", "nv_invoice_line", "nv_invoice",
+      "bv_revenue_daily", "bv_ar_aging", "bv_customer_economics",
+      "mart_sales_daily", "mart_ar_aging", "mart_finance_revenue", "mart_salesops_demand_revenue",
+      "control_recon_order_invoice", "control_recon_finance_salesops", "dq_rule_result_current"
+    ],
     "expected_row_ranges": {
       "crm.account": [640, 680],
       "erp.sales_order": [14000, 70000],
-      "erp.sales_order_line": [70000, 400000]
+      "erp.sales_order_line": [70000, 400000],
+      "mv.sales_month_snapshot": [20, 26]
     }
   }
 }
