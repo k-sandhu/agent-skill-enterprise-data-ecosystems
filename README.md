@@ -1,6 +1,6 @@
 # Enterprise Data Ecosystems — Agent Skill
 
-An agent skill that designs and builds **realistic fictional enterprise data ecosystems**: multi-system schemas, populated SQLite databases, real SQL lineage, controlled data-quality imperfections, executable validation, and a realism scorecard — all deterministic and reproducible.
+An agent skill that designs and builds **realistic fictional enterprise data ecosystems**: multi-system schemas, populated SQLite databases, real SQL lineage, controlled data-quality imperfections, executable validation, a realism scorecard, and a generated read-only **MCP server** over every build — all deterministic and reproducible.
 
 The core idea: realism is engineered once instead of improvised per session. An agent (or you) authors a single **ecosystem spec JSON**; a shipped, stdlib-only engine does the mechanical work and a validation engine proves the result.
 
@@ -10,6 +10,7 @@ author ecosystem_spec.json
   -> build_sqlite_ecosystem.py      deterministic build: DDL + populated .db + imperfection log
   -> validate_sqlite_database.py    integrity tiers + imperfection reconciliation + realism scorecard
   -> profile_sqlite_database.py     per-table Markdown profile
+  -> generate_mcp_server.py         read-only MCP server over the database, lineage, imperfections, and docs
 ```
 
 ## Why generated data usually looks fake — and what this does differently
@@ -39,9 +40,13 @@ python scripts/run_self_test.py
 # build the canonical example (~760k rows in well under a minute)
 python scripts/build_sqlite_ecosystem.py examples/harborline-provisions/ecosystem_spec.json --out examples/harborline-provisions/build --force
 python scripts/validate_sqlite_database.py --db examples/harborline-provisions/build/harborline_provisions.db --spec examples/harborline-provisions/ecosystem_spec.json
+
+# generate a read-only MCP server over the build, then connect any MCP client
+python scripts/generate_mcp_server.py examples/harborline-provisions/ecosystem_spec.json --build examples/harborline-provisions/build
+claude mcp add harborline-provisions-data-ecosystem -- python examples/harborline-provisions/build/mcp/server.py
 ```
 
-Then open the `.db` in any SQLite browser and start with the queries in the example's README.
+Then open the `.db` in any SQLite browser and start with the queries in the example's README — or explore it through the MCP server from Claude Code, Claude Desktop, or any stdio MCP host.
 
 ## Worked examples
 
@@ -78,10 +83,11 @@ scripts/
   validate_sqlite_database.py  validation engine (integrity + realism scorecard)
   validate_ecosystem_spec.py   pre-build spec diagnostics
   profile_sqlite_database.py   per-table profiling
-  run_self_test.py             end-to-end proof incl. determinism across hash seeds
-  validate_all_examples.py     CI gate: every example must strict-pass
+  run_self_test.py             end-to-end proof incl. determinism across hash seeds + MCP battery
+  validate_all_examples.py     CI gate: every example must strict-pass (incl. MCP smoke)
   generate_ddl.py / generate_schema_catalog.py / generate_seed_plan.py   doc artifacts + non-SQLite DDL
-references/                  spec language, realism playbook, 13 industry deep-dives
+  generate_mcp_server.py / mcp_server_template.py / test_mcp_server.py   read-only MCP server: generator, template, battery
+references/                  spec language, realism playbook, MCP server guide, 13 industry deep-dives
 examples/                    worked example ecosystems (spec + README each)
 ```
 

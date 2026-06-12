@@ -67,6 +67,7 @@ Output contract: changed files, run command, smoke-test result.
 - Require every worker to list outputs, FK expectations, and assumptions.
 - The main agent owns the merged spec, conflict resolution, all toolchain runs, and the final summary.
 - Do not let a worker silently change the approved scope, naming convention, or scale profile.
+- MCP server generation is a mechanical main-agent toolchain step (a single `generate_mcp_server.py` command run after the build); never assign a worker to hand-write an MCP server.
 
 ## Safety Rules
 

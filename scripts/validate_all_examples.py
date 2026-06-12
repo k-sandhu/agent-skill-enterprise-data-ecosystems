@@ -6,6 +6,8 @@ For each examples/*/ecosystem_spec.json:
 2. build_sqlite_ecosystem.py builds it into a temp directory.
 3. validate_sqlite_database.py --strict must exit 0 (zero critical, zero
    warnings, full realism score).
+4. generate_mcp_server.py emits the MCP package and test_mcp_server.run_smoke
+   confirms the server initializes, lists 11 tools, and answers a query.
 
 Usage:
   python scripts/validate_all_examples.py [--scale-multiplier 0.3] [--only saas,banking] [--keep]
@@ -24,6 +26,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+import test_mcp_server
 
 SCRIPTS = Path(__file__).resolve().parent
 EXAMPLES = SCRIPTS.parent / "examples"
@@ -90,6 +94,19 @@ def main(argv: list[str] | None = None) -> int:
                 results.append((name, False, f"strict validation failed:\n{findings[-2000:]}"))
                 print(f"  STRICT FAIL ({elapsed:.0f}s)")
             else:
+                # Generate the read-only MCP server package and smoke-test it.
+                gen = run([sys.executable, str(SCRIPTS / "generate_mcp_server.py"), str(spec),
+                           "--build", str(out_dir), "--force", "--quiet"])
+                if gen.returncode != 0:
+                    results.append((name, False, "MCP generation failed:\n"
+                                    + (gen.stderr or gen.stdout)[-2000:]))
+                    print("  MCP GEN FAIL")
+                    continue
+                smoke = test_mcp_server.run_smoke(out_dir)
+                if smoke:
+                    results.append((name, False, "MCP smoke failed:\n  " + "\n  ".join(smoke)))
+                    print("  MCP SMOKE FAIL")
+                    continue
                 summary = json.loads((out_dir / "build_summary.json").read_text(encoding="utf-8"))
                 score = next((line for line in proc.stdout.splitlines() if "Realism score" in line), "")
                 results.append((name, True, f"{summary['total_rows']:,} rows"))
