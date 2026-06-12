@@ -7,7 +7,11 @@
    content hashes — every table must match.
 3. Runs the database validator in --strict mode (zero critical AND zero warnings).
 4. Runs the profiler to confirm it executes.
-5. Rebuilds with high-rate copy-style imperfections (duplicate_entity,
+5. Generates the read-only MCP server package, runs the full MCP battery
+   (handshake, every tool, the read-only negative battery with a db-hash check,
+   the query timeout, clamps, lineage, resources, prompts, protocol errors),
+   and a double-generation byte-determinism check on the emitted package.
+6. Rebuilds with high-rate copy-style imperfections (duplicate_entity,
    duplicate_webhook, restatement_reversal) appended to one integer-PK table —
    thousands of synthetic PKs per stream. Guards the collision-free allocator:
    random draws from the old 1e6-wide range birthday-collide at this volume and
@@ -31,6 +35,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+import test_mcp_server
 
 SCRIPTS = Path(__file__).resolve().parent
 DEFAULT_SPEC = SCRIPTS.parent / "examples" / "harborline-provisions" / "ecosystem_spec.json"
@@ -87,14 +93,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Self-test workspace: {tmp}")
     try:
         # 1. Spec validation
-        print("\n[1/5] validate_ecosystem_spec.py ...")
+        print("\n[1/6] validate_ecosystem_spec.py ...")
         result = run([sys.executable, str(SCRIPTS / "validate_ecosystem_spec.py"), str(args.spec)])
         print(result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "(no output)")
         if result.returncode != 0:
             failures.append(f"spec validation failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}")
 
         # 2. Deterministic double build with different hash seeds
-        print("\n[2/5] double build with PYTHONHASHSEED 1 vs 2 ...")
+        print("\n[2/6] double build with PYTHONHASHSEED 1 vs 2 ...")
         builds = []
         for i, hash_seed in enumerate(("1", "2")):
             out_dir = tmp / f"build{i}"
@@ -124,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
 
         # 3. Strict database validation
         if builds:
-            print("\n[3/5] validate_sqlite_database.py --strict ...")
+            print("\n[3/6] validate_sqlite_database.py --strict ...")
             result = run([sys.executable, str(SCRIPTS / "validate_sqlite_database.py"),
                           "--db", str(builds[0]), "--spec", str(args.spec), "--strict"])
             verdict_lines = [l for l in result.stdout.splitlines() if l.startswith("## Verdict") or "Realism score" in l]
@@ -137,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
                                     if l.startswith("- **")) + f"\n{result.stderr}")
 
             # 4. Profiler smoke
-            print("\n[4/5] profile_sqlite_database.py ...")
+            print("\n[4/6] profile_sqlite_database.py ...")
             result = run([sys.executable, str(SCRIPTS / "profile_sqlite_database.py"),
                           "--db", str(builds[0]), "--report", str(tmp / "profile.md")])
             if result.returncode != 0:
@@ -145,12 +151,30 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print("profiler OK")
 
-        # 5. High-volume copy-imperfection PK regression: every copy-style
+            # 5. MCP server: generate the package, run the full battery, and the
+            # double-generation byte-determinism check.
+            print("\n[5/6] generate_mcp_server.py + MCP battery ...")
+            build_dir = builds[0].parent
+            result = run([sys.executable, str(SCRIPTS / "generate_mcp_server.py"), str(args.spec),
+                          "--build", str(build_dir), "--force", "--quiet"])
+            if result.returncode != 0:
+                failures.append(f"MCP generation failed (exit {result.returncode}):\n"
+                                f"{result.stdout}\n{result.stderr}")
+            else:
+                battery = test_mcp_server.run_full_battery(build_dir, args.spec)
+                determinism = test_mcp_server.run_determinism_check(build_dir, args.spec)
+                if battery or determinism:
+                    failures.append("MCP battery failed:\n  " + "\n  ".join(battery + determinism))
+                else:
+                    print("MCP server OK: 11 tools, read-only safety stack holds, "
+                          "package byte-deterministic across two generations")
+
+        # 6. High-volume copy-imperfection PK regression: every copy-style
         # injector must allocate collision-free synthetic integer PKs. Rates are
         # chosen so each sentinel range (80M dup-entity, 85M dup-webhook,
         # 70M/75M restatement) receives thousands of new PKs — the volume at
         # which the pre-allocator random draw collided with ~99% probability.
-        print("\n[5/5] high-volume copy-imperfection PK regression ...")
+        print("\n[6/6] high-volume copy-imperfection PK regression ...")
         if args.spec.resolve() != DEFAULT_SPEC.resolve():
             print("skipped: regression targets a table of the default example spec")
         else:
@@ -219,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {f}")
         return 1
     print("SELF-TEST PASSED: spec valid, deterministic across hash seeds, strict validation green, "
-          "profiler OK, PK regression green.")
+          "profiler OK, MCP server battery green, PK regression green.")
     return 0
 
 

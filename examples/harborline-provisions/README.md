@@ -16,6 +16,17 @@ python scripts/profile_sqlite_database.py --db examples/harborline-provisions/bu
 
 At multiplier 1.0 this builds ~855k rows across 43 tables and 13 views in well under a minute; `--scale-multiplier 3` produces ~2.6M rows.
 
+## Connect Over MCP
+
+Generate a read-only [MCP](https://modelcontextprotocol.io) server over the build, then connect any stdio MCP client (Claude Code, Claude Desktop, or another host). The server is standard-library only — no third-party packages, no network — and exposes 11 read-only tools over the database, lineage, imperfection log, controls/DQ rules, and the documentation artifacts. All data stays synthetic and fictional.
+
+```text
+python scripts/generate_mcp_server.py examples/harborline-provisions/ecosystem_spec.json --build examples/harborline-provisions/build
+claude mcp add harborline-provisions-data-ecosystem -- python examples/harborline-provisions/build/mcp/server.py
+```
+
+Rerun the generator after every rebuild (row counts and the imperfection log change). See `references/mcp-server.md` for the tool surface, the safety model, and the Claude Desktop / generic-host connection blocks; the generated `build/mcp/README.md` has the same guide tailored to this build.
+
 ## Patterns Worth Copying
 
 - `crm.account.created_at`: `sorted` + `backfill_share` — IDs correlate with onboarding dates and 65% of the book predates the data window, so volume grows ~7%/yr instead of ramping from zero.

@@ -48,6 +48,7 @@ Proposed package:
 - Scale profile:
 - Time horizon:
 - Artifacts:
+- Read-only MCP server: included by default (strike to skip)
 - Optional dashboard:
 - Expected runtime / file size:
 - Validation plan:
@@ -69,10 +70,11 @@ Use when the user wants a local, portable, populated ecosystem.
 6. Populated database path + build_summary.json (row counts, seed, multiplier)
 7. Validation report path + verdict + realism score
 8. Profile summary path
-9. Optional dashboard
-10. Run commands (validate spec -> plan -> build -> validate db -> profile)
-11. Known controlled imperfections (from meta_imperfection_log, with scenarios)
-12. Recommended next iterations
+9. MCP server package (mcp/server.py, mcp/mcp_manifest.json, mcp/README.md) + connect command
+10. Optional dashboard
+11. Run commands (validate spec -> plan -> build -> validate db -> profile -> generate MCP server)
+12. Known controlled imperfections (from meta_imperfection_log, with scenarios)
+13. Recommended next iterations
 ```
 
 ## Delegation Plan
