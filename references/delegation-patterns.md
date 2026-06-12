@@ -35,7 +35,7 @@ Output contract: a valid JSON fragment (tables + machines + imperfections for th
 
 ### Derivation Author
 
-Owns: the SQL that populates staging, xref, canonical, warehouse, and mart/control/DQ views from the source tables — the lineage layer.
+Owns: the SQL that populates the full layered stack from the source tables — staging, xref, canonical, warehouse dims/facts, normalized views, business views, materialized-view tables, business-unit custom views, and control/DQ views — including asymmetric application of human-entered `manual.*` mappings (see "The Layered Warehouse Stack" in `references/common-layers.md`).
 
 Output contract: `derivations` entries (logical names, list-of-lines SQL), each with an `expect.at_least_rows` floor where meaningful, plus the `validation.required_views` list.
 

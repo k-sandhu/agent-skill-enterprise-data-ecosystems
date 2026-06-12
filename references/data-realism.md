@@ -154,6 +154,7 @@ Pair with the Controlled Imperfections list in `enterprise-patterns.md`; this ta
 Rules of thumb:
 
 - Null rates in optional fields run 5-40% by field criticality; near-zero only for keys and amounts.
+- Human-entered mapping tables cover 85-95% of live codes, never 100%; a few rows are stale or duplicated from re-uploads, and the mapping is applied in some downstream consumers but not others (see "Human-Entered Mappings" in `enterprise-patterns.md`).
 - Imperfections cluster (by source, batch, period, or operator); uniform random sprinkling of errors looks synthetic.
 - Every imperfection should be detectable by a DQ rule or reconciliation in the same ecosystem, with a handful intentionally escaping detection.
 - Reconciliation break rates: 0.5-3% of items, 80%+ explained, the rest open in workflow queues.

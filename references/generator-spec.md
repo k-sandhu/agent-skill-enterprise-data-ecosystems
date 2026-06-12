@@ -215,6 +215,13 @@ Ordered SQL run in-database after generation — staging/canonical/warehouse/mar
 - No `random()`/`datetime('now')` in derivation SQL — they break determinism. Derive variation from existing columns (e.g. `case when id % 10 < 5 ...`).
 - Indexes exist before derivations run; insert-selects can join at scale.
 
+**The full view stack** (see "The Layered Warehouse Stack" in `references/common-layers.md` for the rung-by-rung model and SQL complexity targets in `references/enterprise-patterns.md`):
+
+- Derivations run in order, so **views may select from earlier views** — build normalized views (`nv_*`) over facts/dims, business views (`bv_*`) over normalized views, and business-unit custom views (`mart_<bu>_*`) over business views. Deep dependency chains are the realistic shape.
+- **Materialized views** (`mv_*`): SQLite has none natively — model each as a table with `source: "derivation"`, layer `mart`, populated by an insert-select from a business view. Pair it with a `catalog.code_object` row for the refresh procedure and `integration.job_run` history.
+- **Human-entered mappings**: declare mapping tables (e.g. `manual.cost_center_mapping`) as plain generator tables, then join them in *some* view derivations and deliberately not others, with an `'UNMAPPED'` fallback via `left join` + `coalesce`. The cross-BU metric discrepancy this creates is a feature — aim a recon control at it.
+- Gate the whole stack: every view in `validation.required_views`, every materialized table in `validation.expected_row_ranges`.
+
 ## Imperfections
 
 Typed, rate-controlled, all logged to `meta_imperfection_log` so validation reconciles instead of flagging them. Rates are fractions (engine errors above 0.5). `stage`: `pre_derivation` (defects propagate through lineage) or `post_derivation` (defects in derived layers, e.g. recon breaks).

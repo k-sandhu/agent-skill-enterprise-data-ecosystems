@@ -25,14 +25,15 @@ Use these structures for user-facing output. Keep outputs concise unless the use
 3. Assumptions
 4. Business domains
 5. Application landscape
-6. Data architecture layers
-7. Critical dataflows
-8. Controls and reconciliation
-9. Data quality and exception handling
-10. Security, privacy, audit, workflow, documents
-11. Mock data generation plan
-12. Realism risks and edge cases
-13. Recommended next artifact or build package
+6. Data architecture layers (full warehouse stack: landing through business-unit views)
+7. Code object inventory (DDL, views, procedures, functions, extracts, jobs)
+8. Critical dataflows
+9. Controls and reconciliation
+10. Data quality and exception handling
+11. Security, privacy, audit, workflow, documents
+12. Mock data generation plan
+13. Realism risks and edge cases
+14. Recommended next artifact or build package
 ```
 
 ## Approval Proposal
@@ -64,7 +65,7 @@ Use when the user wants a local, portable, populated ecosystem.
 2. Approved package
 3. Folder structure
 4. Ecosystem spec path (the authored artifact)
-5. SQLite DDL artifacts (sqlite/01_schema.sql .. 04_views.sql)
+5. SQLite DDL artifacts (sqlite/01_schema.sql .. 04_views.sql) and any authored code artifacts (procedure/function/extract .sql sources)
 6. Populated database path + build_summary.json (row counts, seed, multiplier)
 7. Validation report path + verdict + realism score
 8. Profile summary path
@@ -209,14 +210,22 @@ remediation_workflow:
 
 ```mermaid
 flowchart LR
-  A["Source system table"] --> B["Raw ingestion"]
+  A["Source system table"] --> B["Landing (raw extract)"]
   B --> C["Staging model"]
-  C --> D["Canonical entity"]
+  C --> D["Canonical entity (3NF)"]
   D --> E["Warehouse fact/dim"]
-  E --> F["Business mart/view"]
-  C --> G["DQ rule"]
-  E --> H["Control reconciliation"]
-  H --> I["Workflow case"]
+  E --> F["Normalized view (nv_*)"]
+  F --> G["Business view (bv_*)"]
+  G --> H["Materialized view (mv_*)"]
+  G --> I["BU custom view (mart_finance_*)"]
+  H --> J["BU custom view (mart_ops_*)"]
+  M["Manual mapping (manual.*)"] -. applied .-> I
+  M -. not applied .-> J
+  C --> K["DQ rule"]
+  E --> L["Control reconciliation"]
+  I --> L
+  J --> L
+  L --> N["Workflow case"]
 ```
 
 ## Synthetic Data Plan Template

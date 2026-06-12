@@ -4,10 +4,13 @@
 
 - Multiple operational systems exist.
 - Source-specific schemas exist.
+- Landing and staging are distinct rungs (raw extracts per feed, then typed/cleaned staging per extract).
 - Canonical layer exists for major entities.
 - Crosswalks exist for source-to-canonical identifiers.
 - Warehouse facts and dimensions exist.
-- Business marts/views exist.
+- The view stack is layered (medium/high realism): normalized views, business views, materialized-view tables, and business-unit custom views — views depending on views, not one flat mart tier.
+- Code objects exist: view definitions, ELT/derivation scripts, and (as catalog data) stored procedures, functions, and extract definitions with job-run history.
+- Human-entered mapping tables exist and are applied asymmetrically across consumers.
 - Governance, DQ, controls, security, audit, workflow, document, and integration layers exist when relevant.
 
 ## Business Realism
@@ -108,5 +111,8 @@ Info:
 - No crosswalks.
 - No reconciliation or DQ failures.
 - Perfectly clean data.
+- A single flat view tier — no view depends on another view.
+- Tables only — no view definitions, procedures, functions, or extract code anywhere in the ecosystem.
+- Every business unit reports identical numbers; manual mappings (if any) applied uniformly everywhere.
 - Sensitive data without privacy model.
 - Fictional output presented as a real company's internal schema.

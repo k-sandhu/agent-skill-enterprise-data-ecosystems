@@ -9,9 +9,12 @@
 - Reconciliation
 - Data Quality
 - Governance and Semantic Layer
+- Code as Part of the Ecosystem
+- SQL Flow and Complexity
 - Security and Privacy
 - Workflow and Human Review
 - Documents
+- Human-Entered Mappings
 - Controlled Imperfections
 
 ## Identifiers
@@ -110,6 +113,43 @@ Model:
 
 Useful ambiguity examples: active customer, revenue, ARR, AUM, delivered, available balance, gross margin, on-time delivery, encounter, member, claim, eligible shipment.
 
+## Code as Part of the Ecosystem
+
+An enterprise data ecosystem is data **plus the code that moves it**. A database full of tables with no view definitions, procedures, functions, scheduled jobs, or extract definitions reads as synthetic. Represent code in two places:
+
+1. **As shipped SQL artifacts.** The build engine emits `sqlite/01_schema.sql` (DDL), `02_indexes.sql`, `03_derivations.sql` (the ELT scripts — real, runnable lineage SQL), and `04_views.sql` (every view definition). For non-SQLite targets, render DDL with `scripts/generate_ddl.py` and author stored-procedure/function/extract source as `.sql` files alongside the spec.
+2. **As catalog data inside the database.** Real enterprises carry routine source in the catalog (`information_schema.routines`, `pg_proc`, `sys.sql_modules`). Model a `catalog.code_object` table — object name, object type (`view`, `procedure`, `function`, `extract`, `etl_script`), language, source text, owner, created/last-altered dates, deployment notes — plus `catalog.lineage_edge` rows linking code objects to the tables they read and write.
+
+Code objects worth modeling:
+
+- **View definitions** for every rung of the view stack. In SQLite these can self-register: a derivation may `insert into catalog.code_object select name, 'view', sql, ... from sqlite_master where type = 'view'` — the catalog then provably matches the deployed code.
+- **Stored procedures**: period-end close, `rebuild_mart_*` refresh procs for materialized views, archive/purge jobs, recon runners. On SQLite they cannot execute, so store realistic source for the target platform as catalog rows and pair each with `integration.job` / `job_run` history showing it executing on a schedule (with occasional failures).
+- **User-defined functions**: fiscal-period lookup, business-days-between, FX conversion, masking helpers — referenced by name inside view/procedure source text.
+- **Extract definitions**: the SELECT statement, target format (CSV/SFTP/API), destination system, schedule, and owner for every outbound feed — plus run history and a row-count control per extract.
+- **Ad-hoc and shadow scripts**: one or two analyst-owned scripts with no owner review, referenced by a `manual.*` upload — realistic governance debt.
+
+Rules: stored source text must be real SQL referencing tables that exist in the ecosystem (never lorem ipsum); every procedure/extract appears in lineage and has job runs; at least one code object should be stale (references a renamed column) and flagged by a DQ rule or noted as known debt.
+
+## SQL Flow and Complexity
+
+Derivation SQL is part of the deliverable — practitioners read it. It must flow logically rung to rung (see "The Layered Warehouse Stack" in `common-layers.md`) and carry realistic, graduated complexity. Target profile per rung:
+
+| Rung | Typical statement shape |
+| --- | --- |
+| Landing -> staging | Single-source select: `trim`/`upper` normalization, `case`-guarded date parsing (drifted formats land NULL), dedup via `group by` natural key or `not exists` anti-join against earlier batch rows. |
+| Staging -> canonical | 3-5 way joins through `xref` crosswalks; survivorship as ordered `case` over source priority; `left join` where coverage is genuinely partial; quarantine pattern (`where ... is not null`) for orphans. |
+| Canonical -> dims/facts | 4-8 way joins (canonical + operational + reference + calendar); explicit grain enforced with `group by`; degenerate dimensions carried through; measures via `sum(case when ...)`. |
+| Facts -> normalized views | Wide re-joins of fact to all its dims; business column aliases; no aggregation. |
+| Normalized -> business views | Aggregation with `group by`, window functions (`sum() over`, `row_number`, `lag` for period-over-period), as-of/current filters, bucket `case` ladders (aging, tiers). |
+| Business -> materialized/BU views | Views on views: select from `bv_*`/`mv_*`, apply BU filters, manual-mapping joins, renamed business terms. Modest SQL, deep dependency chain. |
+
+Guidance:
+
+- Complexity should be **load-bearing**: every join is there because the grain or mapping demands it, every `left join` actually loses or keeps rows. Decorative complexity (joins that change nothing) is noise.
+- Mix join types deliberately: inner where integrity is enforced, left where coverage is partial, anti-joins (`not exists`) for exception/DQ views.
+- Reuse the same business rule in two places with a slight variation (one filters test accounts, one does not) — that is how real metric drift happens; pair it with a recon control.
+- No `random()` or `datetime('now')` — derive variation from existing columns; determinism is a contract.
+
 ## Security and Privacy
 
 Classify sensitive data:
@@ -151,6 +191,15 @@ Workflow cases should include case type, related entity, status, priority, assig
 Represent document metadata even when binary files are not generated.
 
 Examples: contracts, invoices, lab requisitions, clinical notes, delivery receipts, proof of delivery photos, capital call notices, manager statements, trade confirmations, purchase orders, inspection reports, spreadsheets, emails.
+
+## Human-Entered Mappings
+
+Enterprises run on hand-maintained mapping data — spreadsheets an analyst uploads that become load-bearing. Always model this at medium/high realism; see "Human-Entered Mapping Tables" in `common-layers.md` for the table shape. The patterns that make it ring true:
+
+- **Entered at one layer, absent at others.** The mapping is inserted beside staging or the marts; landing and source systems have never heard of it. Do not backport human-entered values upstream.
+- **Applied asymmetrically.** One BU view joins the mapping; a sibling view uses the raw code. The resulting metric discrepancy is intentional — document it and aim a reconciliation control at it.
+- **Imperfect by nature.** 85-95% coverage with an `'UNMAPPED'` fallback bucket, stale rows for retired codes, duplicate/conflicting rows from re-uploads, an unapproved batch — each feeding a DQ rule or mapping-request workflow queue.
+- **Audited like human work.** `uploaded_by`, `uploaded_at`, `source_file_name`, approval flags; uploads cluster near period end and reorganizations.
 
 ## Controlled Imperfections
 
