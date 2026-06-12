@@ -414,36 +414,95 @@
       ]
     },
     {
+      "schema": "manual", "name": "sku_revenue_line_mapping", "layer": "operational",
+      "purpose": "Revenue-operations spreadsheet mapping billing SKUs to finance revenue lines; 7 of 8 live invoice SKUs are mapped (87.5% coverage), with stale and conflicting rows retained.",
+      "source_system": "Revenue Operations Spreadsheet",
+      "primary_key": ["mapping_id"], "rows": 10, "scale_exempt": true,
+      "traits": ["audited", "effective_dated"],
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_sku_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "STARTER", "2": "GROWTH", "3": "TEAM", "4": "BUSINESS", "5": "ENTERPRISE", "6": "ENTERPRISE-PLUS", "7": "USAGE_OVERAGE", "8": "STARTER", "9": "ENTERPRISE", "10": "LEGACY_ANALYTICS"}}},
+        {"name": "finance_revenue_line", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "self_serve_arr", "2": "self_serve_arr", "3": "commercial_arr", "4": "commercial_arr", "5": "enterprise_arr", "6": "enterprise_arr", "7": "metered_overage", "8": "legacy_self_serve_arr", "9": "strategic_arr", "10": "legacy_metered"}}},
+        {"name": "arr_treatment", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "recurring", "2": "recurring", "3": "recurring", "4": "recurring", "5": "recurring", "6": "recurring", "7": "metered", "8": "recurring", "9": "recurring", "10": "metered"}}},
+        {"name": "gl_account", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "4000-ARR-SMB", "2": "4000-ARR-SMB", "3": "4010-ARR-COMM", "4": "4010-ARR-COMM", "5": "4020-ARR-ENT", "6": "4025-ARR-ENTPLUS", "7": "4100-USAGE", "8": "3999-LEGACY", "9": "4021-ARR-STRATEGIC", "10": "4199-LEGACY-USAGE"}}},
+        {"name": "business_unit", "type": "string", "gen": "const:finance"},
+        {"name": "mapping_priority", "type": "integer", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": 100, "2": 100, "3": 100, "4": 100, "5": 100, "6": 100, "7": 90, "8": 10, "9": 20, "10": 5}}},
+        {"name": "conflict_flag", "type": "boolean", "gen": {"type": "case", "on": "mapping_id", "cases": {"9": 1}, "default": 0}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "2025-01-03 10:15:00", "2": "2025-01-03 10:15:00", "3": "2025-01-03 10:15:00", "4": "2025-01-03 10:15:00", "5": "2025-01-03 10:15:00", "6": "2025-01-03 10:15:00", "7": "2025-02-04 16:30:00", "8": "2024-01-05 09:10:00", "9": "2025-11-03 18:40:00", "10": "2023-12-29 15:00:00"}}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "revops_sku_mapping_2025_01.xlsx", "2": "revops_sku_mapping_2025_01.xlsx", "3": "revops_sku_mapping_2025_01.xlsx", "4": "revops_sku_mapping_2025_01.xlsx", "5": "revops_sku_mapping_2025_01.xlsx", "6": "revops_sku_mapping_2025_01.xlsx", "7": "metered_sku_trueup_2025_02.xlsx", "8": "revops_sku_mapping_2024_archive.xlsx", "9": "strategic_finance_override_2025_11.xlsx", "10": "legacy_metered_mapping_archive.xlsx"}}},
+        {"name": "approved_flag", "type": "boolean", "gen": {"type": "case", "on": "mapping_id", "cases": {"9": 0}, "default": 1}},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "2025-01-01", "2": "2025-01-01", "3": "2025-01-01", "4": "2025-01-01", "5": "2025-01-01", "6": "2025-01-01", "7": "2025-02-01", "8": "2024-01-01", "9": "2025-11-01", "10": "2023-01-01"}}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_id", "cases": {"8": "2024-12-31", "9": "2025-11-30", "10": "2023-12-31"}, "default": null}},
+        {"name": "current_flag", "type": "boolean", "gen": {"type": "case", "on": "mapping_id", "cases": {"8": 0, "9": 0, "10": 0}, "default": 1}}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled data-platform jobs paired to cataloged code objects and outbound extracts.",
+      "primary_key": ["job_id"], "rows": 6, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "monthly_metered_billing_rating", "2": "rebuild_month_end_arr_snapshot", "3": "board_pack_arr_extract", "4": "dunning_retry_extract", "5": "self_register_view_catalog", "6": "sku_mapping_exception_workflow"}}},
+        {"name": "code_object_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "sp_rate_monthly_metered_billing", "2": "sp_rebuild_mv_month_end_arr_snapshot", "3": "extract_board_pack_arr_monthly", "4": "extract_dunning_retry_queue", "5": "catalog_code_object_self_register", "6": "wf_open_sku_mapping_requests"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "procedure", "2": "procedure", "3": "extract", "4": "extract", "5": "etl_script", "6": "workflow"}}},
+        {"name": "schedule", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "monthly day 2 02:00", "2": "monthly day 3 04:00", "3": "monthly day 4 07:00", "4": "daily 06:30", "5": "daily 01:15", "6": "hourly business-hours"}}},
+        {"name": "owner_team", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "billing_ops", "2": "data_platform", "3": "finance_analytics", "4": "billing_ops", "5": "data_governance", "6": "revenue_operations"}}},
+        {"name": "active_flag", "type": "boolean", "gen": "const:1"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Run history for scheduled data-platform jobs; deterministic failed and partial runs create realistic operations history.",
+      "primary_key": ["run_id"],
+      "rows": {"per_parent": "integration.job", "distribution": {"distribution": "constant", "value": 36}, "min": 36, "max": 36},
+      "columns": [
+        {"name": "run_id", "type": "integer", "gen": "seq"},
+        {"name": "job_id", "type": "integer", "gen": "parent_key"},
+        {"name": "job_name", "type": "string", "gen": {"type": "parent_copy", "source_column": "job_name"}},
+        {"name": "run_sequence", "type": "integer", "gen": "child_index"},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_finished_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "run_started_at", "unit": "minutes", "offset": {"distribution": "lognormal", "median": 18, "sigma": 0.5, "min": 2, "max": 180}}},
+        {"name": "run_status", "type": "string", "gen": {"type": "case", "on": "run_sequence", "cases": {"11": "partial", "17": "failed", "22": "partial", "34": "failed"}, "default": "success"}},
+        {"name": "rows_read", "type": "integer", "gen": "int:lognormal(median=45000,sigma=1.0,min=0,max=2500000)"},
+        {"name": "rows_written", "type": "integer", "gen": "int:lognormal(median=42000,sigma=1.0,min=0,max=2400000)"},
+        {"name": "retry_count", "type": "integer", "gen": {"type": "case", "on": "run_status", "cases": {"failed": 2, "partial": 1}, "default": 0}},
+        {"name": "error_message", "type": "string", "gen": {"type": "case", "on": "run_status", "cases": {"failed": "Upstream file arrived after watermark and retry budget was exhausted.", "partial": "Late-arriving records held for the next scheduled run."}, "default": ""}},
+        {"name": "watermark_start", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "watermark_end", "type": "timestamp", "gen": {"type": "date_offset", "from": "watermark_start", "unit": "hours", "offset": {"distribution": "constant", "value": 24}}}
+      ]
+    },
+    {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 11, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 14, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "billing account missing billing email", "2": "ticket requester not found in IdP", "3": "tenant missing billing crosswalk mapping", "4": "unparseable raw billing extract date", "5": "duplicate webhook delivery (event_uid)", "6": "usage event references retired feature", "7": "entitlement past valid_to still active", "8": "cross-tenant usage event (isolation breach)", "9": "ticket free-text tenant name mismatch", "10": "staging account name disagrees with source", "11": "comped subscription billed at full rate"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "bill.customer_account", "2": "sup.ticket", "3": "xref.entity_identifier", "4": "raw.billing_account_extract", "5": "integration.webhook_event", "6": "app.usage_event", "7": "bill.entitlement", "8": "app.usage_event", "9": "sup.ticket", "10": "stg.billing_account", "11": "bill.subscription"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "warning", "3": "error", "4": "warning", "5": "error", "6": "error", "7": "error", "8": "critical", "9": "warning", "10": "warning", "11": "error"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012", "13": "DQ-013", "14": "DQ-014"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "billing account missing billing email", "2": "ticket requester not found in IdP", "3": "tenant missing billing crosswalk mapping", "4": "unparseable raw billing extract date", "5": "duplicate webhook delivery (event_uid)", "6": "usage event references retired feature", "7": "entitlement past valid_to still active", "8": "cross-tenant usage event (isolation breach)", "9": "ticket free-text tenant name mismatch", "10": "staging account name disagrees with source", "11": "comped subscription billed at full rate", "12": "invoice SKU missing finance revenue-line mapping", "13": "replayed metering event deduped in staging", "14": "unparseable billing invoice extract date"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "bill.customer_account", "2": "sup.ticket", "3": "xref.entity_identifier", "4": "raw.billing_account_extract", "5": "integration.webhook_event", "6": "app.usage_event", "7": "bill.entitlement", "8": "app.usage_event", "9": "sup.ticket", "10": "stg.billing_account", "11": "bill.subscription", "12": "manual.sku_revenue_line_mapping", "13": "raw.usage_metering_event", "14": "raw.billing_invoice_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "warning", "3": "error", "4": "warning", "5": "error", "6": "error", "7": "error", "8": "critical", "9": "warning", "10": "warning", "11": "error", "12": "error", "13": "warning", "14": "warning"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
     {
       "schema": "ctl", "name": "control", "layer": "control",
       "purpose": "Reconciliation control catalog; break populations live in the control_* views.",
-      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "primary_key": ["control_id"], "rows": 5, "scale_exempt": true,
       "columns": [
         {"name": "control_id", "type": "integer"},
-        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
-        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Invoice header total ties to invoice lines", "2": "Provisioned IdP users vs billed seats true-up", "3": "Billing crosswalk coverage for tenants"}}},
-        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_invoice_lines", "2": "control_seat_trueup", "3": "dq_rule_result_current (DQ-003)"}}},
-        {"name": "frequency", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "daily", "2": "monthly", "3": "daily"}}},
-        {"name": "owner_team", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "revenue_accounting", "2": "billing_ops", "3": "data_governance"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "high", "2": "medium", "3": "high"}}}
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004", "5": "CTL-005"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Invoice header total ties to invoice lines", "2": "Provisioned IdP users vs billed seats true-up", "3": "Billing crosswalk coverage for tenants", "4": "Finance ARR ties to customer-success ARR definition", "5": "Metered usage staging ties to monthly rated billing"}}},
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_invoice_lines", "2": "control_seat_trueup", "3": "dq_rule_result_current (DQ-003)", "4": "control_recon_arr_finance_vs_cs", "5": "control_recon_metered_billing"}}},
+        {"name": "frequency", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "daily", "2": "monthly", "3": "daily", "4": "monthly", "5": "monthly"}}},
+        {"name": "owner_team", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "revenue_accounting", "2": "billing_ops", "3": "data_governance", "4": "revenue_accounting", "5": "billing_ops"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "high", "2": "medium", "3": "high", "4": "high", "5": "medium"}}}
       ]
     },
     {
       "_note": "raw -> stg -> xref -> core flow, all SQL-derived from bill.customer_account / app.tenant so lineage (and propagated defects) are real.",
       "schema": "raw", "name": "billing_account_extract", "layer": "raw",
-      "purpose": "Nightly billing platform extract as landed: all text, US-format dates.",
+      "purpose": "Nightly billing platform account extract as landed: all text, US-format dates, file lineage, batch ids, and ingest timestamps.",
       "source": "derivation", "primary_key": ["account_id"],
       "columns": [
         {"name": "account_id", "type": "string"},
@@ -454,7 +513,9 @@
         {"name": "payment_terms", "type": "string"},
         {"name": "billing_country", "type": "string"},
         {"name": "source_created_date", "type": "string"},
-        {"name": "extract_batch", "type": "string"}
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
       ]
     },
     {
@@ -469,7 +530,222 @@
         {"name": "segment", "type": "string"},
         {"name": "payment_terms", "type": "string"},
         {"name": "billing_country", "type": "string"},
-        {"name": "created_date", "type": "date"}
+        {"name": "created_date", "type": "date", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "idp_tenant_export", "layer": "raw",
+      "purpose": "Identity-provider tenant export landed as text with file ids, batch ids, and ingest timestamp.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "tenant_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "active_user_count_text", "type": "string"},
+        {"name": "created_date_text", "type": "string"},
+        {"name": "exported_at_text", "type": "string"},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "idp_tenant", "layer": "staging",
+      "purpose": "Typed IdP tenant staging with guarded date parsing.",
+      "source": "derivation", "primary_key": ["tenant_id"],
+      "columns": [
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "tenant_name", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "region", "type": "string"},
+        {"name": "active_user_count", "type": "integer"},
+        {"name": "created_date", "type": "date", "nullable": true},
+        {"name": "exported_at", "type": "timestamp", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "idp_user_export", "layer": "raw",
+      "purpose": "Identity-provider user export landed as text with file ids, batch ids, and ingest timestamp.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "user_ref", "type": "string"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "email", "type": "string"},
+        {"name": "idp_role", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "mfa_enabled_text", "type": "string"},
+        {"name": "created_at_text", "type": "string"},
+        {"name": "last_login_at_text", "type": "string", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "idp_user", "layer": "staging",
+      "purpose": "Typed IdP user staging with guarded timestamp parsing.",
+      "source": "derivation", "primary_key": ["user_id"],
+      "indexes": [["tenant_id"]],
+      "columns": [
+        {"name": "user_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "email", "type": "string"},
+        {"name": "idp_role", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "mfa_enabled", "type": "boolean"},
+        {"name": "created_at", "type": "timestamp", "nullable": true},
+        {"name": "last_login_at", "type": "timestamp", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "usage_metering_event", "layer": "raw",
+      "purpose": "Raw metering events from product telemetry, including replayed deliveries before staging deduplication.",
+      "source": "derivation", "primary_key": ["raw_event_row_id"],
+      "columns": [
+        {"name": "raw_event_row_id", "type": "integer"},
+        {"name": "event_uid", "type": "string"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "user_ref", "type": "string", "nullable": true},
+        {"name": "feature_ref", "type": "string"},
+        {"name": "event_type", "type": "string"},
+        {"name": "units_text", "type": "string"},
+        {"name": "client", "type": "string"},
+        {"name": "event_at_text", "type": "string"},
+        {"name": "sdk_received_at_text", "type": "string"},
+        {"name": "replay_sequence", "type": "integer"},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "usage_metering_event", "layer": "staging",
+      "purpose": "Deduplicated metering event staging; replayed raw events collapse to the latest ingested event_uid.",
+      "source": "derivation", "primary_key": ["event_uid"],
+      "indexes": [["tenant_id", "event_at"], ["feature_id"]],
+      "columns": [
+        {"name": "event_uid", "type": "string"},
+        {"name": "event_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "user_id", "type": "integer", "nullable": true},
+        {"name": "feature_id", "type": "integer"},
+        {"name": "event_type", "type": "string"},
+        {"name": "units", "type": "integer"},
+        {"name": "client", "type": "string"},
+        {"name": "event_at", "type": "timestamp", "nullable": true},
+        {"name": "sdk_received_at", "type": "timestamp", "nullable": true},
+        {"name": "replay_count", "type": "integer"},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "billing_invoice_extract", "layer": "raw",
+      "purpose": "Billing invoice extract as landed from the billing platform with file/batch lineage and text amounts.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "invoice_ref", "type": "string"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "subscription_ref", "type": "string"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "period_month", "type": "string"},
+        {"name": "invoice_date_text", "type": "string"},
+        {"name": "due_date_text", "type": "string"},
+        {"name": "base_amount_text", "type": "string"},
+        {"name": "overage_units_text", "type": "string"},
+        {"name": "overage_amount_text", "type": "string"},
+        {"name": "credit_amount_text", "type": "string"},
+        {"name": "invoice_total_text", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "billing_invoice", "layer": "staging",
+      "purpose": "Typed billing invoice staging with guarded invoice and due-date parsing.",
+      "source": "derivation", "primary_key": ["invoice_id"],
+      "indexes": [["period_month"], ["tenant_id"]],
+      "columns": [
+        {"name": "invoice_id", "type": "integer"},
+        {"name": "invoice_number", "type": "string"},
+        {"name": "subscription_id", "type": "integer"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "period_month", "type": "string"},
+        {"name": "invoice_date", "type": "date", "nullable": true},
+        {"name": "due_date", "type": "date", "nullable": true},
+        {"name": "base_amount", "type": "decimal"},
+        {"name": "overage_units", "type": "integer"},
+        {"name": "overage_amount", "type": "decimal"},
+        {"name": "credit_amount", "type": "decimal"},
+        {"name": "invoice_total", "type": "decimal"},
+        {"name": "status", "type": "string"},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "support_ticket_export", "layer": "raw",
+      "purpose": "Support ticket export landed as text timestamps with file and batch lineage.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "ticket_ref", "type": "string"},
+        {"name": "ticket_number", "type": "string"},
+        {"name": "tenant_ref", "type": "string"},
+        {"name": "tenant_name_entered", "type": "string"},
+        {"name": "requester_ref", "type": "string", "nullable": true},
+        {"name": "priority", "type": "string"},
+        {"name": "channel", "type": "string"},
+        {"name": "product_area", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "opened_at_text", "type": "string"},
+        {"name": "first_response_at_text", "type": "string", "nullable": true},
+        {"name": "resolved_at_text", "type": "string", "nullable": true},
+        {"name": "closed_at_text", "type": "string", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "support_ticket", "layer": "staging",
+      "purpose": "Typed support ticket staging with guarded timestamp parsing.",
+      "source": "derivation", "primary_key": ["ticket_id"],
+      "indexes": [["opened_at"], ["tenant_id"]],
+      "columns": [
+        {"name": "ticket_id", "type": "integer"},
+        {"name": "ticket_number", "type": "string"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "tenant_name_entered", "type": "string"},
+        {"name": "requester_user_id", "type": "integer", "nullable": true},
+        {"name": "priority", "type": "string"},
+        {"name": "channel", "type": "string"},
+        {"name": "product_area", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "opened_at", "type": "timestamp", "nullable": true},
+        {"name": "first_response_at", "type": "timestamp", "nullable": true},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true},
+        {"name": "closed_at", "type": "timestamp", "nullable": true},
+        {"name": "landing_file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
       ]
     },
     {
@@ -595,6 +871,24 @@
       ]
     },
     {
+      "schema": "wh", "name": "fact_usage_daily", "layer": "warehouse_fact",
+      "purpose": "Daily metered usage fact built from deduplicated staging events.",
+      "grain": "one row per tenant, feature, and event date",
+      "source": "derivation", "primary_key": ["usage_daily_id"],
+      "indexes": [["usage_date"], ["tenant_id"]],
+      "columns": [
+        {"name": "usage_daily_id", "type": "integer"},
+        {"name": "usage_date", "type": "date"},
+        {"name": "period_month", "type": "string"},
+        {"name": "tenant_id", "type": "integer"},
+        {"name": "feature_id", "type": "integer"},
+        {"name": "metered_units", "type": "integer"},
+        {"name": "event_count", "type": "integer"},
+        {"name": "active_users", "type": "integer"},
+        {"name": "replayed_raw_events", "type": "integer"}
+      ]
+    },
+    {
       "schema": "wh", "name": "fact_support_ticket", "layer": "warehouse_fact",
       "purpose": "Accumulating-snapshot ticket fact with SLA targets and breach flags.",
       "grain": "one row per support ticket",
@@ -616,6 +910,74 @@
         {"name": "response_minutes", "type": "integer", "nullable": true},
         {"name": "sla_breached", "type": "boolean"},
         {"name": "resolution_hours", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "mv", "name": "month_end_arr_snapshot", "layer": "mart",
+      "purpose": "Materialized month-end ARR snapshot rebuilt by the cataloged refresh procedure.",
+      "grain": "one row per period month and tenant segment",
+      "source": "derivation", "primary_key": ["snapshot_id"], "scale_exempt": true,
+      "columns": [
+        {"name": "snapshot_id", "type": "integer"},
+        {"name": "period_month", "type": "string"},
+        {"name": "segment", "type": "string"},
+        {"name": "active_subscriptions", "type": "integer"},
+        {"name": "ending_mrr", "type": "decimal"},
+        {"name": "ending_arr", "type": "decimal"},
+        {"name": "new_expansion_mrr", "type": "decimal"},
+        {"name": "contraction_churn_mrr", "type": "decimal"},
+        {"name": "refreshed_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "mapping_request_case", "layer": "workflow",
+      "purpose": "Revenue-operations workflow cases opened for invoice SKUs that lack an active finance mapping.",
+      "source": "derivation", "primary_key": ["case_id"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string"},
+        {"name": "source_sku_code", "type": "string"},
+        {"name": "period_month", "type": "string"},
+        {"name": "unmapped_line_count", "type": "integer"},
+        {"name": "unmapped_amount", "type": "decimal"},
+        {"name": "status", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "assigned_queue", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "due_at", "type": "timestamp"},
+        {"name": "resolution_code", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed views plus stored procedure, function, and extract definitions used by the data platform.",
+      "source": "derivation", "primary_key": ["code_object_id"], "scale_exempt": true,
+      "columns": [
+        {"name": "code_object_id", "type": "integer"},
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "text"},
+        {"name": "owner_team", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "deployment_status", "type": "string"},
+        {"name": "notes", "type": "string"}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Dataset and code lineage edges for the warehouse/view stack, jobs, and outbound extracts.",
+      "source": "derivation", "primary_key": ["lineage_edge_id"], "scale_exempt": true,
+      "columns": [
+        {"name": "lineage_edge_id", "type": "integer"},
+        {"name": "upstream_object", "type": "string"},
+        {"name": "downstream_object", "type": "string"},
+        {"name": "code_object_name", "type": "string"},
+        {"name": "edge_type", "type": "string"},
+        {"name": "transform_summary", "type": "string"},
+        {"name": "confidence_score", "type": "decimal"},
+        {"name": "created_at", "type": "timestamp"}
       ]
     }
   ],
@@ -678,7 +1040,9 @@
       "sql": [
         "insert into raw.billing_account_extract",
         "select cast(account_id as text), account_code, cast(tenant_id as text), account_name, segment,",
-        "       payment_terms, billing_country, strftime('%m/%d/%Y', created_at), 'BATCH-NIGHTLY-BILLING'",
+        "       payment_terms, billing_country, strftime('%m/%d/%Y', created_at),",
+        "       'billing_account_20251231.csv', 'BILL-ACCT-20251231',",
+        "       min(datetime(created_at, '+' || (account_id % 18 + 6) || ' hours'), '2025-12-31 23:59:59')",
         "from bill.customer_account;"
       ]
     },
@@ -688,10 +1052,111 @@
         "insert into stg.billing_account",
         "select cast(account_id as integer), account_code, cast(tenant_ref as integer), trim(account_name),",
         "       lower(segment), payment_terms, billing_country,",
-        "       case when source_created_date like '__/__/____'",
+        "       case when source_created_date glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
         "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
-        "            else null end",
+        "            else null end,",
+        "       landing_file_id, batch_id, ingested_at",
         "from raw.billing_account_extract;"
+      ]
+    },
+    {
+      "name": "raw_idp_tenant_export",
+      "sql": [
+        "insert into raw.idp_tenant_export",
+        "select row_number() over (order by t.tenant_id), cast(t.tenant_id as text), t.tenant_name, t.segment, t.region,",
+        "       cast(sum(case when u.status = 'active' then 1 else 0 end) as text),",
+        "       strftime('%m/%d/%Y', t.created_at), '12/31/2025 02:00:00',",
+        "       'idp_tenant_20251231.csv', 'IDP-TENANT-20251231', '2025-12-31 02:15:00'",
+        "from app.tenant t left join idp.user u on u.tenant_id = t.tenant_id",
+        "group by t.tenant_id, t.tenant_name, t.segment, t.region, t.created_at;"
+      ]
+    },
+    {
+      "name": "stg_idp_tenant",
+      "sql": [
+        "insert into stg.idp_tenant",
+        "select cast(tenant_ref as integer), trim(tenant_name), lower(segment), lower(region),",
+        "       cast(active_user_count_text as integer),",
+        "       case when created_date_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
+        "            then substr(created_date_text,7,4) || '-' || substr(created_date_text,1,2) || '-' || substr(created_date_text,4,2) end,",
+        "       case when exported_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(exported_at_text,7,4) || '-' || substr(exported_at_text,1,2) || '-' || substr(exported_at_text,4,2) || substr(exported_at_text,11) end,",
+        "       landing_file_id, batch_id, ingested_at",
+        "from raw.idp_tenant_export;"
+      ]
+    },
+    {
+      "name": "raw_idp_user_export",
+      "sql": [
+        "insert into raw.idp_user_export",
+        "select row_number() over (order by u.user_id), cast(u.user_id as text), cast(u.tenant_id as text),",
+        "       u.email, u.idp_role, u.status, cast(u.mfa_enabled as text),",
+        "       strftime('%m/%d/%Y %H:%M:%S', u.created_at),",
+        "       case when u.last_login_at is not null then strftime('%m/%d/%Y %H:%M:%S', u.last_login_at) end,",
+        "       'idp_user_' || strftime('%Y%m%d', u.created_at) || '.csv',",
+        "       'IDP-USER-' || strftime('%Y%m%d', u.created_at),",
+        "       min(datetime(u.created_at, '+' || (u.user_id % 24 + 1) || ' hours'), '2025-12-31 23:59:59')",
+        "from idp.user u;"
+      ]
+    },
+    {
+      "name": "stg_idp_user",
+      "sql": [
+        "insert into stg.idp_user",
+        "select cast(user_ref as integer), cast(tenant_ref as integer), lower(trim(email)), idp_role, status,",
+        "       case when mfa_enabled_text in ('1', 'true', 'True') then 1 else 0 end,",
+        "       case when created_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(created_at_text,7,4) || '-' || substr(created_at_text,1,2) || '-' || substr(created_at_text,4,2) || substr(created_at_text,11) end,",
+        "       case when last_login_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(last_login_at_text,7,4) || '-' || substr(last_login_at_text,1,2) || '-' || substr(last_login_at_text,4,2) || substr(last_login_at_text,11) end,",
+        "       landing_file_id, batch_id, ingested_at",
+        "from raw.idp_user_export;"
+      ]
+    },
+    {
+      "name": "raw_usage_metering_event",
+      "_note": "Adds deterministic replay deliveries for about 1% of usage events; staging keeps the latest raw row per event_uid.",
+      "sql": [
+        "insert into raw.usage_metering_event",
+        "select e.event_id, 'uev-' || printf('%09d', e.event_id), cast(e.tenant_id as text), coalesce(cast(e.user_id as text), ''),",
+        "       cast(e.feature_id as text), e.event_type, cast(e.units as text), e.client,",
+        "       strftime('%m/%d/%Y %H:%M:%S', e.event_at),",
+        "       strftime('%m/%d/%Y %H:%M:%S', datetime(e.event_at, '+' || (e.event_id % 90 + 1) || ' minutes')),",
+        "       0, 'metering_' || strftime('%Y%m%d', e.event_at) || '.jsonl',",
+        "       'MTR-' || strftime('%Y%m%d', e.event_at),",
+        "       min(datetime(e.event_at, '+' || (e.event_id % 24 + 1) || ' hours'), '2025-12-31 23:59:59')",
+        "from app.usage_event e",
+        "union all",
+        "select 900000000 + e.event_id, 'uev-' || printf('%09d', e.event_id), cast(e.tenant_id as text), coalesce(cast(e.user_id as text), ''),",
+        "       cast(e.feature_id as text), e.event_type, cast(e.units as text), e.client,",
+        "       strftime('%m/%d/%Y %H:%M:%S', e.event_at),",
+        "       strftime('%m/%d/%Y %H:%M:%S', datetime(e.event_at, '+2 days', '+' || (e.event_id % 45 + 5) || ' minutes')),",
+        "       1, 'metering_replay_' || strftime('%Y%m%d', e.event_at) || '.jsonl',",
+        "       'MTR-REPLAY-' || strftime('%Y%m%d', e.event_at),",
+        "       min(datetime(e.event_at, '+2 days', '+' || (e.event_id % 12 + 1) || ' hours'), '2025-12-31 23:59:59')",
+        "from app.usage_event e",
+        "where e.event_id % 97 = 0;"
+      ]
+    },
+    {
+      "name": "stg_usage_metering_event",
+      "sql": [
+        "insert into stg.usage_metering_event",
+        "with ranked as (",
+        "  select r.*,",
+        "         row_number() over (partition by event_uid order by ingested_at desc, raw_event_row_id desc) as rn,",
+        "         count(*) over (partition by event_uid) as replay_count",
+        "  from raw.usage_metering_event r",
+        ")",
+        "select event_uid, cast(substr(event_uid, 5) as integer), cast(tenant_ref as integer),",
+        "       case when user_ref = '' then null else cast(user_ref as integer) end,",
+        "       cast(feature_ref as integer), event_type, cast(units_text as integer), client,",
+        "       case when event_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(event_at_text,7,4) || '-' || substr(event_at_text,1,2) || '-' || substr(event_at_text,4,2) || substr(event_at_text,11) end,",
+        "       case when sdk_received_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(sdk_received_at_text,7,4) || '-' || substr(sdk_received_at_text,1,2) || '-' || substr(sdk_received_at_text,4,2) || substr(sdk_received_at_text,11) end,",
+        "       replay_count, landing_file_id, batch_id, ingested_at",
+        "from ranked where rn = 1;"
       ]
     },
     {
@@ -736,8 +1201,9 @@
         "insert into bill.meter_reading",
         "select row_number() over (order by e.tenant_id, strftime('%Y-%m', e.event_at)),",
         "       e.tenant_id, strftime('%Y-%m', e.event_at), sum(e.units), count(*)",
-        "from app.usage_event e",
+        "from stg.usage_metering_event e",
         "join app.feature f on f.feature_id = e.feature_id and f.is_metered = 1",
+        "where e.event_at is not null",
         "group by e.tenant_id, strftime('%Y-%m', e.event_at);"
       ]
     },
@@ -803,6 +1269,35 @@
         "         else 'open'",
         "       end",
         "from amounts a;"
+      ]
+    },
+    {
+      "name": "raw_billing_invoice_extract",
+      "sql": [
+        "insert into raw.billing_invoice_extract",
+        "select row_number() over (order by i.invoice_id), cast(i.invoice_id as text), i.invoice_number,",
+        "       cast(i.subscription_id as text), cast(i.tenant_id as text), i.period_month,",
+        "       strftime('%m/%d/%Y', i.invoice_date), strftime('%m/%d/%Y', i.due_date),",
+        "       printf('%.2f', i.base_amount), cast(i.overage_units as text), printf('%.2f', i.overage_amount),",
+        "       printf('%.2f', i.credit_amount), printf('%.2f', i.invoice_total), i.status,",
+        "       'billing_invoice_' || replace(i.period_month, '-', '') || '.csv',",
+        "       'BILL-INV-' || replace(i.period_month, '-', ''),",
+        "       min(datetime(i.invoice_date, '+12 hours'), '2025-12-31 23:59:59')",
+        "from bill.invoice i;"
+      ]
+    },
+    {
+      "name": "stg_billing_invoice",
+      "sql": [
+        "insert into stg.billing_invoice",
+        "select cast(invoice_ref as integer), invoice_number, cast(subscription_ref as integer), cast(tenant_ref as integer), period_month,",
+        "       case when invoice_date_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
+        "            then substr(invoice_date_text,7,4) || '-' || substr(invoice_date_text,1,2) || '-' || substr(invoice_date_text,4,2) end,",
+        "       case when due_date_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
+        "            then substr(due_date_text,7,4) || '-' || substr(due_date_text,1,2) || '-' || substr(due_date_text,4,2) end,",
+        "       cast(base_amount_text as real), cast(overage_units_text as integer), cast(overage_amount_text as real),",
+        "       cast(credit_amount_text as real), cast(invoice_total_text as real), status, landing_file_id, batch_id, ingested_at",
+        "from raw.billing_invoice_extract;"
       ]
     },
     {
@@ -872,6 +1367,41 @@
         "  on (f.min_plan_rank <= p.plan_rank",
         "      or (f.min_plan_rank = p.plan_rank + 1 and (s.subscription_id + f.feature_id) % 23 = 0))",
         "where s.status in ('trialing', 'active', 'recovered', 'past_due', 'in_dunning');"
+      ]
+    },
+    {
+      "name": "raw_support_ticket_export",
+      "sql": [
+        "insert into raw.support_ticket_export",
+        "select row_number() over (order by t.ticket_id), cast(t.ticket_id as text), t.ticket_number, cast(t.tenant_id as text),",
+        "       t.tenant_name_entered, coalesce(cast(t.requester_user_id as text), ''), t.priority, t.channel, t.product_area, t.status,",
+        "       strftime('%m/%d/%Y %H:%M:%S', t.opened_at),",
+        "       case when t.first_response_at is not null then strftime('%m/%d/%Y %H:%M:%S', t.first_response_at) end,",
+        "       case when t.resolved_at is not null then strftime('%m/%d/%Y %H:%M:%S', t.resolved_at) end,",
+        "       case when t.closed_at is not null then strftime('%m/%d/%Y %H:%M:%S', t.closed_at) end,",
+        "       'support_ticket_' || strftime('%Y%m%d', t.opened_at) || '.csv',",
+        "       'SUP-TKT-' || strftime('%Y%m%d', t.opened_at),",
+        "       min(datetime(coalesce(t.closed_at, t.resolved_at, t.opened_at), '+3 hours'), '2025-12-31 23:59:59')",
+        "from sup.ticket t;"
+      ]
+    },
+    {
+      "name": "stg_support_ticket",
+      "sql": [
+        "insert into stg.support_ticket",
+        "select cast(ticket_ref as integer), ticket_number, cast(tenant_ref as integer), trim(tenant_name_entered),",
+        "       case when requester_ref = '' then null else cast(requester_ref as integer) end,",
+        "       priority, channel, product_area, status,",
+        "       case when opened_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(opened_at_text,7,4) || '-' || substr(opened_at_text,1,2) || '-' || substr(opened_at_text,4,2) || substr(opened_at_text,11) end,",
+        "       case when first_response_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(first_response_at_text,7,4) || '-' || substr(first_response_at_text,1,2) || '-' || substr(first_response_at_text,4,2) || substr(first_response_at_text,11) end,",
+        "       case when resolved_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(resolved_at_text,7,4) || '-' || substr(resolved_at_text,1,2) || '-' || substr(resolved_at_text,4,2) || substr(resolved_at_text,11) end,",
+        "       case when closed_at_text glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]'",
+        "            then substr(closed_at_text,7,4) || '-' || substr(closed_at_text,1,2) || '-' || substr(closed_at_text,4,2) || substr(closed_at_text,11) end,",
+        "       landing_file_id, batch_id, ingested_at",
+        "from raw.support_ticket_export;"
       ]
     },
     {
@@ -955,10 +1485,23 @@
       ]
     },
     {
+      "name": "wh_fact_usage_daily",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into wh.fact_usage_daily",
+        "select row_number() over (order by date(event_at), tenant_id, feature_id),",
+        "       date(event_at), strftime('%Y-%m', event_at), tenant_id, feature_id,",
+        "       sum(units), count(*), count(distinct user_id), sum(replay_count - 1)",
+        "from stg.usage_metering_event",
+        "where event_at is not null",
+        "group by date(event_at), strftime('%Y-%m', event_at), tenant_id, feature_id;"
+      ]
+    },
+    {
       "name": "wh_fact_support_ticket",
       "sql": [
         "insert into wh.fact_support_ticket",
-        "select t.ticket_id, t.tenant_id, t.segment, t.priority, t.channel, t.product_area,",
+        "select t.ticket_id, t.tenant_id, a.segment, t.priority, t.channel, t.product_area,",
         "       t.opened_at, t.first_response_at, t.resolved_at, t.closed_at, t.status,",
         "       case t.priority when 'urgent' then 60 when 'high' then 240 when 'normal' then 480 else 1440 end,",
         "       case when t.first_response_at is not null",
@@ -969,30 +1512,168 @@
         "            then 1 else 0 end,",
         "       case when t.resolved_at is not null",
         "            then round((julianday(t.resolved_at) - julianday(t.opened_at)) * 24.0, 1) end",
-        "from sup.ticket t;"
+        "from stg.support_ticket t",
+        "join app.tenant a on a.tenant_id = t.tenant_id;"
+      ]
+    },
+    {
+      "name": "nv_subscription_month",
+      "sql": [
+        "create view nv_subscription_month as",
+        "select f.subscription_month_id, f.period_month, d.year_num, d.month_num,",
+        "       f.subscription_id, f.tenant_id, t.tenant_name, t.segment, t.region, t.lifecycle_status,",
+        "       p.plan_key, p.plan_code, p.plan_name, p.segment_target, f.seats, f.mrr_amount,",
+        "       f.overage_amount, f.invoice_status",
+        "from wh.fact_subscription_month f",
+        "join wh.dim_tenant t on t.tenant_key = f.tenant_id",
+        "join wh.dim_plan p on p.plan_code = f.plan_code",
+        "left join wh.dim_date d on d.date_key = f.period_month || '-01';"
+      ]
+    },
+    {
+      "name": "nv_invoice_line",
+      "sql": [
+        "create view nv_invoice_line as",
+        "select f.invoice_line_id, f.invoice_id, i.invoice_number, f.period_month, f.invoice_date,",
+        "       d.year_num, d.month_num, f.tenant_id, t.tenant_name, t.segment, t.region,",
+        "       i.subscription_id, s.plan_id, p.plan_code, p.plan_name,",
+        "       case when f.item_type = 'subscription_fee' then p.plan_code",
+        "            when f.item_type = 'usage_overage' then 'USAGE_OVERAGE'",
+        "            when f.item_type = 'service_credit' then 'SERVICE_CREDIT' else upper(f.item_type) end as source_sku_code,",
+        "       f.item_type, f.quantity, f.unit_price, f.line_amount, f.invoice_status",
+        "from wh.fact_invoice_line f",
+        "join bill.invoice i on i.invoice_id = f.invoice_id",
+        "join bill.subscription s on s.subscription_id = i.subscription_id",
+        "join wh.dim_plan p on p.plan_key = s.plan_id",
+        "join wh.dim_tenant t on t.tenant_key = f.tenant_id",
+        "left join wh.dim_date d on d.date_key = f.invoice_date;"
+      ]
+    },
+    {
+      "name": "nv_usage_daily",
+      "sql": [
+        "create view nv_usage_daily as",
+        "select f.usage_daily_id, f.usage_date, f.period_month, d.year_num, d.month_num,",
+        "       f.tenant_id, t.tenant_name, t.segment, t.region, f.feature_id, fe.feature_code,",
+        "       fe.feature_name, fe.product_area, f.metered_units, f.event_count, f.active_users,",
+        "       f.replayed_raw_events",
+        "from wh.fact_usage_daily f",
+        "join wh.dim_tenant t on t.tenant_key = f.tenant_id",
+        "left join wh.dim_feature fe on fe.feature_key = f.feature_id",
+        "left join wh.dim_date d on d.date_key = f.usage_date;"
+      ]
+    },
+    {
+      "name": "bv_mrr_movements",
+      "sql": [
+        "create view bv_mrr_movements as",
+        "with monthly as (",
+        "  select period_month, segment, count(distinct subscription_id) as active_subscriptions,",
+        "         round(sum(mrr_amount), 2) as ending_mrr, round(sum(overage_amount), 2) as overage_billed",
+        "  from nv_subscription_month group by period_month, segment",
+        "), moved as (",
+        "  select monthly.*, lag(ending_mrr) over (partition by segment order by period_month) as opening_mrr",
+        "  from monthly",
+        ")",
+        "select period_month, segment, active_subscriptions, coalesce(opening_mrr, 0) as opening_mrr,",
+        "       ending_mrr, round(ending_mrr * 12, 2) as ending_arr,",
+        "       case when opening_mrr is null then ending_mrr when ending_mrr > opening_mrr then round(ending_mrr - opening_mrr, 2) else 0 end as new_expansion_mrr,",
+        "       case when opening_mrr is not null and ending_mrr < opening_mrr then round(opening_mrr - ending_mrr, 2) else 0 end as contraction_churn_mrr,",
+        "       round(ending_mrr - coalesce(opening_mrr, 0), 2) as net_mrr_movement, overage_billed",
+        "from moved;"
+      ]
+    },
+    {
+      "name": "bv_usage_by_tenant",
+      "sql": [
+        "create view bv_usage_by_tenant as",
+        "select u.period_month, u.tenant_id, u.tenant_name, u.segment, u.region,",
+        "       sum(u.metered_units) as metered_units, sum(u.event_count) as event_count,",
+        "       max(u.active_users) as active_users, sum(u.replayed_raw_events) as replayed_raw_events,",
+        "       count(distinct u.feature_id) as metered_features_used,",
+        "       coalesce(max(s.mrr_amount), 0) as subscription_mrr",
+        "from nv_usage_daily u",
+        "left join nv_subscription_month s on s.tenant_id = u.tenant_id and s.period_month = u.period_month",
+        "group by u.period_month, u.tenant_id, u.tenant_name, u.segment, u.region;"
+      ]
+    },
+    {
+      "name": "bv_trial_funnel",
+      "sql": [
+        "create view bv_trial_funnel as",
+        "select strftime('%Y-%m', s.started_at) as trial_month, t.segment, t.signup_channel,",
+        "       count(*) as trials_started,",
+        "       sum(case when s.activated_at is not null then 1 else 0 end) as trials_converted,",
+        "       sum(case when s.status = 'expired_trial' then 1 else 0 end) as trials_expired,",
+        "       round(1.0 * sum(case when s.activated_at is not null then 1 else 0 end) / count(*), 3) as conversion_rate,",
+        "       round(avg(case when s.activated_at is not null then julianday(s.activated_at) - julianday(s.started_at) end), 1) as avg_days_to_convert",
+        "from bill.subscription s join app.tenant t on t.tenant_id = s.tenant_id",
+        "group by strftime('%Y-%m', s.started_at), t.segment, t.signup_channel;"
+      ]
+    },
+    {
+      "name": "mv_month_end_arr_snapshot",
+      "expect": {"at_least_rows": 20},
+      "sql": [
+        "insert into mv.month_end_arr_snapshot",
+        "select row_number() over (order by period_month, segment), period_month, segment, active_subscriptions,",
+        "       ending_mrr, ending_arr, new_expansion_mrr, contraction_churn_mrr, '2025-12-31 04:00:00'",
+        "from bv_mrr_movements;"
+      ]
+    },
+    {
+      "name": "mart_finance_arr_monthly",
+      "_note": "Finance applies the manual SKU revenue-line mapping; customer-success intentionally does not, creating the controlled ARR discrepancy.",
+      "sql": [
+        "create view mart_finance_arr_monthly as",
+        "with active_mapping as (",
+        "  select * from (",
+        "    select m.*, row_number() over (partition by source_sku_code order by approved_flag desc, current_flag desc, mapping_priority desc, effective_start_date desc, mapping_id desc) as rn",
+        "    from manual.sku_revenue_line_mapping m",
+        "    where approved_flag = 1 and current_flag = 1",
+        "  ) where rn = 1",
+        ")",
+        "select n.period_month, n.segment, coalesce(m.finance_revenue_line, 'UNMAPPED') as finance_revenue_line,",
+        "       round(sum(case when m.arr_treatment in ('recurring', 'metered') then n.line_amount * 12 else 0 end), 2) as finance_arr,",
+        "       round(sum(n.line_amount), 2) as invoice_line_amount,",
+        "       sum(case when m.source_sku_code is null then 1 else 0 end) as unmapped_line_count",
+        "from nv_invoice_line n",
+        "left join active_mapping m on m.source_sku_code = n.source_sku_code",
+        " and n.invoice_date between m.effective_start_date and coalesce(m.effective_end_date, '9999-12-31')",
+        "group by n.period_month, n.segment, coalesce(m.finance_revenue_line, 'UNMAPPED');"
+      ]
+    },
+    {
+      "name": "mart_customersuccess_arr_monthly",
+      "sql": [
+        "create view mart_customersuccess_arr_monthly as",
+        "select m.period_month, m.segment, m.active_subscriptions, m.ending_arr as customer_success_arr,",
+        "       coalesce(u.active_tenants, 0) as active_usage_tenants, coalesce(u.metered_units, 0) as metered_units,",
+        "       case when m.contraction_churn_mrr > 0 then 'watch' when coalesce(u.metered_units, 0) = 0 then 'low_usage' else 'healthy' end as cs_arr_status",
+        "from mv.month_end_arr_snapshot m",
+        "left join (",
+        "  select period_month, segment, count(distinct tenant_id) as active_tenants, sum(metered_units) as metered_units",
+        "  from bv_usage_by_tenant group by period_month, segment",
+        ") u on u.period_month = m.period_month and u.segment = m.segment;"
       ]
     },
     {
       "name": "mart_mrr_monthly",
       "sql": [
         "create view mart_mrr_monthly as",
-        "select period_month, segment, count(*) as subscriptions,",
-        "       round(sum(mrr_amount), 2) as mrr,",
-        "       round(sum(overage_amount), 2) as overage_billed,",
-        "       round(sum(mrr_amount) / count(*), 2) as arpa",
-        "from wh.fact_subscription_month",
-        "group by period_month, segment;"
+        "select period_month, segment, active_subscriptions as subscriptions, ending_mrr as mrr,",
+        "       overage_billed, round(ending_mrr / active_subscriptions, 2) as arpa",
+        "from bv_mrr_movements;"
       ]
     },
     {
       "name": "mart_feature_adoption_monthly",
       "sql": [
         "create view mart_feature_adoption_monthly as",
-        "select strftime('%Y-%m', e.event_at) as period_month, f.product_area, f.feature_name,",
-        "       count(*) as events, sum(e.units) as units, count(distinct e.tenant_id) as active_tenants",
-        "from app.usage_event e",
-        "join app.feature f on f.feature_id = e.feature_id",
-        "group by 1, 2, 3;"
+        "select period_month, product_area, feature_name, sum(event_count) as events,",
+        "       sum(metered_units) as units, count(distinct tenant_id) as active_tenants",
+        "from nv_usage_daily",
+        "group by period_month, product_area, feature_name;"
       ]
     },
     {
@@ -1018,10 +1699,65 @@
         "       u.provisioned_users, u.provisioned_users - s.seats as seat_gap",
         "from bill.subscription s",
         "join app.tenant t on t.tenant_id = s.tenant_id",
-        "join (select tenant_id, count(*) as provisioned_users from idp.user",
+        "join (select tenant_id, count(*) as provisioned_users from stg.idp_user",
         "      where status = 'active' group by tenant_id) u on u.tenant_id = s.tenant_id",
         "where s.status in ('active', 'recovered', 'past_due', 'in_dunning')",
         "  and abs(u.provisioned_users - s.seats) > max(2, round(s.seats * 0.05));"
+      ]
+    },
+    {
+      "name": "control_recon_arr_finance_vs_cs",
+      "sql": [
+        "create view control_recon_arr_finance_vs_cs as",
+        "with finance as (",
+        "  select period_month, segment, round(sum(finance_arr), 2) as finance_arr, sum(unmapped_line_count) as unmapped_line_count",
+        "  from mart_finance_arr_monthly group by period_month, segment",
+        "), cs as (",
+        "  select period_month, segment, customer_success_arr from mart_customersuccess_arr_monthly",
+        ")",
+        "select coalesce(f.period_month, cs.period_month) as period_month, coalesce(f.segment, cs.segment) as segment,",
+        "       coalesce(f.finance_arr, 0) as finance_arr, coalesce(cs.customer_success_arr, 0) as customer_success_arr,",
+        "       round(coalesce(f.finance_arr, 0) - coalesce(cs.customer_success_arr, 0), 2) as arr_variance,",
+        "       coalesce(f.unmapped_line_count, 0) as unmapped_line_count",
+        "from finance f join cs on cs.period_month = f.period_month and cs.segment = f.segment",
+        "where abs(coalesce(f.finance_arr, 0) - coalesce(cs.customer_success_arr, 0)) > 1",
+        "   or coalesce(f.unmapped_line_count, 0) > 0;"
+      ]
+    },
+    {
+      "name": "control_recon_metered_billing",
+      "sql": [
+        "create view control_recon_metered_billing as",
+        "with staged as (",
+        "  select tenant_id, strftime('%Y-%m', event_at) as period_month, sum(units) as staged_units, sum(replay_count - 1) as replayed_event_rows",
+        "  from stg.usage_metering_event where event_at is not null group by tenant_id, period_month",
+        "), rated as (",
+        "  select tenant_id, period_month, sum(metered_units) as rated_units from bill.meter_reading group by tenant_id, period_month",
+        ")",
+        "select s.tenant_id, s.period_month, s.staged_units, coalesce(r.rated_units, 0) as rated_units,",
+        "       s.staged_units - coalesce(r.rated_units, 0) as unit_variance, s.replayed_event_rows",
+        "from staged s left join rated r on r.tenant_id = s.tenant_id and r.period_month = s.period_month",
+        "where abs(s.staged_units - coalesce(r.rated_units, 0)) > 0 or s.replayed_event_rows > 0;"
+      ]
+    },
+    {
+      "name": "workflow_mapping_request_case",
+      "sql": [
+        "insert into workflow.mapping_request_case",
+        "with active_mapping as (",
+        "  select source_sku_code from manual.sku_revenue_line_mapping",
+        "  where approved_flag = 1 and current_flag = 1",
+        "), unmapped as (",
+        "  select n.source_sku_code, n.period_month, count(*) as line_count, round(sum(n.line_amount), 2) as amount",
+        "  from nv_invoice_line n",
+        "  where not exists (select 1 from active_mapping m where m.source_sku_code = n.source_sku_code)",
+        "  group by n.source_sku_code, n.period_month",
+        ")",
+        "select row_number() over (order by source_sku_code, period_month), 'SKU-MAP-' || printf('%05d', row_number() over (order by source_sku_code, period_month)),",
+        "       source_sku_code, period_month, line_count, amount, 'open',",
+        "       case when abs(amount) > 10000 then 'high' else 'normal' end, 'revenue_ops_mapping',",
+        "       period_month || '-05 09:00:00', period_month || '-08 17:00:00', null",
+        "from unmapped;"
       ]
     },
     {
@@ -1042,8 +1778,8 @@
         "                  where x.source_system = 'LedgerPilot Billing'",
         "                    and x.canonical_entity_id = t.tenant_id and x.active_flag = 1)",
         "union all",
-        "select 'DQ-004', 'unparseable raw billing extract date', account_id",
-        "from raw.billing_account_extract where source_created_date not like '__/__/____'",
+        "select 'DQ-004', 'unparseable raw billing account extract date', account_id",
+        "from raw.billing_account_extract where source_created_date not glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
         "union all",
         "select 'DQ-005', 'duplicate webhook delivery', event_uid",
         "from integration.webhook_event group by event_uid having count(*) > 1",
@@ -1070,7 +1806,77 @@
         "select 'DQ-011', 'comped subscription billed at full rate', cast(s.subscription_id as text)",
         "from bill.subscription s",
         "where s.comp_flag = 1",
-        "  and exists (select 1 from bill.invoice i where i.subscription_id = s.subscription_id and i.base_amount > 0);"
+        "  and exists (select 1 from bill.invoice i where i.subscription_id = s.subscription_id and i.base_amount > 0)",
+        "union all",
+        "select 'DQ-012', 'invoice line source SKU missing finance revenue mapping', source_sku_code || ':' || period_month",
+        "from nv_invoice_line n",
+        "where not exists (select 1 from manual.sku_revenue_line_mapping m",
+        "                  where m.source_sku_code = n.source_sku_code and m.approved_flag = 1 and m.current_flag = 1)",
+        "group by source_sku_code, period_month",
+        "union all",
+        "select 'DQ-013', 'replayed metering event deduped in staging', event_uid",
+        "from raw.usage_metering_event group by event_uid having count(*) > 1",
+        "union all",
+        "select 'DQ-014', 'unparseable billing invoice extract date', invoice_ref",
+        "from raw.billing_invoice_extract where invoice_date_text not glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'",
+        "   or due_date_text not glob '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]';"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Views self-register from sqlite_master, then stored procedure/function/extract definitions are cataloged as source text.",
+      "sql": [
+        "insert into catalog.code_object",
+        "select row_number() over (order by name), name, 'view', 'sqlite', sql, 'data_platform',",
+        "       '2025-01-10 09:00:00', '2025-12-05 16:30:00', 'deployed', 'self-registered from sqlite_master'",
+        "from sqlite_master",
+        "where type = 'view' and name not like 'sqlite_%';",
+        "insert into catalog.code_object",
+        "select 9001, 'sp_rate_monthly_metered_billing', 'procedure', 'sql',",
+        "       'create procedure sp_rate_monthly_metered_billing(p_period_month text) as insert into bill.meter_reading select row_number() over (order by tenant_id), tenant_id, p_period_month, sum(units), count(*) from stg.usage_metering_event where strftime(''%Y-%m'', event_at) = p_period_month group by tenant_id;',",
+        "       'billing_ops', '2025-02-01 10:00:00', '2025-12-02 18:20:00', 'deployed', 'Monthly metered-billing rating routine stored as catalog source text';",
+        "insert into catalog.code_object",
+        "select 9002, 'sp_rebuild_mv_month_end_arr_snapshot', 'procedure', 'sql',",
+        "       'create procedure sp_rebuild_mv_month_end_arr_snapshot() as delete from mv.month_end_arr_snapshot; insert into mv.month_end_arr_snapshot select row_number() over (order by period_month, segment), period_month, segment, active_subscriptions, ending_mrr, ending_arr, new_expansion_mrr, contraction_churn_mrr, refreshed_at from bv_mrr_movements;',",
+        "       'data_platform', '2025-02-01 10:30:00', '2025-12-03 04:10:00', 'deployed', 'Modeled materialized-view rebuild for SQLite target';",
+        "insert into catalog.code_object",
+        "select 9003, 'fn_prorated_amount', 'function', 'sql',",
+        "       'create function fn_prorated_amount(monthly_amount numeric, active_days integer, days_in_period integer) returns numeric as select round(monthly_amount * active_days / nullif(days_in_period,0), 2);',",
+        "       'revenue_accounting', '2025-02-03 13:00:00', '2025-09-18 11:25:00', 'deployed', 'Used by target-platform invoice proration procedure';",
+        "insert into catalog.code_object",
+        "select 9004, 'fn_fiscal_period', 'function', 'sql',",
+        "       'create function fn_fiscal_period(calendar_date date) returns text as select strftime(''%Y'', calendar_date) || ''-P'' || printf(''%02d'', cast(strftime(''%m'', calendar_date) as integer));',",
+        "       'finance_analytics', '2025-02-03 13:05:00', '2025-10-01 09:45:00', 'deployed', 'Fiscal-period helper used in board reporting extracts';",
+        "insert into catalog.code_object",
+        "select 9005, 'extract_board_pack_arr_monthly', 'extract', 'sql',",
+        "       'select period_month, segment, sum(finance_arr) as finance_arr from mart_finance_arr_monthly group by period_month, segment order by period_month, segment;',",
+        "       'finance_analytics', '2025-03-01 08:00:00', '2025-12-04 07:15:00', 'deployed', 'CSV extract for monthly board-pack ARR pages';",
+        "insert into catalog.code_object",
+        "select 9006, 'extract_dunning_retry_queue', 'extract', 'sql',",
+        "       'select dunning_attempt_id, subscription_id, tenant_id, attempted_at, attempt_result from bill.dunning_attempt where attempt_result in (''failed'', ''final_notice'') order by attempted_at;',",
+        "       'billing_ops', '2025-03-01 08:20:00', '2025-12-04 06:30:00', 'deployed', 'Daily dunning extract sent to billing operations';",
+        "insert into catalog.code_object",
+        "select 9007, 'wf_open_sku_mapping_requests', 'workflow', 'sql',",
+        "       'insert into workflow.mapping_request_case select * from workflow.mapping_request_case where status = ''open'';',",
+        "       'revenue_operations', '2025-05-12 15:00:00', '2025-11-05 15:45:00', 'deployed', 'Workflow code object documenting SKU mapping exception case creation';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "sql": [
+        "insert into catalog.lineage_edge",
+        "select 1, 'raw.usage_metering_event', 'stg.usage_metering_event', 'stg_usage_metering_event', 'deduplicate', 'latest ingested event_uid wins for replayed metering events', 0.98, '2025-12-31 04:15:00' union all",
+        "select 2, 'stg.usage_metering_event', 'bill.meter_reading', 'sp_rate_monthly_metered_billing', 'aggregate', 'monthly metered-unit rating by tenant and period', 0.97, '2025-12-31 04:15:00' union all",
+        "select 3, 'bill.invoice_line', 'wh.fact_invoice_line', 'wh_fact_invoice_line', 'load_fact', 'invoice line warehouse fact', 0.99, '2025-12-31 04:15:00' union all",
+        "select 4, 'wh.fact_invoice_line', 'nv_invoice_line', 'nv_invoice_line', 'view_join', 'invoice fact rejoined to tenant, plan, and date dimensions', 0.99, '2025-12-31 04:15:00' union all",
+        "select 5, 'wh.fact_subscription_month', 'nv_subscription_month', 'nv_subscription_month', 'view_join', 'subscription month fact rejoined to tenant, plan, and date dimensions', 0.99, '2025-12-31 04:15:00' union all",
+        "select 6, 'wh.fact_usage_daily', 'nv_usage_daily', 'nv_usage_daily', 'view_join', 'usage fact rejoined to tenant, feature, and date dimensions', 0.98, '2025-12-31 04:15:00' union all",
+        "select 7, 'nv_subscription_month', 'bv_mrr_movements', 'bv_mrr_movements', 'metric_logic', 'monthly MRR roll-forward and ARR movement calculations', 0.96, '2025-12-31 04:15:00' union all",
+        "select 8, 'bv_mrr_movements', 'mv.month_end_arr_snapshot', 'sp_rebuild_mv_month_end_arr_snapshot', 'materialize', 'month-end ARR snapshot refresh', 0.95, '2025-12-31 04:15:00' union all",
+        "select 9, 'manual.sku_revenue_line_mapping', 'mart_finance_arr_monthly', 'mart_finance_arr_monthly', 'manual_mapping', 'finance applies audited SKU-to-revenue-line mapping', 0.92, '2025-12-31 04:15:00' union all",
+        "select 10, 'mv.month_end_arr_snapshot', 'mart_customersuccess_arr_monthly', 'mart_customersuccess_arr_monthly', 'business_view', 'customer success uses subscription ARR without finance SKU mapping', 0.94, '2025-12-31 04:15:00' union all",
+        "select 11, 'mart_finance_arr_monthly', 'extract_board_pack_arr_monthly', 'extract_board_pack_arr_monthly', 'extract', 'board-pack ARR CSV extract', 0.91, '2025-12-31 04:15:00' union all",
+        "select 12, 'bill.dunning_attempt', 'extract_dunning_retry_queue', 'extract_dunning_retry_queue', 'extract', 'dunning queue extract for failed and final-notice attempts', 0.93, '2025-12-31 04:15:00';"
       ]
     }
   ],
@@ -1091,7 +1897,9 @@
   "controls": [
     {"rule_id": "CTL-001", "rule_name": "Invoice header total ties to invoice lines", "source_dataset": "bill.invoice", "target_dataset": "bill.invoice_line", "grain": "invoice_id", "tolerance": "0.01", "frequency": "daily", "owner": "revenue_accounting", "severity": "high", "expected_break_rate": "~1.2% of invoices (restatement reversals)", "break_view": "control_recon_invoice_lines"},
     {"rule_id": "CTL-002", "rule_name": "Provisioned IdP users vs billed seats true-up", "source_dataset": "idp.user", "target_dataset": "bill.subscription", "grain": "subscription_id", "tolerance": "max(2 seats, 5%)", "frequency": "monthly", "owner": "billing_ops", "severity": "medium", "expected_break_rate": "structural drift; lagging deprovisioning dominates", "break_view": "control_seat_trueup"},
-    {"rule_id": "CTL-003", "rule_name": "Billing crosswalk coverage for tenants", "source_dataset": "app.tenant", "target_dataset": "xref.entity_identifier", "grain": "tenant_id", "tolerance": "0 missing for paying tenants", "frequency": "daily", "owner": "data_governance", "severity": "high", "expected_break_rate": "~3% (migration losses) + duplicate signups", "break_view": "dq_rule_result_current"}
+    {"rule_id": "CTL-003", "rule_name": "Billing crosswalk coverage for tenants", "source_dataset": "app.tenant", "target_dataset": "xref.entity_identifier", "grain": "tenant_id", "tolerance": "0 missing for paying tenants", "frequency": "daily", "owner": "data_governance", "severity": "high", "expected_break_rate": "~3% (migration losses) + duplicate signups", "break_view": "dq_rule_result_current"},
+    {"rule_id": "CTL-004", "rule_name": "Finance ARR ties to customer-success ARR definition", "source_dataset": "mart_finance_arr_monthly", "target_dataset": "mart_customersuccess_arr_monthly", "grain": "period_month, segment", "tolerance": "1.00", "frequency": "monthly", "owner": "revenue_accounting", "severity": "high", "expected_break_rate": "structural semantic variance from SKU mapping and metered ARR treatment", "break_view": "control_recon_arr_finance_vs_cs"},
+    {"rule_id": "CTL-005", "rule_name": "Metered usage staging ties to monthly rated billing", "source_dataset": "stg.usage_metering_event", "target_dataset": "bill.meter_reading", "grain": "tenant_id, period_month", "tolerance": "0 units after deduplication", "frequency": "monthly", "owner": "billing_ops", "severity": "medium", "expected_break_rate": "raw replayed events visible but deduped before rating", "break_view": "control_recon_metered_billing"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "bill.customer_account", "rule_type": "required_field", "condition": "billing accounts have a billing email", "severity": "warning", "expected_failure_rate": 0.05},
@@ -1104,23 +1912,35 @@
     {"rule_id": "DQ-008", "dataset": "app.usage_event", "rule_type": "isolation", "condition": "event user belongs to the event tenant", "severity": "critical", "expected_failure_rate": 0.004},
     {"rule_id": "DQ-009", "dataset": "sup.ticket", "rule_type": "consistency", "condition": "free-text tenant name matches tenant master", "severity": "warning", "expected_failure_rate": 0.05},
     {"rule_id": "DQ-010", "dataset": "stg.billing_account", "rule_type": "consistency", "condition": "staging name matches billing source", "severity": "warning", "expected_failure_rate": 0.02},
-    {"rule_id": "DQ-011", "dataset": "bill.subscription", "rule_type": "consistency", "condition": "comped subscriptions are zero-rated", "severity": "error", "expected_failure_rate": 0.02}
+    {"rule_id": "DQ-011", "dataset": "bill.subscription", "rule_type": "consistency", "condition": "comped subscriptions are zero-rated", "severity": "error", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-012", "dataset": "manual.sku_revenue_line_mapping", "rule_type": "coverage", "condition": "invoice source SKUs have an active approved finance mapping", "severity": "error", "expected_failure_rate": 0.125},
+    {"rule_id": "DQ-013", "dataset": "raw.usage_metering_event", "rule_type": "deduplication", "condition": "raw metering event_uid appears once after staging", "severity": "warning", "expected_failure_rate": 0.01},
+    {"rule_id": "DQ-014", "dataset": "raw.billing_invoice_extract", "rule_type": "format", "condition": "invoice and due dates parse as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.0}
   ],
   "dataflows": [
     {"name": "tenant_mastering", "sequence": "app.tenant + bill.customer_account -> raw extract -> staging -> xref -> core.tenant -> wh.dim_tenant"},
     {"name": "trial_to_paid", "sequence": "app.tenant signup -> bill.subscription (trialing) -> subscription_lifecycle machine -> activated_at -> bill.invoice"},
-    {"name": "meter_to_bill", "sequence": "app.usage_event -> bill.meter_reading -> overage lines on bill.invoice/invoice_line -> wh facts -> marts"},
+    {"name": "meter_to_bill", "sequence": "app.usage_event -> raw.usage_metering_event -> stg.usage_metering_event dedup -> bill.meter_reading -> overage lines on bill.invoice/invoice_line -> wh facts -> nv/bv/marts"},
     {"name": "dunning", "sequence": "subscription_lifecycle past_due/in_dunning -> bill.dunning_attempt (+3/+7/+14/+20d) -> recovered or cancelled_involuntary"},
-    {"name": "support", "sequence": "sup.ticket -> ticket_triage machine -> sup.ticket_event -> sup.csat_response -> wh.fact_support_ticket"}
+    {"name": "support", "sequence": "sup.ticket -> ticket_triage machine -> raw.support_ticket_export -> stg.support_ticket -> wh.fact_support_ticket"},
+    {"name": "code_catalog_lineage", "sequence": "sqlite_master views + stored routine/extract source -> catalog.code_object -> catalog.lineage_edge"},
+    {"name": "sku_mapping_exception_workflow", "sequence": "nv_invoice_line -> manual.sku_revenue_line_mapping -> DQ-012 -> workflow.mapping_request_case"},
+    {"name": "finance_vs_customer_success_arr", "sequence": "bv_mrr_movements -> mv.month_end_arr_snapshot -> mart_customersuccess_arr_monthly; nv_invoice_line + manual mapping -> mart_finance_arr_monthly -> control_recon_arr_finance_vs_cs"}
   ],
   "validation": {
-    "required_views": ["mart_mrr_monthly", "mart_feature_adoption_monthly", "control_recon_invoice_lines", "control_seat_trueup", "dq_rule_result_current"],
+    "required_views": ["nv_subscription_month", "nv_invoice_line", "nv_usage_daily", "bv_mrr_movements", "bv_usage_by_tenant", "bv_trial_funnel", "mart_mrr_monthly", "mart_feature_adoption_monthly", "mart_finance_arr_monthly", "mart_customersuccess_arr_monthly", "control_recon_invoice_lines", "control_seat_trueup", "control_recon_arr_finance_vs_cs", "control_recon_metered_billing", "dq_rule_result_current"],
     "expected_row_ranges": {
       "app.tenant": [1700, 1950],
       "app.usage_event": [90000, 280000],
       "bill.subscription": [1700, 2500],
       "bill.invoice": [4000, 13000],
-      "sup.ticket": [4500, 10500]
+      "sup.ticket": [4500, 10500],
+      "stg.usage_metering_event": [90000, 280000],
+      "wh.fact_usage_daily": [90000, 170000],
+      "mv.month_end_arr_snapshot": [20, 100],
+      "workflow.mapping_request_case": [10, 80],
+      "catalog.code_object": [20, 40],
+      "catalog.lineage_edge": [12, 12]
     }
   }
 }
