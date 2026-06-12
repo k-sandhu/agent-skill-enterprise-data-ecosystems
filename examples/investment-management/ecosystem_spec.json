@@ -9,7 +9,10 @@
   },
   "platform": "sqlite",
   "seed": 41,
-  "scale": {"profile": "small", "multiplier": 1.0},
+  "scale": {
+    "profile": "small",
+    "multiplier": 1.0
+  },
   "time": {
     "start_date": "2024-01-01",
     "end_date": "2025-12-31",
@@ -17,460 +20,3545 @@
   },
   "calendar": {
     "_note": "Capital-markets business-day shape: very low weekends, month/quarter-end close spikes, and muted August/December activity.",
-    "weekday_weights": [1.08, 1.05, 1.04, 1.02, 0.86, 0.04, 0.03],
-    "month_weights": [1.02, 0.96, 1.18, 1.0, 0.98, 1.22, 0.94, 0.82, 1.13, 1.04, 0.98, 1.28],
-    "holidays": ["2024-01-01", "2024-03-29", "2024-05-27", "2024-07-04", "2024-09-02", "2024-11-28", "2024-12-25", "2025-01-01", "2025-04-18", "2025-05-26", "2025-07-04", "2025-09-01", "2025-11-27", "2025-12-25"],
+    "weekday_weights": [
+      1.08,
+      1.05,
+      1.04,
+      1.02,
+      0.86,
+      0.04,
+      0.03
+    ],
+    "month_weights": [
+      1.02,
+      0.96,
+      1.18,
+      1.0,
+      0.98,
+      1.22,
+      0.94,
+      0.82,
+      1.13,
+      1.04,
+      0.98,
+      1.28
+    ],
+    "holidays": [
+      "2024-01-01",
+      "2024-03-29",
+      "2024-05-27",
+      "2024-07-04",
+      "2024-09-02",
+      "2024-11-28",
+      "2024-12-25",
+      "2025-01-01",
+      "2025-04-18",
+      "2025-05-26",
+      "2025-07-04",
+      "2025-09-01",
+      "2025-11-27",
+      "2025-12-25"
+    ],
     "annual_growth": 0.09,
-    "business_hours": [7, 18]
+    "business_hours": [
+      7,
+      18
+    ]
   },
   "vocab": {
-    "fund_word": ["Core", "Opportunistic", "Income", "Growth", "Global", "Strategic", "Select", "Sustainable", "Defensive", "Long Horizon", "Infrastructure", "Credit"],
-    "manager_word": ["Harborstone", "Clearwater", "Summit Ridge", "Aster Point", "Blue Spruce", "Fallowfield", "Ridgeway", "Keystone", "Meridian", "Northstar"],
-    "trade_reason": ["monthly rebalance", "cash equitization", "liquidity raise", "duration rebalance", "manager transition", "tax lot cleanup", "index rebalance", "risk overlay adjustment"],
-    "security_suffix": ["Holdings", "Industries", "Systems", "Networks", "Capital", "Energy", "Materials", "Financial", "Infrastructure", "Therapeutics", "Semiconductor", "Retail Group"]
+    "fund_word": [
+      "Core",
+      "Opportunistic",
+      "Income",
+      "Growth",
+      "Global",
+      "Strategic",
+      "Select",
+      "Sustainable",
+      "Defensive",
+      "Long Horizon",
+      "Infrastructure",
+      "Credit"
+    ],
+    "manager_word": [
+      "Harborstone",
+      "Clearwater",
+      "Summit Ridge",
+      "Aster Point",
+      "Blue Spruce",
+      "Fallowfield",
+      "Ridgeway",
+      "Keystone",
+      "Meridian",
+      "Northstar"
+    ],
+    "trade_reason": [
+      "monthly rebalance",
+      "cash equitization",
+      "liquidity raise",
+      "duration rebalance",
+      "manager transition",
+      "tax lot cleanup",
+      "index rebalance",
+      "risk overlay adjustment"
+    ],
+    "security_suffix": [
+      "Holdings",
+      "Industries",
+      "Systems",
+      "Networks",
+      "Capital",
+      "Energy",
+      "Materials",
+      "Financial",
+      "Infrastructure",
+      "Therapeutics",
+      "Semiconductor",
+      "Retail Group"
+    ]
   },
   "tables": [
     {
-      "schema": "app", "name": "application", "layer": "app",
+      "schema": "app",
+      "name": "application",
+      "layer": "app",
       "purpose": "Application catalog for the investment management landscape.",
-      "primary_key": ["application_id"], "rows": 8, "scale_exempt": true,
+      "primary_key": [
+        "application_id"
+      ],
+      "rows": 8,
+      "scale_exempt": true,
       "columns": [
-        {"name": "application_id", "type": "integer"},
-        {"name": "application_name", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "Aperture Portfolio Accounting", "2": "TradeRoute OMS", "3": "ExecFlow EMS", "4": "SecuRef Master", "5": "CustoLink Feeds", "6": "AltView Private Assets", "7": "RiskHarbor Compliance", "8": "Northbridge Data Warehouse"}}},
-        {"name": "application_type", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "portfolio_accounting", "2": "order_management", "3": "execution_management", "4": "security_master", "5": "custodian_feed", "6": "private_assets_portal", "7": "risk_compliance", "8": "warehouse"}}},
-        {"name": "system_of_record_domain", "type": "string", "gen": {"type": "case", "on": "application_id", "cases": {"1": "portfolio/accounting/IBOR", "2": "orders/allocations", "3": "executions/fills", "4": "securities/identifiers", "5": "settled positions and cash", "6": "private commitments/NAV", "7": "guideline monitoring", "8": "analytics"}}},
-        {"name": "business_owner", "type": "string", "gen": "staff_user"},
-        {"name": "criticality", "type": "string", "gen": "choice:tier1=0.6,tier2=0.3,tier3=0.1"},
-        {"name": "contains_financial_data_flag", "type": "boolean", "gen": "bool:0.95"},
-        {"name": "active_flag", "type": "boolean", "gen": "bool:0.98"}
+        {
+          "name": "application_id",
+          "type": "integer"
+        },
+        {
+          "name": "application_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "application_id",
+            "cases": {
+              "1": "Aperture Portfolio Accounting",
+              "2": "TradeRoute OMS",
+              "3": "ExecFlow EMS",
+              "4": "SecuRef Master",
+              "5": "CustoLink Feeds",
+              "6": "AltView Private Assets",
+              "7": "RiskHarbor Compliance",
+              "8": "Northbridge Data Warehouse"
+            }
+          }
+        },
+        {
+          "name": "application_type",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "application_id",
+            "cases": {
+              "1": "portfolio_accounting",
+              "2": "order_management",
+              "3": "execution_management",
+              "4": "security_master",
+              "5": "custodian_feed",
+              "6": "private_assets_portal",
+              "7": "risk_compliance",
+              "8": "warehouse"
+            }
+          }
+        },
+        {
+          "name": "system_of_record_domain",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "application_id",
+            "cases": {
+              "1": "portfolio/accounting/IBOR",
+              "2": "orders/allocations",
+              "3": "executions/fills",
+              "4": "securities/identifiers",
+              "5": "settled positions and cash",
+              "6": "private commitments/NAV",
+              "7": "guideline monitoring",
+              "8": "analytics"
+            }
+          }
+        },
+        {
+          "name": "business_owner",
+          "type": "string",
+          "gen": "staff_user"
+        },
+        {
+          "name": "criticality",
+          "type": "string",
+          "gen": "choice:tier1=0.6,tier2=0.3,tier3=0.1"
+        },
+        {
+          "name": "contains_financial_data_flag",
+          "type": "boolean",
+          "gen": "bool:0.95"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:0.98"
+        }
       ]
     },
     {
-      "schema": "ref", "name": "asset_class", "layer": "source",
+      "schema": "ref",
+      "name": "asset_class",
+      "layer": "source",
       "purpose": "Investment asset-class taxonomy.",
-      "primary_key": ["asset_class_id"], "rows": 7, "scale_exempt": true,
+      "primary_key": [
+        "asset_class_id"
+      ],
+      "rows": 7,
+      "scale_exempt": true,
       "columns": [
-        {"name": "asset_class_id", "type": "integer"},
-        {"name": "asset_class_code", "type": "string", "gen": {"type": "case", "on": "asset_class_id", "cases": {"1": "EQTY", "2": "FIXD", "3": "CASH", "4": "PRIV_EQ", "5": "REAL_ASSET", "6": "PRIVATE_CREDIT", "7": "HEDGE"}}},
-        {"name": "asset_class_name", "type": "string", "gen": {"type": "case", "on": "asset_class_id", "cases": {"1": "Public Equity", "2": "Fixed Income", "3": "Cash and Equivalents", "4": "Private Equity", "5": "Real Assets", "6": "Private Credit", "7": "Hedge Funds"}}},
-        {"name": "liquidity_bucket", "type": "string", "gen": {"type": "case", "on": "asset_class_id", "cases": {"1": "daily", "2": "daily", "3": "daily", "4": "quarterly", "5": "quarterly", "6": "monthly", "7": "monthly"}}}
+        {
+          "name": "asset_class_id",
+          "type": "integer"
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "asset_class_id",
+            "cases": {
+              "1": "EQTY",
+              "2": "FIXD",
+              "3": "CASH",
+              "4": "PRIV_EQ",
+              "5": "REAL_ASSET",
+              "6": "PRIVATE_CREDIT",
+              "7": "HEDGE"
+            }
+          }
+        },
+        {
+          "name": "asset_class_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "asset_class_id",
+            "cases": {
+              "1": "Public Equity",
+              "2": "Fixed Income",
+              "3": "Cash and Equivalents",
+              "4": "Private Equity",
+              "5": "Real Assets",
+              "6": "Private Credit",
+              "7": "Hedge Funds"
+            }
+          }
+        },
+        {
+          "name": "liquidity_bucket",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "asset_class_id",
+            "cases": {
+              "1": "daily",
+              "2": "daily",
+              "3": "daily",
+              "4": "quarterly",
+              "5": "quarterly",
+              "6": "monthly",
+              "7": "monthly"
+            }
+          }
+        }
       ]
     },
     {
-      "schema": "ref", "name": "custodian", "layer": "source",
+      "schema": "ref",
+      "name": "custodian",
+      "layer": "source",
       "purpose": "External custodians providing settled positions, cash, and transaction feeds.",
-      "primary_key": ["custodian_id"], "rows": 5, "scale_exempt": true,
+      "primary_key": [
+        "custodian_id"
+      ],
+      "rows": 5,
+      "scale_exempt": true,
       "columns": [
-        {"name": "custodian_id", "type": "integer"},
-        {"name": "custodian_code", "type": "string", "gen": {"type": "case", "on": "custodian_id", "cases": {"1": "CUST-NOVA", "2": "CUST-ATLAS", "3": "CUST-HARBOR", "4": "CUST-SUMMIT", "5": "CUST-KEYSTONE"}}},
-        {"name": "custodian_name", "type": "string", "gen": {"type": "company_name", "flavor": "finance", "unique": true}},
-        {"name": "feed_protocol", "type": "string", "gen": "choice:sftp=0.65,api=0.25,portal_csv=0.10"},
-        {"name": "active_flag", "type": "boolean", "gen": "bool:0.96"}
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_code",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "custodian_id",
+            "cases": {
+              "1": "CUST-NOVA",
+              "2": "CUST-ATLAS",
+              "3": "CUST-HARBOR",
+              "4": "CUST-SUMMIT",
+              "5": "CUST-KEYSTONE"
+            }
+          }
+        },
+        {
+          "name": "custodian_name",
+          "type": "string",
+          "gen": {
+            "type": "company_name",
+            "flavor": "finance",
+            "unique": true
+          }
+        },
+        {
+          "name": "feed_protocol",
+          "type": "string",
+          "gen": "choice:sftp=0.65,api=0.25,portal_csv=0.10"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:0.96"
+        }
       ]
     },
     {
-      "schema": "sec", "name": "security", "layer": "source",
+      "schema": "sec",
+      "name": "security",
+      "layer": "source",
       "purpose": "Tradable public security and externally reported fund/security master.",
-      "primary_key": ["security_id"], "rows": 1400,
-      "indexes": [["asset_class_code"]],
-      "traits": ["audited"],
+      "primary_key": [
+        "security_id"
+      ],
+      "rows": 1400,
+      "indexes": [
+        [
+          "asset_class_code"
+        ]
+      ],
+      "traits": [
+        "audited"
+      ],
       "columns": [
-        {"name": "security_id", "type": "integer"},
-        {"name": "security_uid", "type": "string", "gen": {"type": "pattern", "pattern": "SEC-######", "unique": true}},
-        {"name": "isin", "type": "string", "gen": "identifier:isin"},
-        {"name": "cusip", "type": "string", "gen": "identifier:cusip"},
-        {"name": "issuer_name", "type": "string", "gen": {"type": "company_name", "flavor": "finance"}},
-        {"name": "asset_class_code", "type": "string", "gen": "choice:EQTY=0.42,FIXD=0.34,REAL_ASSET=0.07,PRIV_EQ=0.06,PRIVATE_CREDIT=0.06,HEDGE=0.05"},
-        {"name": "security_name", "type": "string", "gen": {"type": "text_template", "templates": ["{manager_word} {security_suffix}", "{fund_word} {security_suffix}", "{manager_word} {fund_word} Fund"]}},
-        {"name": "currency", "type": "string", "gen": "choice:USD=0.82,EUR=0.07,GBP=0.05,CAD=0.04,JPY=0.02"},
-        {"name": "issue_date", "type": "date", "gen": {"type": "date", "sorted": true, "backfill_share": 0.85, "backfill_start": "2005-01-01"}},
-        {"name": "price_unit", "type": "decimal", "gen": {"type": "case", "on": "asset_class_code", "cases": {"EQTY": {"type": "money", "median": 45, "sigma": 0.9, "min": 3, "max": 650, "price_endings": [0.0, 0.25, 0.5, 0.75]}, "FIXD": {"type": "money", "median": 101, "sigma": 0.08, "min": 70, "max": 130}, "HEDGE": {"type": "money", "median": 100, "sigma": 0.25, "min": 40, "max": 260}}, "default": {"type": "money", "median": 100, "sigma": 0.35, "min": 15, "max": 500}}},
-        {"name": "active_flag", "type": "boolean", "gen": "bool:0.93"}
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_uid",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "SEC-######",
+            "unique": true
+          }
+        },
+        {
+          "name": "isin",
+          "type": "string",
+          "gen": "identifier:isin"
+        },
+        {
+          "name": "cusip",
+          "type": "string",
+          "gen": "identifier:cusip"
+        },
+        {
+          "name": "issuer_name",
+          "type": "string",
+          "gen": {
+            "type": "company_name",
+            "flavor": "finance"
+          }
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string",
+          "gen": "choice:EQTY=0.42,FIXD=0.34,REAL_ASSET=0.07,PRIV_EQ=0.06,PRIVATE_CREDIT=0.06,HEDGE=0.05"
+        },
+        {
+          "name": "security_name",
+          "type": "string",
+          "gen": {
+            "type": "text_template",
+            "templates": [
+              "{manager_word} {security_suffix}",
+              "{fund_word} {security_suffix}",
+              "{manager_word} {fund_word} Fund"
+            ]
+          }
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "gen": "choice:USD=0.82,EUR=0.07,GBP=0.05,CAD=0.04,JPY=0.02"
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "sorted": true,
+            "backfill_share": 0.85,
+            "backfill_start": "2005-01-01"
+          }
+        },
+        {
+          "name": "price_unit",
+          "type": "decimal",
+          "gen": {
+            "type": "case",
+            "on": "asset_class_code",
+            "cases": {
+              "EQTY": {
+                "type": "money",
+                "median": 45,
+                "sigma": 0.9,
+                "min": 3,
+                "max": 650,
+                "price_endings": [
+                  0.0,
+                  0.25,
+                  0.5,
+                  0.75
+                ]
+              },
+              "FIXD": {
+                "type": "money",
+                "median": 101,
+                "sigma": 0.08,
+                "min": 70,
+                "max": 130
+              },
+              "HEDGE": {
+                "type": "money",
+                "median": 100,
+                "sigma": 0.25,
+                "min": 40,
+                "max": 260
+              }
+            },
+            "default": {
+              "type": "money",
+              "median": 100,
+              "sigma": 0.35,
+              "min": 15,
+              "max": 500
+            }
+          }
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:0.93"
+        }
       ]
     },
     {
-      "schema": "portfolio", "name": "portfolio", "layer": "source",
+      "schema": "portfolio",
+      "name": "portfolio",
+      "layer": "source",
       "purpose": "Portfolio/accounting book: pension pools, internal mandates, external mandates, and overlays.",
-      "primary_key": ["portfolio_id"], "rows": 180,
-      "indexes": [["portfolio_type"], ["status"]],
-      "traits": ["audited"],
+      "primary_key": [
+        "portfolio_id"
+      ],
+      "rows": 180,
+      "indexes": [
+        [
+          "portfolio_type"
+        ],
+        [
+          "status"
+        ]
+      ],
+      "traits": [
+        "audited"
+      ],
       "columns": [
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "portfolio_code", "type": "string", "gen": {"type": "pattern", "pattern": "PF-####", "unique": true}},
-        {"name": "portfolio_name", "type": "string", "gen": {"type": "text_template", "templates": ["Northbridge {fund_word} Portfolio", "{fund_word} Mandate", "{manager_word} Overlay Account"]}},
-        {"name": "portfolio_type", "type": "string", "gen": "choice:public_pool=0.42,fixed_income=0.18,external_mandate=0.18,private_assets=0.14,overlay=0.08"},
-        {"name": "asset_class_bias", "type": "string", "gen": {"type": "case", "on": "portfolio_type", "cases": {"public_pool": "EQTY", "fixed_income": "FIXD", "private_assets": "PRIV_EQ", "external_mandate": "HEDGE", "overlay": "CASH"}}},
-        {"name": "base_currency", "type": "string", "gen": "const:USD"},
-        {"name": "inception_date", "type": "date", "gen": {"type": "date", "sorted": true, "backfill_share": 0.78, "backfill_start": "2012-01-01"}},
-        {"name": "status", "type": "string", "gen": "choice:active=0.88,soft_closed=0.08,closed=0.04"},
-        {"name": "aum_tier", "type": "string", "gen": "choice:small=0.45,mid=0.36,large=0.15,mega=0.04"}
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_code",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "PF-####",
+            "unique": true
+          }
+        },
+        {
+          "name": "portfolio_name",
+          "type": "string",
+          "gen": {
+            "type": "text_template",
+            "templates": [
+              "Northbridge {fund_word} Portfolio",
+              "{fund_word} Mandate",
+              "{manager_word} Overlay Account"
+            ]
+          }
+        },
+        {
+          "name": "portfolio_type",
+          "type": "string",
+          "gen": "choice:public_pool=0.42,fixed_income=0.18,external_mandate=0.18,private_assets=0.14,overlay=0.08"
+        },
+        {
+          "name": "asset_class_bias",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "portfolio_type",
+            "cases": {
+              "public_pool": "EQTY",
+              "fixed_income": "FIXD",
+              "private_assets": "PRIV_EQ",
+              "external_mandate": "HEDGE",
+              "overlay": "CASH"
+            }
+          }
+        },
+        {
+          "name": "base_currency",
+          "type": "string",
+          "gen": "const:USD"
+        },
+        {
+          "name": "inception_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "sorted": true,
+            "backfill_share": 0.78,
+            "backfill_start": "2012-01-01"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "gen": "choice:active=0.88,soft_closed=0.08,closed=0.04"
+        },
+        {
+          "name": "aum_tier",
+          "type": "string",
+          "gen": "choice:small=0.45,mid=0.36,large=0.15,mega=0.04"
+        }
       ]
     },
     {
-      "schema": "portfolio", "name": "account", "layer": "source",
+      "schema": "manual",
+      "name": "strategy_composite_mapping",
+      "layer": "operational",
+      "purpose": "Analyst-uploaded portfolio-to-performance-composite mapping used by the performance mart only; stale/conflicting re-uploads are excluded downstream so live coverage is intentionally below 100%.",
+      "primary_key": [
+        "mapping_id"
+      ],
+      "rows": {
+        "per_parent": "portfolio.portfolio",
+        "distribution": {
+          "distribution": "constant",
+          "value": 1
+        },
+        "min": 1,
+        "max": 1
+      },
+      "indexes": [
+        [
+          "portfolio_id"
+        ],
+        [
+          "composite_code"
+        ],
+        [
+          "current_flag"
+        ]
+      ],
+      "traits": [
+        "audited",
+        "effective_dated"
+      ],
+      "columns": [
+        {
+          "name": "mapping_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_code",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_code"
+          }
+        },
+        {
+          "name": "source_strategy",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "asset_class_bias"
+          }
+        },
+        {
+          "name": "composite_code",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "source_strategy",
+            "cases": {
+              "EQTY": "CMP_GLOBAL_EQUITY",
+              "FIXD": "CMP_CORE_FIXED_INCOME",
+              "CASH": "CMP_LIQUIDITY",
+              "PRIV_EQ": "CMP_PRIVATE_EQUITY",
+              "REAL_ASSET": "CMP_REAL_ASSETS",
+              "PRIVATE_CREDIT": "CMP_PRIVATE_CREDIT",
+              "HEDGE": "CMP_ABSOLUTE_RETURN"
+            },
+            "default": "CMP_MULTI_ASSET"
+          }
+        },
+        {
+          "name": "composite_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "composite_code",
+            "cases": {
+              "CMP_GLOBAL_EQUITY": "Global Equity Composite",
+              "CMP_CORE_FIXED_INCOME": "Core Fixed Income Composite",
+              "CMP_LIQUIDITY": "Liquidity Composite",
+              "CMP_PRIVATE_EQUITY": "Private Equity Composite",
+              "CMP_REAL_ASSETS": "Real Assets Composite",
+              "CMP_PRIVATE_CREDIT": "Private Credit Composite",
+              "CMP_ABSOLUTE_RETURN": "Absolute Return Composite"
+            },
+            "default": "Multi Asset Composite"
+          }
+        },
+        {
+          "name": "business_unit",
+          "type": "string",
+          "gen": "const:performance"
+        },
+        {
+          "name": "mapping_source",
+          "type": "string",
+          "gen": "choice:quarterly_composite_upload=0.62,manager_transition_upload=0.18,analyst_reupload=0.14,legacy_spreadsheet=0.06"
+        },
+        {
+          "name": "mapping_current_flag",
+          "type": "boolean",
+          "gen": "bool:0.97"
+        },
+        {
+          "name": "approved_flag",
+          "type": "boolean",
+          "gen": "bool:0.98"
+        },
+        {
+          "name": "stale_flag",
+          "type": "boolean",
+          "gen": "bool:0.04"
+        },
+        {
+          "name": "conflict_flag",
+          "type": "boolean",
+          "gen": "bool:0.02"
+        },
+        {
+          "name": "conflict_composite_code",
+          "type": "string",
+          "nullable": true,
+          "gen": {
+            "type": "case",
+            "on": "conflict_flag",
+            "cases": {
+              "1": "CMP_MULTI_ASSET"
+            },
+            "default": null
+          }
+        },
+        {
+          "name": "effective_start_date",
+          "type": "date",
+          "gen": {
+            "type": "date_offset",
+            "from": "parent.inception_date",
+            "unit": "days",
+            "offset": {
+              "distribution": "lognormal",
+              "median": 30,
+              "sigma": 0.8,
+              "min": 0,
+              "max": 730
+            },
+            "as": "date"
+          }
+        },
+        {
+          "name": "effective_end_date",
+          "type": "date",
+          "nullable": true,
+          "gen": {
+            "type": "case",
+            "on": "stale_flag",
+            "cases": {
+              "1": "2025-06-30"
+            },
+            "default": null
+          }
+        },
+        {
+          "name": "current_flag",
+          "type": "boolean",
+          "gen": {
+            "type": "case",
+            "on": "stale_flag",
+            "cases": {
+              "1": 0
+            },
+            "default": {
+              "type": "copy",
+              "column": "mapping_current_flag"
+            }
+          }
+        },
+        {
+          "name": "source_file_name",
+          "type": "string",
+          "gen": "choice:strategy_composites_q4_upload.xlsx=0.45,composite_mapping_reupload.xlsx=0.22,mandate_transition_mapping.csv=0.20,legacy_composite_map.xlsx=0.13"
+        },
+        {
+          "name": "uploaded_by",
+          "type": "string",
+          "gen": "staff_user"
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "portfolio",
+      "name": "account",
+      "layer": "source",
       "purpose": "Custodian/accounting account per portfolio and custodian relationship.",
-      "primary_key": ["account_id"],
-      "rows": {"per_parent": "portfolio.portfolio", "distribution": {"distribution": "lognormal", "median": 1.2, "sigma": 0.55}, "min": 1, "max": 4},
-      "indexes": [["portfolio_id"], ["custodian_id"]],
-      "foreign_keys": [{"columns": ["portfolio_id"], "ref": "portfolio.portfolio"}, {"columns": ["custodian_id"], "ref": "ref.custodian"}],
+      "primary_key": [
+        "account_id"
+      ],
+      "rows": {
+        "per_parent": "portfolio.portfolio",
+        "distribution": {
+          "distribution": "lognormal",
+          "median": 1.2,
+          "sigma": 0.55
+        },
+        "min": 1,
+        "max": 4
+      },
+      "indexes": [
+        [
+          "portfolio_id"
+        ],
+        [
+          "custodian_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "portfolio_id"
+          ],
+          "ref": "portfolio.portfolio"
+        },
+        {
+          "columns": [
+            "custodian_id"
+          ],
+          "ref": "ref.custodian"
+        }
+      ],
       "columns": [
-        {"name": "account_id", "type": "integer", "gen": "seq"},
-        {"name": "portfolio_id", "type": "integer", "gen": "parent_key"},
-        {"name": "portfolio_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "portfolio_type"}},
-        {"name": "account_code", "type": "string", "gen": {"type": "pattern", "pattern": "ACCT-#######", "unique": true}},
-        {"name": "custodian_id", "type": "integer", "gen": "fk:ref.custodian@zipf(0.7)"},
-        {"name": "account_type", "type": "string", "gen": {"type": "case", "on": "portfolio_type", "cases": {"overlay": "cash_overlay", "private_assets": "capital_account"}, "default": "custody"}},
-        {"name": "opened_date", "type": "date", "gen": {"type": "date_offset", "from": "parent.inception_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 45, "sigma": 0.9, "min": 0, "max": 500}, "as": "date"}},
-        {"name": "status", "type": "string", "gen": "choice:open=0.92,restricted=0.05,closed=0.03"}
+        {
+          "name": "account_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_type",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_type"
+          }
+        },
+        {
+          "name": "account_code",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "ACCT-#######",
+            "unique": true
+          }
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer",
+          "gen": "fk:ref.custodian@zipf(0.7)"
+        },
+        {
+          "name": "account_type",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "portfolio_type",
+            "cases": {
+              "overlay": "cash_overlay",
+              "private_assets": "capital_account"
+            },
+            "default": "custody"
+          }
+        },
+        {
+          "name": "opened_date",
+          "type": "date",
+          "gen": {
+            "type": "date_offset",
+            "from": "parent.inception_date",
+            "unit": "days",
+            "offset": {
+              "distribution": "lognormal",
+              "median": 45,
+              "sigma": 0.9,
+              "min": 0,
+              "max": 500
+            },
+            "as": "date"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "gen": "choice:open=0.92,restricted=0.05,closed=0.03"
+        }
       ]
     },
     {
-      "schema": "trading", "name": "trade_order", "layer": "transaction",
+      "schema": "trading",
+      "name": "trade_order",
+      "layer": "transaction",
       "purpose": "OMS trade orders before execution/allocation.",
       "grain": "one row per portfolio trade order",
-      "primary_key": ["order_id"],
-      "rows": {"per_parent": "portfolio.portfolio", "distribution": {"distribution": "lognormal", "median": 34, "sigma": 0.9}, "scale_by": {"parent_column": "portfolio_type", "factors": {"public_pool": 1.7, "fixed_income": 1.45, "external_mandate": 0.55, "private_assets": 0.08, "overlay": 0.75}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.9}, "min": 0, "max": 420},
-      "indexes": [["order_date"], ["status"], ["security_id"]],
-      "traits": ["audited"],
-      "foreign_keys": [{"columns": ["portfolio_id"], "ref": "portfolio.portfolio"}, {"columns": ["security_id"], "ref": "sec.security"}],
+      "primary_key": [
+        "order_id"
+      ],
+      "rows": {
+        "per_parent": "portfolio.portfolio",
+        "distribution": {
+          "distribution": "lognormal",
+          "median": 34,
+          "sigma": 0.9
+        },
+        "scale_by": {
+          "parent_column": "portfolio_type",
+          "factors": {
+            "public_pool": 1.7,
+            "fixed_income": 1.45,
+            "external_mandate": 0.55,
+            "private_assets": 0.08,
+            "overlay": 0.75
+          },
+          "default": 1.0
+        },
+        "per_parent_multiplier": {
+          "distribution": "lognormal",
+          "median": 1.0,
+          "sigma": 0.9
+        },
+        "min": 0,
+        "max": 420
+      },
+      "indexes": [
+        [
+          "order_date"
+        ],
+        [
+          "status"
+        ],
+        [
+          "security_id"
+        ]
+      ],
+      "traits": [
+        "audited"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "portfolio_id"
+          ],
+          "ref": "portfolio.portfolio"
+        },
+        {
+          "columns": [
+            "security_id"
+          ],
+          "ref": "sec.security"
+        }
+      ],
       "columns": [
-        {"name": "order_id", "type": "integer", "gen": "seq"},
-        {"name": "order_ref", "type": "string", "gen": {"type": "pattern", "pattern": "ORD-########", "unique": true}},
-        {"name": "portfolio_id", "type": "integer", "gen": "parent_key"},
-        {"name": "portfolio_type", "type": "string", "gen": {"type": "parent_copy", "source_column": "portfolio_type"}},
-        {"name": "portfolio_inception", "type": "date", "gen": {"type": "parent_copy", "source_column": "inception_date"}},
-        {"name": "security_id", "type": "integer", "gen": "fk:sec.security@zipf(0.65)"},
-        {"name": "side", "type": "string", "gen": "choice:BUY=0.54,SELL=0.46"},
-        {"name": "order_qty", "type": "integer", "gen": {"type": "choice", "values": [100, 250, 500, 1000, 2500, 5000, 10000], "weights": [0.12, 0.14, 0.22, 0.22, 0.14, 0.10, 0.06]}},
-        {"name": "limit_price", "type": "decimal", "gen": {"type": "choice", "values": [25.0, 50.0, 75.0, 100.0, 125.0, 150.0], "weights": [0.15, 0.25, 0.18, 0.22, 0.12, 0.08]}},
-        {"name": "notional_amount", "type": "decimal", "gen": "expr:round(order_qty * limit_price, 2)"},
-        {"name": "trader", "type": "string", "gen": "staff_user"},
-        {"name": "reason_code", "type": "string", "gen": "text:trade_reason"},
-        {"name": "order_date", "type": "date", "gen": {"type": "date", "min": "parent.inception_date"}},
-        {"name": "created_at", "type": "timestamp", "gen": {"type": "auto_created_at"}},
-        {"name": "status", "type": "string", "gen": "const:created"},
-        {"name": "compliance_checked_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "routed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "filled_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "allocated_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "settled_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "cancelled_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "failed_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+        {
+          "name": "order_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "order_ref",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "ORD-########",
+            "unique": true
+          }
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_type",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_type"
+          }
+        },
+        {
+          "name": "portfolio_inception",
+          "type": "date",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "inception_date"
+          }
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "gen": "fk:sec.security@zipf(0.65)"
+        },
+        {
+          "name": "side",
+          "type": "string",
+          "gen": "choice:BUY=0.54,SELL=0.46"
+        },
+        {
+          "name": "order_qty",
+          "type": "integer",
+          "gen": {
+            "type": "choice",
+            "values": [
+              100,
+              250,
+              500,
+              1000,
+              2500,
+              5000,
+              10000
+            ],
+            "weights": [
+              0.12,
+              0.14,
+              0.22,
+              0.22,
+              0.14,
+              0.1,
+              0.06
+            ]
+          }
+        },
+        {
+          "name": "limit_price",
+          "type": "decimal",
+          "gen": {
+            "type": "choice",
+            "values": [
+              25.0,
+              50.0,
+              75.0,
+              100.0,
+              125.0,
+              150.0
+            ],
+            "weights": [
+              0.15,
+              0.25,
+              0.18,
+              0.22,
+              0.12,
+              0.08
+            ]
+          }
+        },
+        {
+          "name": "notional_amount",
+          "type": "decimal",
+          "gen": "expr:round(order_qty * limit_price, 2)"
+        },
+        {
+          "name": "trader",
+          "type": "string",
+          "gen": "staff_user"
+        },
+        {
+          "name": "reason_code",
+          "type": "string",
+          "gen": "text:trade_reason"
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "min": "parent.inception_date"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "auto_created_at"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "gen": "const:created"
+        },
+        {
+          "name": "compliance_checked_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "routed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "filled_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "allocated_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "settled_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "cancelled_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "failed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        }
       ]
     },
     {
-      "schema": "trading", "name": "order_event", "layer": "event",
+      "schema": "trading",
+      "name": "order_event",
+      "layer": "event",
       "purpose": "Order status history emitted by the OMS lifecycle machine.",
       "grain": "one row per order state entered",
       "source": "state_machine",
-      "primary_key": ["order_id", "event_seq"],
-      "indexes": [["order_id"]],
+      "primary_key": [
+        "order_id",
+        "event_seq"
+      ],
+      "indexes": [
+        [
+          "order_id"
+        ]
+      ],
       "columns": [
-        {"name": "order_id", "type": "integer"},
-        {"name": "event_seq", "type": "integer"},
-        {"name": "state", "type": "string"},
-        {"name": "entered_at", "type": "timestamp"}
+        {
+          "name": "order_id",
+          "type": "integer"
+        },
+        {
+          "name": "event_seq",
+          "type": "integer"
+        },
+        {
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "name": "entered_at",
+          "type": "timestamp"
+        }
       ]
     },
     {
-      "schema": "trading", "name": "execution", "layer": "transaction",
+      "schema": "trading",
+      "name": "execution",
+      "layer": "transaction",
       "purpose": "EMS fills/executions against OMS orders.",
       "grain": "one row per broker fill/execution",
-      "primary_key": ["execution_id"],
-      "rows": {"per_parent": "trading.trade_order", "distribution": {"distribution": "poisson", "lam": 1.1}, "min": 1, "max": 5},
-      "indexes": [["order_id"], ["execution_date"]],
-      "foreign_keys": [{"columns": ["order_id"], "ref": "trading.trade_order"}],
+      "primary_key": [
+        "execution_id"
+      ],
+      "rows": {
+        "per_parent": "trading.trade_order",
+        "distribution": {
+          "distribution": "poisson",
+          "lam": 1.1
+        },
+        "min": 1,
+        "max": 5
+      },
+      "indexes": [
+        [
+          "order_id"
+        ],
+        [
+          "execution_date"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "order_id"
+          ],
+          "ref": "trading.trade_order"
+        }
+      ],
       "columns": [
-        {"name": "execution_id", "type": "integer", "gen": "seq"},
-        {"name": "order_id", "type": "integer", "gen": "parent_key"},
-        {"name": "portfolio_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "portfolio_id"}},
-        {"name": "security_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "security_id"}},
-        {"name": "side", "type": "string", "gen": {"type": "parent_copy", "source_column": "side"}},
-        {"name": "order_qty", "type": "integer", "gen": {"type": "parent_copy", "source_column": "order_qty"}},
-        {"name": "fill_qty", "type": "integer", "gen": {"type": "expression", "expression": "max(1, int(order_qty / 2))"}},
-        {"name": "fill_price", "type": "decimal", "gen": {"type": "parent_copy", "source_column": "limit_price"}},
-        {"name": "gross_amount", "type": "decimal", "gen": "expr:round(fill_qty * fill_price, 2)"},
-        {"name": "broker", "type": "string", "gen": {"type": "company_name", "flavor": "finance"}},
-        {"name": "execution_date", "type": "date", "gen": {"type": "date", "min": "parent.order_date"}},
-        {"name": "executed_at", "type": "timestamp", "gen": {"type": "auto_created_at"}},
-        {"name": "execution_uid", "type": "string", "gen": {"type": "pattern", "pattern": "EXE-########", "unique": true}}
+        {
+          "name": "execution_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "order_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_id"
+          }
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "security_id"
+          }
+        },
+        {
+          "name": "side",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "side"
+          }
+        },
+        {
+          "name": "order_qty",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "order_qty"
+          }
+        },
+        {
+          "name": "fill_qty",
+          "type": "integer",
+          "gen": {
+            "type": "expression",
+            "expression": "max(1, int(order_qty / 2))"
+          }
+        },
+        {
+          "name": "fill_price",
+          "type": "decimal",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "limit_price"
+          }
+        },
+        {
+          "name": "gross_amount",
+          "type": "decimal",
+          "gen": "expr:round(fill_qty * fill_price, 2)"
+        },
+        {
+          "name": "broker",
+          "type": "string",
+          "gen": {
+            "type": "company_name",
+            "flavor": "finance"
+          }
+        },
+        {
+          "name": "execution_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "min": "parent.order_date"
+          }
+        },
+        {
+          "name": "executed_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "auto_created_at"
+          }
+        },
+        {
+          "name": "execution_uid",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "EXE-########",
+            "unique": true
+          }
+        }
       ]
     },
     {
-      "schema": "custodian", "name": "raw_position", "layer": "source",
+      "schema": "custodian",
+      "name": "raw_position",
+      "layer": "source",
       "purpose": "Custodian settled position file rows before mapping and reconciliation.",
       "grain": "one custodian account/security/position-date row",
-      "primary_key": ["raw_position_id"],
-      "rows": {"per_parent": "portfolio.account", "distribution": {"distribution": "lognormal", "median": 55, "sigma": 0.75}, "scale_by": {"parent_column": "account_type", "factors": {"custody": 1.0, "cash_overlay": 0.12, "capital_account": 0.18}, "default": 1.0}, "per_parent_multiplier": {"distribution": "lognormal", "median": 1.0, "sigma": 0.55}, "min": 0, "max": 360},
-      "indexes": [["position_date"], ["security_id"], ["custodian_id"]],
-      "foreign_keys": [{"columns": ["account_id"], "ref": "portfolio.account"}, {"columns": ["security_id"], "ref": "sec.security"}],
+      "primary_key": [
+        "raw_position_id"
+      ],
+      "rows": {
+        "per_parent": "portfolio.account",
+        "distribution": {
+          "distribution": "lognormal",
+          "median": 55,
+          "sigma": 0.75
+        },
+        "scale_by": {
+          "parent_column": "account_type",
+          "factors": {
+            "custody": 1.0,
+            "cash_overlay": 0.12,
+            "capital_account": 0.18
+          },
+          "default": 1.0
+        },
+        "per_parent_multiplier": {
+          "distribution": "lognormal",
+          "median": 1.0,
+          "sigma": 0.55
+        },
+        "min": 0,
+        "max": 360
+      },
+      "indexes": [
+        [
+          "position_date"
+        ],
+        [
+          "security_id"
+        ],
+        [
+          "custodian_id"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "account_id"
+          ],
+          "ref": "portfolio.account"
+        },
+        {
+          "columns": [
+            "security_id"
+          ],
+          "ref": "sec.security"
+        }
+      ],
       "columns": [
-        {"name": "raw_position_id", "type": "integer", "gen": "seq"},
-        {"name": "account_id", "type": "integer", "gen": "parent_key"},
-        {"name": "portfolio_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "portfolio_id"}},
-        {"name": "custodian_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "custodian_id"}},
-        {"name": "custodian_security_id", "type": "string", "gen": {"type": "pattern", "pattern": "CSEC-########"}},
-        {"name": "security_id", "type": "integer", "gen": "fk:sec.security@zipf(0.65)"},
-        {"name": "position_date", "type": "date", "gen": {"type": "date", "min": "parent.opened_date"}},
-        {"name": "quantity", "type": "decimal", "gen": {"type": "choice", "values": [100, 250, 500, 1000, 2500, 5000, 10000, 25000], "weights": [0.10, 0.12, 0.18, 0.22, 0.16, 0.12, 0.07, 0.03]}},
-        {"name": "unit_price", "type": "decimal", "gen": {"type": "choice", "values": [25.0, 50.0, 75.0, 100.0, 101.0, 125.0, 150.0], "weights": [0.14, 0.22, 0.18, 0.20, 0.10, 0.10, 0.06]}},
-        {"name": "market_value", "type": "decimal", "gen": "expr:round(quantity * unit_price, 2)"},
-        {"name": "feed_file_name", "type": "string", "gen": {"type": "pattern", "pattern": "POS_2025_######.csv"}},
-        {"name": "loaded_at", "type": "timestamp", "gen": {"type": "auto_created_at"}}
+        {
+          "name": "raw_position_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "account_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_id"
+          }
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "custodian_id"
+          }
+        },
+        {
+          "name": "custodian_security_id",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "CSEC-########"
+          }
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "gen": "fk:sec.security@zipf(0.65)"
+        },
+        {
+          "name": "position_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "min": "parent.opened_date"
+          }
+        },
+        {
+          "name": "quantity",
+          "type": "decimal",
+          "gen": {
+            "type": "choice",
+            "values": [
+              100,
+              250,
+              500,
+              1000,
+              2500,
+              5000,
+              10000,
+              25000
+            ],
+            "weights": [
+              0.1,
+              0.12,
+              0.18,
+              0.22,
+              0.16,
+              0.12,
+              0.07,
+              0.03
+            ]
+          }
+        },
+        {
+          "name": "unit_price",
+          "type": "decimal",
+          "gen": {
+            "type": "choice",
+            "values": [
+              25.0,
+              50.0,
+              75.0,
+              100.0,
+              101.0,
+              125.0,
+              150.0
+            ],
+            "weights": [
+              0.14,
+              0.22,
+              0.18,
+              0.2,
+              0.1,
+              0.1,
+              0.06
+            ]
+          }
+        },
+        {
+          "name": "market_value",
+          "type": "decimal",
+          "gen": "expr:round(quantity * unit_price, 2)"
+        },
+        {
+          "name": "feed_file_name",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "POS_2025_######.csv"
+          }
+        },
+        {
+          "name": "loaded_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "auto_created_at"
+          }
+        }
       ]
     },
     {
-      "schema": "private", "name": "commitment", "layer": "source",
+      "schema": "private",
+      "name": "commitment",
+      "layer": "source",
       "purpose": "Limited partner commitments by portfolio to private fund vehicles.",
-      "primary_key": ["commitment_id"], "rows": 260,
-      "indexes": [["portfolio_id"]],
-      "traits": ["audited"],
-      "foreign_keys": [{"columns": ["portfolio_id"], "ref": "portfolio.portfolio"}],
+      "primary_key": [
+        "commitment_id"
+      ],
+      "rows": 260,
+      "indexes": [
+        [
+          "portfolio_id"
+        ]
+      ],
+      "traits": [
+        "audited"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "portfolio_id"
+          ],
+          "ref": "portfolio.portfolio"
+        }
+      ],
       "columns": [
-        {"name": "commitment_id", "type": "integer"},
-        {"name": "commitment_ref", "type": "string", "gen": {"type": "pattern", "pattern": "COM-######", "unique": true}},
-        {"name": "portfolio_id", "type": "integer", "gen": "fk:portfolio.portfolio@zipf(0.8)"},
-        {"name": "fund_name", "type": "string", "gen": {"type": "text_template", "templates": ["{manager_word} {fund_word} Fund", "{manager_word} {fund_word} Partners"]}},
-        {"name": "strategy", "type": "string", "gen": "choice:buyout=0.26,growth_equity=0.18,infrastructure=0.18,real_estate=0.16,private_credit=0.16,venture=0.06"},
-        {"name": "commitment_amount", "type": "decimal", "gen": {"type": "money", "median": 22000000, "sigma": 0.85, "min": 1000000, "max": 180000000, "price_endings": [0.0]}},
-        {"name": "commitment_date", "type": "date", "gen": {"type": "date", "sorted": true, "backfill_share": 0.78, "backfill_start": "2014-01-01"}},
-        {"name": "status", "type": "string", "gen": "choice:active=0.82,harvesting=0.13,closed=0.05"}
+        {
+          "name": "commitment_id",
+          "type": "integer"
+        },
+        {
+          "name": "commitment_ref",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "COM-######",
+            "unique": true
+          }
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": "fk:portfolio.portfolio@zipf(0.8)"
+        },
+        {
+          "name": "fund_name",
+          "type": "string",
+          "gen": {
+            "type": "text_template",
+            "templates": [
+              "{manager_word} {fund_word} Fund",
+              "{manager_word} {fund_word} Partners"
+            ]
+          }
+        },
+        {
+          "name": "strategy",
+          "type": "string",
+          "gen": "choice:buyout=0.26,growth_equity=0.18,infrastructure=0.18,real_estate=0.16,private_credit=0.16,venture=0.06"
+        },
+        {
+          "name": "commitment_amount",
+          "type": "decimal",
+          "gen": {
+            "type": "money",
+            "median": 22000000,
+            "sigma": 0.85,
+            "min": 1000000,
+            "max": 180000000,
+            "price_endings": [
+              0.0
+            ]
+          }
+        },
+        {
+          "name": "commitment_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "sorted": true,
+            "backfill_share": 0.78,
+            "backfill_start": "2014-01-01"
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "gen": "choice:active=0.82,harvesting=0.13,closed=0.05"
+        }
       ]
     },
     {
-      "schema": "private", "name": "nav_statement", "layer": "transaction",
+      "schema": "private",
+      "name": "nav_statement",
+      "layer": "transaction",
       "purpose": "Quarterly manager NAV statements for private commitments.",
       "grain": "one manager NAV statement per commitment period/version",
-      "primary_key": ["nav_statement_id"],
-      "rows": {"per_parent": "private.commitment", "distribution": {"distribution": "poisson", "lam": 5.5}, "min": 1, "max": 12},
-      "indexes": [["valuation_date"]],
-      "foreign_keys": [{"columns": ["commitment_id"], "ref": "private.commitment"}],
+      "primary_key": [
+        "nav_statement_id"
+      ],
+      "rows": {
+        "per_parent": "private.commitment",
+        "distribution": {
+          "distribution": "poisson",
+          "lam": 5.5
+        },
+        "min": 1,
+        "max": 12
+      },
+      "indexes": [
+        [
+          "valuation_date"
+        ]
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "commitment_id"
+          ],
+          "ref": "private.commitment"
+        }
+      ],
       "columns": [
-        {"name": "nav_statement_id", "type": "integer", "gen": "seq"},
-        {"name": "commitment_id", "type": "integer", "gen": "parent_key"},
-        {"name": "portfolio_id", "type": "integer", "gen": {"type": "parent_copy", "source_column": "portfolio_id"}},
-        {"name": "commitment_amount", "type": "decimal", "gen": {"type": "parent_copy", "source_column": "commitment_amount"}},
-        {"name": "valuation_date", "type": "date", "gen": {"type": "date", "min": "parent.commitment_date"}},
-        {"name": "statement_version", "type": "integer", "gen": "const:1"},
-        {"name": "nav_pct", "type": "decimal", "gen": {"type": "number", "distribution": "lognormal", "median": 0.62, "sigma": 0.45, "min": 0.05, "max": 1.65, "decimals": 4}},
-        {"name": "nav_amount", "type": "decimal", "gen": "expr:round(commitment_amount * nav_pct, 2)"},
-        {"name": "received_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "valuation_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 48, "sigma": 0.45, "min": 20, "max": 110}}},
-        {"name": "review_status", "type": "string", "gen": "choice:approved=0.86,preliminary=0.08,valuation_committee_adjusted=0.06"},
-        {"name": "restatement_reason", "type": "string", "nullable": true, "gen": "skip"}
+        {
+          "name": "nav_statement_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "commitment_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "portfolio_id"
+          }
+        },
+        {
+          "name": "commitment_amount",
+          "type": "decimal",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "commitment_amount"
+          }
+        },
+        {
+          "name": "valuation_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "min": "parent.commitment_date"
+          }
+        },
+        {
+          "name": "statement_version",
+          "type": "integer",
+          "gen": "const:1"
+        },
+        {
+          "name": "nav_pct",
+          "type": "decimal",
+          "gen": {
+            "type": "number",
+            "distribution": "lognormal",
+            "median": 0.62,
+            "sigma": 0.45,
+            "min": 0.05,
+            "max": 1.65,
+            "decimals": 4
+          }
+        },
+        {
+          "name": "nav_amount",
+          "type": "decimal",
+          "gen": "expr:round(commitment_amount * nav_pct, 2)"
+        },
+        {
+          "name": "received_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "date_offset",
+            "from": "valuation_date",
+            "unit": "days",
+            "offset": {
+              "distribution": "lognormal",
+              "median": 48,
+              "sigma": 0.45,
+              "min": 20,
+              "max": 110
+            }
+          }
+        },
+        {
+          "name": "review_status",
+          "type": "string",
+          "gen": "choice:approved=0.86,preliminary=0.08,valuation_committee_adjusted=0.06"
+        },
+        {
+          "name": "restatement_reason",
+          "type": "string",
+          "nullable": true,
+          "gen": "skip"
+        }
       ]
     },
     {
-      "schema": "risk", "name": "guideline_rule", "layer": "source",
+      "schema": "risk",
+      "name": "guideline_rule",
+      "layer": "source",
       "purpose": "Investment guideline/compliance rule catalog.",
-      "primary_key": ["rule_id"], "rows": 14, "scale_exempt": true,
+      "primary_key": [
+        "rule_id"
+      ],
+      "rows": 14,
+      "scale_exempt": true,
       "columns": [
-        {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "pattern", "pattern": "GL-###", "unique": true}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "issuer concentration", "2": "sector concentration", "3": "cash minimum", "4": "illiquid asset limit", "5": "private commitment pacing", "6": "currency exposure", "7": "duration band", "8": "restricted issuer", "9": "benchmark drift", "10": "unrated bond exposure", "11": "single manager limit", "12": "derivative notional limit", "13": "settlement fail aging", "14": "stale price exposure"}}},
-        {"name": "severity", "type": "string", "gen": "choice:high=0.35,medium=0.5,low=0.15"},
-        {"name": "active_flag", "type": "boolean", "gen": "bool:0.96"}
+        {
+          "name": "rule_id",
+          "type": "integer"
+        },
+        {
+          "name": "rule_code",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "GL-###",
+            "unique": true
+          }
+        },
+        {
+          "name": "rule_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "rule_id",
+            "cases": {
+              "1": "issuer concentration",
+              "2": "sector concentration",
+              "3": "cash minimum",
+              "4": "illiquid asset limit",
+              "5": "private commitment pacing",
+              "6": "currency exposure",
+              "7": "duration band",
+              "8": "restricted issuer",
+              "9": "benchmark drift",
+              "10": "unrated bond exposure",
+              "11": "single manager limit",
+              "12": "derivative notional limit",
+              "13": "settlement fail aging",
+              "14": "stale price exposure"
+            }
+          }
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "gen": "choice:high=0.35,medium=0.5,low=0.15"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:0.96"
+        }
       ]
     },
     {
-      "schema": "risk", "name": "guideline_breach", "layer": "workflow",
+      "schema": "risk",
+      "name": "guideline_breach",
+      "layer": "workflow",
       "purpose": "Guideline breach workflow items emitted by overnight monitoring.",
       "grain": "one detected guideline breach per portfolio/rule/date",
-      "primary_key": ["breach_id"],
-      "rows": {"per_parent": "portfolio.portfolio", "distribution": {"distribution": "poisson", "lam": 1.6}, "scale_by": {"parent_column": "aum_tier", "factors": {"small": 0.55, "mid": 1.0, "large": 1.8, "mega": 3.2}, "default": 1.0}, "min": 0, "max": 18},
-      "indexes": [["detected_date"], ["status"]],
-      "traits": ["audited"],
-      "foreign_keys": [{"columns": ["portfolio_id"], "ref": "portfolio.portfolio"}, {"columns": ["rule_id"], "ref": "risk.guideline_rule"}],
+      "primary_key": [
+        "breach_id"
+      ],
+      "rows": {
+        "per_parent": "portfolio.portfolio",
+        "distribution": {
+          "distribution": "poisson",
+          "lam": 1.6
+        },
+        "scale_by": {
+          "parent_column": "aum_tier",
+          "factors": {
+            "small": 0.55,
+            "mid": 1.0,
+            "large": 1.8,
+            "mega": 3.2
+          },
+          "default": 1.0
+        },
+        "min": 0,
+        "max": 18
+      },
+      "indexes": [
+        [
+          "detected_date"
+        ],
+        [
+          "status"
+        ]
+      ],
+      "traits": [
+        "audited"
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "portfolio_id"
+          ],
+          "ref": "portfolio.portfolio"
+        },
+        {
+          "columns": [
+            "rule_id"
+          ],
+          "ref": "risk.guideline_rule"
+        }
+      ],
       "columns": [
-        {"name": "breach_id", "type": "integer", "gen": "seq"},
-        {"name": "portfolio_id", "type": "integer", "gen": "parent_key"},
-        {"name": "rule_id", "type": "integer", "gen": "fk:risk.guideline_rule@zipf(0.8)"},
-        {"name": "detected_date", "type": "date", "gen": {"type": "date", "min": "parent.inception_date"}},
-        {"name": "detected_at", "type": "timestamp", "gen": {"type": "auto_created_at"}},
-        {"name": "severity", "type": "string", "gen": "choice:high=0.22,medium=0.55,low=0.23"},
-        {"name": "exposure_amount", "type": "decimal", "gen": {"type": "money", "median": 850000, "sigma": 1.0, "min": 1000, "max": 45000000, "price_endings": [0.0]}},
-        {"name": "status", "type": "string", "gen": "const:detected"},
-        {"name": "confirmed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "remediated_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "waived_at", "type": "timestamp", "nullable": true, "gen": "skip"},
-        {"name": "waiver_flag", "type": "integer", "gen": "const:0"},
-        {"name": "override_note", "type": "string", "nullable": true, "gen": "skip"}
+        {
+          "name": "breach_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "rule_id",
+          "type": "integer",
+          "gen": "fk:risk.guideline_rule@zipf(0.8)"
+        },
+        {
+          "name": "detected_date",
+          "type": "date",
+          "gen": {
+            "type": "date",
+            "min": "parent.inception_date"
+          }
+        },
+        {
+          "name": "detected_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "auto_created_at"
+          }
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "gen": "choice:high=0.22,medium=0.55,low=0.23"
+        },
+        {
+          "name": "exposure_amount",
+          "type": "decimal",
+          "gen": {
+            "type": "money",
+            "median": 850000,
+            "sigma": 1.0,
+            "min": 1000,
+            "max": 45000000,
+            "price_endings": [
+              0.0
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "gen": "const:detected"
+        },
+        {
+          "name": "confirmed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "remediated_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "waived_at",
+          "type": "timestamp",
+          "nullable": true,
+          "gen": "skip"
+        },
+        {
+          "name": "waiver_flag",
+          "type": "integer",
+          "gen": "const:0"
+        },
+        {
+          "name": "override_note",
+          "type": "string",
+          "nullable": true,
+          "gen": "skip"
+        }
       ]
     },
     {
-      "schema": "risk", "name": "guideline_breach_event", "layer": "event",
+      "schema": "risk",
+      "name": "guideline_breach_event",
+      "layer": "event",
       "purpose": "Guideline breach workflow status history.",
       "grain": "one row per breach state entered",
       "source": "state_machine",
-      "primary_key": ["breach_id", "event_seq"],
-      "indexes": [["breach_id"]],
+      "primary_key": [
+        "breach_id",
+        "event_seq"
+      ],
+      "indexes": [
+        [
+          "breach_id"
+        ]
+      ],
       "columns": [
-        {"name": "breach_id", "type": "integer"},
-        {"name": "event_seq", "type": "integer"},
-        {"name": "state", "type": "string"},
-        {"name": "entered_at", "type": "timestamp"}
+        {
+          "name": "breach_id",
+          "type": "integer"
+        },
+        {
+          "name": "event_seq",
+          "type": "integer"
+        },
+        {
+          "name": "state",
+          "type": "string"
+        },
+        {
+          "name": "entered_at",
+          "type": "timestamp"
+        }
       ]
     },
     {
-      "schema": "integration", "name": "file_load", "layer": "integration",
+      "schema": "integration",
+      "name": "file_load",
+      "layer": "integration",
       "purpose": "Batch/API feed load log for custodian, security, price, and manager files.",
-      "primary_key": ["file_load_id"], "rows": 650,
-      "indexes": [["source_system"], ["load_date"]],
+      "primary_key": [
+        "file_load_id"
+      ],
+      "rows": 650,
+      "indexes": [
+        [
+          "source_system"
+        ],
+        [
+          "load_date"
+        ]
+      ],
       "columns": [
-        {"name": "file_load_id", "type": "integer"},
-        {"name": "file_name", "type": "string", "gen": {"type": "pattern", "pattern": "FEED-########.dat"}},
-        {"name": "source_system", "type": "string", "gen": "choice:CustoLink=0.44,SecuRef=0.22,AltView=0.18,MarketData=0.16"},
-        {"name": "feed_type", "type": "string", "gen": "choice:position=0.32,cash=0.16,transaction=0.18,security=0.14,price=0.12,nav=0.08"},
-        {"name": "load_date", "type": "date"},
-        {"name": "arrived_at", "type": "timestamp", "gen": {"type": "auto_created_at"}},
-        {"name": "row_count", "type": "integer", "gen": {"type": "int", "distribution": "lognormal", "median": 1800, "sigma": 1.1, "min": 1, "max": 120000}},
-        {"name": "load_status", "type": "string", "gen": "choice:success=0.90,partial=0.07,failed=0.03"}
+        {
+          "name": "file_load_id",
+          "type": "integer"
+        },
+        {
+          "name": "file_name",
+          "type": "string",
+          "gen": {
+            "type": "pattern",
+            "pattern": "FEED-########.dat"
+          }
+        },
+        {
+          "name": "source_system",
+          "type": "string",
+          "gen": "choice:CustoLink=0.44,SecuRef=0.22,AltView=0.18,MarketData=0.16"
+        },
+        {
+          "name": "feed_type",
+          "type": "string",
+          "gen": "choice:position=0.32,cash=0.16,transaction=0.18,security=0.14,price=0.12,nav=0.08"
+        },
+        {
+          "name": "load_date",
+          "type": "date"
+        },
+        {
+          "name": "arrived_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "auto_created_at"
+          }
+        },
+        {
+          "name": "row_count",
+          "type": "integer",
+          "gen": {
+            "type": "int",
+            "distribution": "lognormal",
+            "median": 1800,
+            "sigma": 1.1,
+            "min": 1,
+            "max": 120000
+          }
+        },
+        {
+          "name": "load_status",
+          "type": "string",
+          "gen": "choice:success=0.90,partial=0.07,failed=0.03"
+        }
       ]
     },
     {
-      "schema": "control", "name": "recon_run", "layer": "control",
+      "schema": "integration",
+      "name": "job",
+      "layer": "integration",
+      "purpose": "Scheduled inbound feed, warehouse refresh, procedure, and outbound extract jobs tied to cataloged code objects.",
+      "primary_key": [
+        "job_id"
+      ],
+      "rows": 10,
+      "scale_exempt": true,
+      "columns": [
+        {
+          "name": "job_id",
+          "type": "integer"
+        },
+        {
+          "name": "job_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "job_id",
+            "cases": {
+              "1": "custodian_position_file_load",
+              "2": "custodian_transaction_file_load",
+              "3": "oms_trade_extract_load",
+              "4": "security_master_vendor_load",
+              "5": "private_manager_statement_load",
+              "6": "nightly_position_roll",
+              "7": "rebuild_performance_composites",
+              "8": "refresh_month_end_aum_snapshot",
+              "9": "client_statement_extract",
+              "10": "regulatory_holdings_extract"
+            }
+          }
+        },
+        {
+          "name": "job_type",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "job_id",
+            "cases": {
+              "1": "inbound_file",
+              "2": "inbound_file",
+              "3": "inbound_file",
+              "4": "inbound_file",
+              "5": "inbound_file",
+              "6": "procedure",
+              "7": "procedure",
+              "8": "materialized_view_refresh",
+              "9": "outbound_extract",
+              "10": "outbound_extract"
+            }
+          }
+        },
+        {
+          "name": "target_code_object",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "job_id",
+            "cases": {
+              "1": "stg_custodian_position",
+              "2": "stg_custodian_transaction",
+              "3": "stg_oms_trade",
+              "4": "stg_security_master_vendor",
+              "5": "stg_private_asset_manager_statement",
+              "6": "proc_nightly_position_roll",
+              "7": "proc_rebuild_performance_composites",
+              "8": "proc_refresh_mv_month_end_aum_snapshot",
+              "9": "extract_client_statement_positions",
+              "10": "extract_regulatory_holdings"
+            }
+          }
+        },
+        {
+          "name": "schedule_cron",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "job_id",
+            "cases": {
+              "1": "30 02 * * 1-5",
+              "2": "45 02 * * 1-5",
+              "3": "15 01 * * 1-5",
+              "4": "00 03 * * 1-5",
+              "5": "20 05 5 * *",
+              "6": "10 04 * * 1-5",
+              "7": "30 05 1 * *",
+              "8": "45 05 L * *",
+              "9": "00 07 L * *",
+              "10": "30 07 L * *"
+            }
+          }
+        },
+        {
+          "name": "owner_team",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "job_id",
+            "cases": {
+              "1": "investment_operations",
+              "2": "investment_operations",
+              "3": "trading_operations",
+              "4": "security_master",
+              "5": "private_markets_ops",
+              "6": "investment_data_platform",
+              "7": "performance_analytics",
+              "8": "analytics_engineering",
+              "9": "client_reporting",
+              "10": "regulatory_reporting"
+            }
+          }
+        },
+        {
+          "name": "criticality",
+          "type": "string",
+          "gen": "choice:tier1=0.45,tier2=0.40,tier3=0.15"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:0.98"
+        }
+      ]
+    },
+    {
+      "schema": "integration",
+      "name": "job_run",
+      "layer": "integration",
+      "purpose": "Historical execution log for scheduled feed loads, procedures, snapshot refreshes, and extracts, including failed and partial runs.",
+      "grain": "one row per scheduled job execution",
+      "primary_key": [
+        "run_id"
+      ],
+      "rows": {
+        "per_parent": "integration.job",
+        "distribution": {
+          "distribution": "lognormal",
+          "median": 45,
+          "sigma": 0.3
+        },
+        "min": 24,
+        "max": 90
+      },
+      "indexes": [
+        [
+          "job_id"
+        ],
+        [
+          "run_status"
+        ]
+      ],
+      "columns": [
+        {
+          "name": "run_id",
+          "type": "integer",
+          "gen": "seq"
+        },
+        {
+          "name": "job_id",
+          "type": "integer",
+          "gen": "parent_key"
+        },
+        {
+          "name": "job_name",
+          "type": "string",
+          "gen": {
+            "type": "parent_copy",
+            "source_column": "job_name"
+          }
+        },
+        {
+          "name": "run_started_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "timestamp",
+            "business_hours": false
+          }
+        },
+        {
+          "name": "run_finished_at",
+          "type": "timestamp",
+          "gen": {
+            "type": "date_offset",
+            "from": "run_started_at",
+            "unit": "minutes",
+            "offset": {
+              "distribution": "lognormal",
+              "median": 18,
+              "sigma": 0.7,
+              "min": 1,
+              "max": 240
+            },
+            "clamp_as_of": false,
+            "as": "timestamp"
+          }
+        },
+        {
+          "name": "run_status",
+          "type": "string",
+          "gen": "choice:success=0.88,failed=0.07,partial=0.05"
+        },
+        {
+          "name": "rows_processed",
+          "type": "integer",
+          "gen": "int:lognormal(median=6500,sigma=1.0,min=0,max=200000)"
+        },
+        {
+          "name": "error_note",
+          "type": "string",
+          "nullable": true,
+          "gen": {
+            "type": "case",
+            "on": "run_status",
+            "cases": {
+              "failed": "Source file failed checksum or procedure lock timeout.",
+              "partial": "Loaded with rejected rows routed to DQ quarantine."
+            },
+            "default": {
+              "type": "constant",
+              "value": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "schema": "catalog",
+      "name": "code_object",
+      "layer": "catalog",
+      "purpose": "Executable code catalog: self-registered SQLite views plus modeled procedures, functions and outbound extract definitions.",
+      "source": "derivation",
+      "primary_key": [
+        "code_object_id"
+      ],
+      "columns": [
+        {
+          "name": "code_object_id",
+          "type": "integer"
+        },
+        {
+          "name": "object_schema",
+          "type": "string"
+        },
+        {
+          "name": "object_name",
+          "type": "string"
+        },
+        {
+          "name": "object_type",
+          "type": "string"
+        },
+        {
+          "name": "language",
+          "type": "string"
+        },
+        {
+          "name": "source_text",
+          "type": "text"
+        },
+        {
+          "name": "owner_team",
+          "type": "string"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "last_altered_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "deployment_status",
+          "type": "string"
+        },
+        {
+          "name": "deployment_note",
+          "type": "string",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "schema": "catalog",
+      "name": "lineage_edge",
+      "layer": "catalog",
+      "purpose": "Object-level lineage edges linking landed feeds, staging, warehouse facts, views, procedures, snapshots, extracts, and workflow queues.",
+      "source": "derivation",
+      "primary_key": [
+        "lineage_edge_id"
+      ],
+      "columns": [
+        {
+          "name": "lineage_edge_id",
+          "type": "integer"
+        },
+        {
+          "name": "source_object",
+          "type": "string"
+        },
+        {
+          "name": "target_object",
+          "type": "string"
+        },
+        {
+          "name": "transformation_object",
+          "type": "string"
+        },
+        {
+          "name": "edge_type",
+          "type": "string"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "control",
+      "name": "recon_run",
+      "layer": "control",
       "purpose": "Control execution log for portfolio/accounting reconciliations.",
-      "primary_key": ["recon_run_id"], "rows": 260,
+      "primary_key": [
+        "recon_run_id"
+      ],
+      "rows": 260,
       "columns": [
-        {"name": "recon_run_id", "type": "integer"},
-        {"name": "control_code", "type": "string", "gen": "choice:CTL-001=0.55,CTL-002=0.25,CTL-003=0.20"},
-        {"name": "run_date", "type": "date"},
-        {"name": "run_status", "type": "string", "gen": "choice:pass=0.72,pass_with_breaks=0.24,failed=0.04"},
-        {"name": "owner", "type": "string", "gen": "staff_user"}
+        {
+          "name": "recon_run_id",
+          "type": "integer"
+        },
+        {
+          "name": "control_code",
+          "type": "string",
+          "gen": "choice:CTL-001=0.55,CTL-002=0.25,CTL-003=0.20"
+        },
+        {
+          "name": "run_date",
+          "type": "date"
+        },
+        {
+          "name": "run_status",
+          "type": "string",
+          "gen": "choice:pass=0.72,pass_with_breaks=0.24,failed=0.04"
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "gen": "staff_user"
+        }
       ]
     },
     {
-      "schema": "dq", "name": "rule", "layer": "dq",
+      "schema": "dq",
+      "name": "rule",
+      "layer": "dq",
       "purpose": "Data-quality rule catalog for the current-result view.",
-      "primary_key": ["dq_rule_id"], "rows": 9, "scale_exempt": true,
+      "primary_key": [
+        "dq_rule_id"
+      ],
+      "rows": 13,
+      "scale_exempt": true,
       "columns": [
-        {"name": "dq_rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "dq_rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "dq_rule_id", "cases": {"1": "duplicate security names", "2": "position security exists", "3": "custodian date parses", "4": "active security mapping not stale", "5": "duplicate file deliveries", "6": "manual guideline waivers", "7": "missing security mapping", "8": "trade compliance blocked", "9": "NAV restatement review"}}},
-        {"name": "severity", "type": "string", "gen": "choice:error=0.45,warning=0.45,critical=0.10"},
-        {"name": "active_flag", "type": "boolean", "gen": "bool:1.0"}
+        {
+          "name": "dq_rule_id",
+          "type": "integer"
+        },
+        {
+          "name": "rule_code",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "dq_rule_id",
+            "cases": {
+              "1": "DQ-001",
+              "2": "DQ-002",
+              "3": "DQ-003",
+              "4": "DQ-004",
+              "5": "DQ-005",
+              "6": "DQ-006",
+              "7": "DQ-007",
+              "8": "DQ-008",
+              "9": "DQ-009",
+              "10": "DQ-010",
+              "11": "DQ-011",
+              "12": "DQ-012",
+              "13": "DQ-013"
+            }
+          }
+        },
+        {
+          "name": "rule_name",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "dq_rule_id",
+            "cases": {
+              "1": "duplicate security names",
+              "2": "custodian position security missing",
+              "3": "unparseable custodian position date",
+              "4": "stale active security mapping",
+              "5": "duplicate feed load file",
+              "6": "manual guideline waiver",
+              "7": "staged custodian security missing map",
+              "8": "trade order blocked by compliance",
+              "9": "NAV restatement reason present",
+              "10": "performance composite unassigned",
+              "11": "manual composite mapping stale or conflicting",
+              "12": "integration job failure",
+              "13": "performance/client-reporting AUM discrepancy"
+            }
+          }
+        },
+        {
+          "name": "severity",
+          "type": "string",
+          "gen": {
+            "type": "case",
+            "on": "dq_rule_id",
+            "cases": {
+              "2": "error",
+              "5": "error",
+              "7": "error",
+              "10": "error",
+              "12": "warning",
+              "13": "warning"
+            },
+            "default": "warning"
+          }
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean",
+          "gen": "bool:1.0"
+        }
       ]
     },
     {
-      "schema": "raw", "name": "custodian_position_extract", "layer": "raw",
-      "purpose": "Raw landed custodian position extract with source-formatted dates.",
-      "source": "derivation", "primary_key": ["raw_position_ref"],
+      "schema": "raw",
+      "name": "custodian_position_extract",
+      "layer": "raw",
+      "purpose": "Verbatim custodian settled-position file rows with file and batch metadata; resent files can repeat the same source row.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_landing_id"
+      ],
       "columns": [
-        {"name": "raw_position_ref", "type": "string"},
-        {"name": "account_ref", "type": "string"},
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "custodian_id", "type": "integer"},
-        {"name": "custodian_security_id", "type": "string"},
-        {"name": "security_id", "type": "integer"},
-        {"name": "source_position_date", "type": "string"},
-        {"name": "quantity", "type": "decimal"},
-        {"name": "market_value", "type": "decimal"},
-        {"name": "feed_file_name", "type": "string"}
+        {
+          "name": "raw_landing_id",
+          "type": "integer"
+        },
+        {
+          "name": "raw_position_ref",
+          "type": "string"
+        },
+        {
+          "name": "account_ref",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_security_id",
+          "type": "string"
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "source_position_date",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "market_value",
+          "type": "decimal"
+        },
+        {
+          "name": "file_name",
+          "type": "string"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        }
       ]
     },
     {
-      "schema": "stg", "name": "custodian_position", "layer": "staging",
-      "purpose": "Parsed/staged custodian positions with nullable parse results.",
-      "source": "derivation", "primary_key": ["raw_position_id"],
+      "schema": "stg",
+      "name": "custodian_position",
+      "layer": "staging",
+      "purpose": "Typed custodian position staging with guarded date parsing and deduplication of resent custodian position files.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_position_id"
+      ],
       "columns": [
-        {"name": "raw_position_id", "type": "integer"},
-        {"name": "account_id", "type": "integer"},
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "custodian_id", "type": "integer"},
-        {"name": "custodian_security_id", "type": "string"},
-        {"name": "security_id", "type": "integer"},
-        {"name": "position_date", "type": "date", "nullable": true},
-        {"name": "quantity", "type": "decimal"},
-        {"name": "market_value", "type": "decimal"},
-        {"name": "parse_status", "type": "string"}
+        {
+          "name": "raw_position_id",
+          "type": "integer"
+        },
+        {
+          "name": "account_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_security_id",
+          "type": "string"
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "position_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "market_value",
+          "type": "decimal"
+        },
+        {
+          "name": "file_name",
+          "type": "string"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "parse_status",
+          "type": "string"
+        },
+        {
+          "name": "dedupe_rank",
+          "type": "integer"
+        }
       ]
     },
     {
-      "schema": "xref", "name": "security_identifier_map", "layer": "xref",
+      "schema": "raw",
+      "name": "custodian_transaction_file",
+      "layer": "raw",
+      "purpose": "Verbatim custodian settled-transaction file rows with source transaction references, file batches, and ingestion timestamps.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_txn_file_id"
+      ],
+      "columns": [
+        {
+          "name": "raw_txn_file_id",
+          "type": "integer"
+        },
+        {
+          "name": "source_transaction_id",
+          "type": "string"
+        },
+        {
+          "name": "account_ref",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "transaction_ref",
+          "type": "string"
+        },
+        {
+          "name": "transaction_type",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "price",
+          "type": "decimal"
+        },
+        {
+          "name": "gross_amount",
+          "type": "decimal"
+        },
+        {
+          "name": "source_trade_date",
+          "type": "string"
+        },
+        {
+          "name": "source_settle_date",
+          "type": "string"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "stg",
+      "name": "custodian_transaction",
+      "layer": "staging",
+      "purpose": "Typed custodian transaction staging with guarded trade/settle date parsing and deduplication of resent custodian transaction files.",
+      "source": "derivation",
+      "primary_key": [
+        "transaction_id"
+      ],
+      "columns": [
+        {
+          "name": "transaction_id",
+          "type": "integer"
+        },
+        {
+          "name": "account_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "transaction_ref",
+          "type": "string"
+        },
+        {
+          "name": "transaction_type",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "price",
+          "type": "decimal"
+        },
+        {
+          "name": "gross_amount",
+          "type": "decimal"
+        },
+        {
+          "name": "trade_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "settle_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "parse_status",
+          "type": "string"
+        },
+        {
+          "name": "dedupe_rank",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "schema": "raw",
+      "name": "oms_trade_extract",
+      "layer": "raw",
+      "purpose": "Nightly OMS/EMS trade extract as landed from trading systems with file/batch and ingestion metadata.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_oms_trade_id"
+      ],
+      "columns": [
+        {
+          "name": "raw_oms_trade_id",
+          "type": "integer"
+        },
+        {
+          "name": "order_id",
+          "type": "string"
+        },
+        {
+          "name": "execution_id",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_ref",
+          "type": "string"
+        },
+        {
+          "name": "security_ref",
+          "type": "string"
+        },
+        {
+          "name": "side",
+          "type": "string"
+        },
+        {
+          "name": "order_qty",
+          "type": "integer"
+        },
+        {
+          "name": "fill_qty",
+          "type": "integer"
+        },
+        {
+          "name": "limit_price",
+          "type": "decimal"
+        },
+        {
+          "name": "fill_price",
+          "type": "decimal"
+        },
+        {
+          "name": "source_order_date",
+          "type": "string"
+        },
+        {
+          "name": "source_execution_date",
+          "type": "string"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "stg",
+      "name": "oms_trade",
+      "layer": "staging",
+      "purpose": "Typed OMS/EMS trade extract staging with guarded date parsing.",
+      "source": "derivation",
+      "primary_key": [
+        "execution_id"
+      ],
+      "columns": [
+        {
+          "name": "execution_id",
+          "type": "integer"
+        },
+        {
+          "name": "order_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "side",
+          "type": "string"
+        },
+        {
+          "name": "order_qty",
+          "type": "integer"
+        },
+        {
+          "name": "fill_qty",
+          "type": "integer"
+        },
+        {
+          "name": "limit_price",
+          "type": "decimal"
+        },
+        {
+          "name": "fill_price",
+          "type": "decimal"
+        },
+        {
+          "name": "order_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "execution_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "parse_status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "schema": "raw",
+      "name": "security_master_vendor_feed",
+      "layer": "raw",
+      "purpose": "Daily vendor security-master feed landing table with file and batch metadata.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_security_feed_id"
+      ],
+      "columns": [
+        {
+          "name": "raw_security_feed_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id_ref",
+          "type": "string"
+        },
+        {
+          "name": "vendor_security_ref",
+          "type": "string"
+        },
+        {
+          "name": "isin",
+          "type": "string"
+        },
+        {
+          "name": "cusip",
+          "type": "string"
+        },
+        {
+          "name": "security_name",
+          "type": "string"
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string"
+        },
+        {
+          "name": "currency",
+          "type": "string"
+        },
+        {
+          "name": "source_issue_date",
+          "type": "string"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "stg",
+      "name": "security_master_vendor",
+      "layer": "staging",
+      "purpose": "Typed security-master vendor staging with guarded date parsing.",
+      "source": "derivation",
+      "primary_key": [
+        "security_id"
+      ],
+      "columns": [
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_uid",
+          "type": "string"
+        },
+        {
+          "name": "isin",
+          "type": "string"
+        },
+        {
+          "name": "cusip",
+          "type": "string"
+        },
+        {
+          "name": "security_name",
+          "type": "string"
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string"
+        },
+        {
+          "name": "currency",
+          "type": "string"
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "parse_status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "schema": "raw",
+      "name": "private_asset_manager_statement",
+      "layer": "raw",
+      "purpose": "Private-asset manager statement landing rows with manager file metadata and ingestion timestamps.",
+      "source": "derivation",
+      "primary_key": [
+        "raw_statement_id"
+      ],
+      "columns": [
+        {
+          "name": "raw_statement_id",
+          "type": "integer"
+        },
+        {
+          "name": "nav_statement_ref",
+          "type": "string"
+        },
+        {
+          "name": "commitment_id_ref",
+          "type": "string"
+        },
+        {
+          "name": "commitment_ref",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_ref",
+          "type": "string"
+        },
+        {
+          "name": "fund_name",
+          "type": "string"
+        },
+        {
+          "name": "strategy",
+          "type": "string"
+        },
+        {
+          "name": "source_valuation_date",
+          "type": "string"
+        },
+        {
+          "name": "source_received_at",
+          "type": "string"
+        },
+        {
+          "name": "statement_version",
+          "type": "integer"
+        },
+        {
+          "name": "nav_amount",
+          "type": "decimal"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "schema": "stg",
+      "name": "private_asset_manager_statement",
+      "layer": "staging",
+      "purpose": "Typed private-asset manager statement staging with guarded valuation/received date parsing.",
+      "source": "derivation",
+      "primary_key": [
+        "nav_statement_id"
+      ],
+      "columns": [
+        {
+          "name": "nav_statement_id",
+          "type": "integer"
+        },
+        {
+          "name": "commitment_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "fund_name",
+          "type": "string"
+        },
+        {
+          "name": "strategy",
+          "type": "string"
+        },
+        {
+          "name": "valuation_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "received_at",
+          "type": "timestamp",
+          "nullable": true
+        },
+        {
+          "name": "statement_version",
+          "type": "integer"
+        },
+        {
+          "name": "nav_amount",
+          "type": "decimal"
+        },
+        {
+          "name": "file_batch_id",
+          "type": "string"
+        },
+        {
+          "name": "ingested_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "parse_status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "schema": "xref",
+      "name": "security_identifier_map",
+      "layer": "xref",
       "purpose": "Crosswalk from custodian security ids to internal security master ids.",
-      "source": "derivation", "primary_key": ["security_map_id"],
+      "source": "derivation",
+      "primary_key": [
+        "security_map_id"
+      ],
       "columns": [
-        {"name": "security_map_id", "type": "integer"},
-        {"name": "source_system", "type": "string"},
-        {"name": "source_security_id", "type": "string"},
-        {"name": "security_id", "type": "integer"},
-        {"name": "valid_from", "type": "date"},
-        {"name": "valid_to", "type": "date", "nullable": true},
-        {"name": "active_flag", "type": "boolean"}
+        {
+          "name": "security_map_id",
+          "type": "integer"
+        },
+        {
+          "name": "source_system",
+          "type": "string"
+        },
+        {
+          "name": "source_security_id",
+          "type": "string"
+        },
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "valid_from",
+          "type": "date"
+        },
+        {
+          "name": "valid_to",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean"
+        }
       ]
     },
     {
-      "schema": "core", "name": "holding_position", "layer": "canonical",
-      "purpose": "Canonical IBOR/custodian holding position rows after security mapping.",
-      "grain": "one canonical portfolio-security-position-date holding row",
-      "source": "derivation", "primary_key": ["holding_position_id"],
+      "schema": "core",
+      "name": "holding_position",
+      "layer": "canonical",
+      "purpose": "Canonical mapped holding positions sourced from deduped custodian position staging.",
+      "source": "derivation",
+      "primary_key": [
+        "holding_position_id"
+      ],
       "columns": [
-        {"name": "holding_position_id", "type": "integer"},
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "account_id", "type": "integer"},
-        {"name": "security_id", "type": "integer", "nullable": true},
-        {"name": "position_date", "type": "date"},
-        {"name": "quantity", "type": "decimal"},
-        {"name": "market_value", "type": "decimal"},
-        {"name": "mapped_flag", "type": "boolean"}
+        {
+          "name": "holding_position_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "account_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "position_date",
+          "type": "date"
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "market_value",
+          "type": "decimal"
+        },
+        {
+          "name": "mapped_flag",
+          "type": "boolean"
+        },
+        {
+          "name": "source_file_batch_id",
+          "type": "string"
+        }
       ]
     },
     {
-      "schema": "wh", "name": "dim_portfolio", "layer": "warehouse_dimension",
-      "purpose": "Portfolio dimension from the portfolio accounting master.",
-      "source": "derivation", "primary_key": ["portfolio_key"],
+      "schema": "wh",
+      "name": "dim_portfolio",
+      "layer": "warehouse_dimension",
+      "purpose": "Portfolio dimension for warehouse facts and views.",
+      "source": "derivation",
+      "primary_key": [
+        "portfolio_key"
+      ],
       "columns": [
-        {"name": "portfolio_key", "type": "integer"},
-        {"name": "portfolio_code", "type": "string"},
-        {"name": "portfolio_name", "type": "string"},
-        {"name": "portfolio_type", "type": "string"},
-        {"name": "asset_class_bias", "type": "string"},
-        {"name": "status", "type": "string"},
-        {"name": "aum_tier", "type": "string"}
+        {
+          "name": "portfolio_key",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_code",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_name",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_type",
+          "type": "string"
+        },
+        {
+          "name": "asset_class_bias",
+          "type": "string"
+        },
+        {
+          "name": "base_currency",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "aum_tier",
+          "type": "string"
+        }
       ]
     },
     {
-      "schema": "wh", "name": "dim_security", "layer": "warehouse_dimension",
-      "purpose": "Security dimension from the security master.",
-      "source": "derivation", "primary_key": ["security_key"],
+      "schema": "wh",
+      "name": "dim_security",
+      "layer": "warehouse_dimension",
+      "purpose": "Security dimension conformed from staged security-master vendor data.",
+      "source": "derivation",
+      "primary_key": [
+        "security_key"
+      ],
       "columns": [
-        {"name": "security_key", "type": "integer"},
-        {"name": "security_uid", "type": "string"},
-        {"name": "security_name", "type": "string"},
-        {"name": "asset_class_code", "type": "string"},
-        {"name": "currency", "type": "string"},
-        {"name": "active_flag", "type": "boolean"}
+        {
+          "name": "security_key",
+          "type": "integer"
+        },
+        {
+          "name": "security_uid",
+          "type": "string"
+        },
+        {
+          "name": "security_name",
+          "type": "string"
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string"
+        },
+        {
+          "name": "currency",
+          "type": "string"
+        },
+        {
+          "name": "issue_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean"
+        }
       ]
     },
     {
-      "schema": "wh", "name": "fact_trade_allocation", "layer": "warehouse_fact",
-      "purpose": "Trade allocation fact sourced from OMS/EMS executions.",
-      "grain": "one row per execution",
-      "source": "derivation", "primary_key": ["allocation_key"],
+      "schema": "wh",
+      "name": "dim_date",
+      "layer": "warehouse_dimension",
+      "purpose": "Calendar dimension used by holding and trade normalized views.",
+      "source": "derivation",
+      "primary_key": [
+        "date_key"
+      ],
       "columns": [
-        {"name": "allocation_key", "type": "integer"},
-        {"name": "allocation_date", "type": "date"},
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "security_id", "type": "integer"},
-        {"name": "side", "type": "string"},
-        {"name": "quantity", "type": "integer"},
-        {"name": "price", "type": "decimal"},
-        {"name": "net_amount", "type": "decimal"}
+        {
+          "name": "date_key",
+          "type": "date"
+        },
+        {
+          "name": "calendar_year",
+          "type": "integer"
+        },
+        {
+          "name": "calendar_month",
+          "type": "integer"
+        },
+        {
+          "name": "month_key",
+          "type": "string"
+        },
+        {
+          "name": "day_of_month",
+          "type": "integer"
+        },
+        {
+          "name": "day_of_week",
+          "type": "integer"
+        },
+        {
+          "name": "is_weekend",
+          "type": "boolean"
+        },
+        {
+          "name": "is_month_end",
+          "type": "boolean"
+        }
       ]
     },
     {
-      "schema": "wh", "name": "fact_holding_daily", "layer": "warehouse_fact",
-      "purpose": "Daily holding-position fact derived from custodian positions.",
-      "grain": "one row per portfolio/security/position-date",
-      "source": "derivation", "primary_key": ["holding_key"],
+      "schema": "wh",
+      "name": "dim_custodian",
+      "layer": "warehouse_dimension",
+      "purpose": "Custodian dimension for warehouse holdings and custodian transaction facts.",
+      "source": "derivation",
+      "primary_key": [
+        "custodian_key"
+      ],
       "columns": [
-        {"name": "holding_key", "type": "integer"},
-        {"name": "position_date", "type": "date"},
-        {"name": "portfolio_id", "type": "integer"},
-        {"name": "security_id", "type": "integer", "nullable": true},
-        {"name": "asset_class_code", "type": "string"},
-        {"name": "quantity", "type": "decimal"},
-        {"name": "market_value", "type": "decimal"},
-        {"name": "mapped_flag", "type": "boolean"}
+        {
+          "name": "custodian_key",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_code",
+          "type": "string"
+        },
+        {
+          "name": "custodian_name",
+          "type": "string"
+        },
+        {
+          "name": "feed_protocol",
+          "type": "string"
+        },
+        {
+          "name": "active_flag",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "schema": "wh",
+      "name": "fact_trade_allocation",
+      "layer": "warehouse_fact",
+      "purpose": "Trade allocation fact sourced from staged OMS/EMS executions and custodian account context.",
+      "grain": "one row per execution allocation",
+      "source": "derivation",
+      "primary_key": [
+        "allocation_key"
+      ],
+      "columns": [
+        {
+          "name": "allocation_key",
+          "type": "integer"
+        },
+        {
+          "name": "allocation_date",
+          "type": "date"
+        },
+        {
+          "name": "date_key",
+          "type": "date"
+        },
+        {
+          "name": "order_id",
+          "type": "integer"
+        },
+        {
+          "name": "execution_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "security_id",
+          "type": "integer"
+        },
+        {
+          "name": "side",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "integer"
+        },
+        {
+          "name": "price",
+          "type": "decimal"
+        },
+        {
+          "name": "gross_amount",
+          "type": "decimal"
+        },
+        {
+          "name": "net_amount",
+          "type": "decimal"
+        }
+      ]
+    },
+    {
+      "schema": "wh",
+      "name": "fact_holding_daily",
+      "layer": "warehouse_fact",
+      "purpose": "Daily holding-position fact derived from mapped custodian positions.",
+      "grain": "one row per portfolio/security/custodian/position-date",
+      "source": "derivation",
+      "primary_key": [
+        "holding_key"
+      ],
+      "columns": [
+        {
+          "name": "holding_key",
+          "type": "integer"
+        },
+        {
+          "name": "position_date",
+          "type": "date"
+        },
+        {
+          "name": "date_key",
+          "type": "date"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "account_id",
+          "type": "integer"
+        },
+        {
+          "name": "custodian_id",
+          "type": "integer"
+        },
+        {
+          "name": "security_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "asset_class_code",
+          "type": "string"
+        },
+        {
+          "name": "quantity",
+          "type": "decimal"
+        },
+        {
+          "name": "market_value",
+          "type": "decimal"
+        },
+        {
+          "name": "mapped_flag",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "schema": "mv",
+      "name": "month_end_aum_snapshot",
+      "layer": "mart",
+      "purpose": "SQLite-modeled materialized view: month-end portfolio AUM snapshot refreshed from business AUM views.",
+      "grain": "one row per portfolio per month-end snapshot",
+      "source": "derivation",
+      "primary_key": [
+        "snapshot_id"
+      ],
+      "columns": [
+        {
+          "name": "snapshot_id",
+          "type": "integer"
+        },
+        {
+          "name": "snapshot_month",
+          "type": "string"
+        },
+        {
+          "name": "snapshot_date",
+          "type": "date"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_code",
+          "type": "string"
+        },
+        {
+          "name": "source_strategy",
+          "type": "string"
+        },
+        {
+          "name": "custodian_count",
+          "type": "integer"
+        },
+        {
+          "name": "position_rows",
+          "type": "integer"
+        },
+        {
+          "name": "market_value",
+          "type": "decimal"
+        },
+        {
+          "name": "refresh_batch_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "schema": "workflow",
+      "name": "mapping_request_queue",
+      "layer": "workflow",
+      "purpose": "Workflow queue seeded by portfolios that fall to UNASSIGNED in the performance composite AUM mart.",
+      "source": "derivation",
+      "primary_key": [
+        "request_id"
+      ],
+      "columns": [
+        {
+          "name": "request_id",
+          "type": "integer"
+        },
+        {
+          "name": "request_code",
+          "type": "string"
+        },
+        {
+          "name": "portfolio_id",
+          "type": "integer"
+        },
+        {
+          "name": "portfolio_code",
+          "type": "string"
+        },
+        {
+          "name": "source_strategy",
+          "type": "string"
+        },
+        {
+          "name": "issue_type",
+          "type": "string"
+        },
+        {
+          "name": "priority",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "assigned_queue",
+          "type": "string"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "due_at",
+          "type": "timestamp"
+        },
+        {
+          "name": "source_view",
+          "type": "string"
+        }
       ]
     }
   ],
@@ -481,22 +3569,161 @@
       "status_column": "status",
       "start_column": "created_at",
       "entry_state": "created",
-      "states": ["created", "compliance_checked", "compliance_blocked", "routed", "partially_filled", "filled", "allocated", "settled", "failed_settlement", "cancelled"],
-      "transitions": [
-        {"from": "created", "to": "compliance_checked", "probability": 0.965, "dwell": {"distribution": "lognormal", "median": 20, "sigma": 0.7, "unit": "minutes"}},
-        {"from": "created", "to": "compliance_blocked", "probability": 0.035, "dwell": {"distribution": "lognormal", "median": 15, "sigma": 0.5, "unit": "minutes"}},
-        {"from": "compliance_checked", "to": "routed", "probability": 0.98, "dwell": {"distribution": "lognormal", "median": 35, "sigma": 0.8, "unit": "minutes"}},
-        {"from": "compliance_checked", "to": "cancelled", "probability": 0.02, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.8, "unit": "hours"}},
-        {"from": "routed", "to": "partially_filled", "probability": 0.34, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "hours"}},
-        {"from": "routed", "to": "filled", "probability": 0.58, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.7, "unit": "hours"}},
-        {"from": "routed", "to": "cancelled", "probability": 0.08, "dwell": {"distribution": "lognormal", "median": 5, "sigma": 0.8, "unit": "hours"}},
-        {"from": "partially_filled", "to": "filled", "probability": 0.84, "dwell": {"distribution": "lognormal", "median": 1, "sigma": 0.8, "unit": "days"}},
-        {"from": "partially_filled", "to": "cancelled", "probability": 0.16, "dwell": {"distribution": "lognormal", "median": 1, "sigma": 0.8, "unit": "days"}},
-        {"from": "filled", "to": "allocated", "probability": 0.99, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.5, "unit": "hours"}},
-        {"from": "allocated", "to": "settled", "probability": 0.985, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.3, "unit": "days"}},
-        {"from": "allocated", "to": "failed_settlement", "probability": 0.015, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.4, "unit": "days"}}
+      "states": [
+        "created",
+        "compliance_checked",
+        "compliance_blocked",
+        "routed",
+        "partially_filled",
+        "filled",
+        "allocated",
+        "settled",
+        "failed_settlement",
+        "cancelled"
       ],
-      "timestamp_columns": {"compliance_checked": "compliance_checked_at", "routed": "routed_at", "filled": "filled_at", "allocated": "allocated_at", "settled": "settled_at", "cancelled": "cancelled_at", "failed_settlement": "failed_at"},
+      "transitions": [
+        {
+          "from": "created",
+          "to": "compliance_checked",
+          "probability": 0.965,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 20,
+            "sigma": 0.7,
+            "unit": "minutes"
+          }
+        },
+        {
+          "from": "created",
+          "to": "compliance_blocked",
+          "probability": 0.035,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 15,
+            "sigma": 0.5,
+            "unit": "minutes"
+          }
+        },
+        {
+          "from": "compliance_checked",
+          "to": "routed",
+          "probability": 0.98,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 35,
+            "sigma": 0.8,
+            "unit": "minutes"
+          }
+        },
+        {
+          "from": "compliance_checked",
+          "to": "cancelled",
+          "probability": 0.02,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 2,
+            "sigma": 0.8,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "routed",
+          "to": "partially_filled",
+          "probability": 0.34,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 2,
+            "sigma": 0.7,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "routed",
+          "to": "filled",
+          "probability": 0.58,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 4,
+            "sigma": 0.7,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "routed",
+          "to": "cancelled",
+          "probability": 0.08,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 5,
+            "sigma": 0.8,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "partially_filled",
+          "to": "filled",
+          "probability": 0.84,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 1,
+            "sigma": 0.8,
+            "unit": "days"
+          }
+        },
+        {
+          "from": "partially_filled",
+          "to": "cancelled",
+          "probability": 0.16,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 1,
+            "sigma": 0.8,
+            "unit": "days"
+          }
+        },
+        {
+          "from": "filled",
+          "to": "allocated",
+          "probability": 0.99,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 4,
+            "sigma": 0.5,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "allocated",
+          "to": "settled",
+          "probability": 0.985,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 2,
+            "sigma": 0.3,
+            "unit": "days"
+          }
+        },
+        {
+          "from": "allocated",
+          "to": "failed_settlement",
+          "probability": 0.015,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 2,
+            "sigma": 0.4,
+            "unit": "days"
+          }
+        }
+      ],
+      "timestamp_columns": {
+        "compliance_checked": "compliance_checked_at",
+        "routed": "routed_at",
+        "filled": "filled_at",
+        "allocated": "allocated_at",
+        "settled": "settled_at",
+        "cancelled": "cancelled_at",
+        "failed_settlement": "failed_at"
+      },
       "history_table": "trading.order_event",
       "truncate_at_as_of": true
     },
@@ -506,16 +3733,87 @@
       "status_column": "status",
       "start_column": "detected_at",
       "entry_state": "detected",
-      "states": ["detected", "confirmed_active", "false_positive", "remediation_in_progress", "cured", "waiver_granted"],
-      "transitions": [
-        {"from": "detected", "to": "confirmed_active", "probability": 0.70, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.8, "unit": "hours"}},
-        {"from": "detected", "to": "false_positive", "probability": 0.30, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.7, "unit": "hours"}},
-        {"from": "confirmed_active", "to": "remediation_in_progress", "probability": 0.94, "dwell": {"distribution": "lognormal", "median": 10, "sigma": 0.8, "unit": "hours"}},
-        {"from": "confirmed_active", "to": "waiver_granted", "probability": 0.06, "dwell": {"distribution": "lognormal", "median": 1, "sigma": 0.5, "unit": "days"}},
-        {"from": "remediation_in_progress", "to": "cured", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 3, "sigma": 0.8, "unit": "days"}},
-        {"from": "remediation_in_progress", "to": "waiver_granted", "probability": 0.05, "dwell": {"distribution": "lognormal", "median": 5, "sigma": 0.7, "unit": "days"}}
+      "states": [
+        "detected",
+        "confirmed_active",
+        "false_positive",
+        "remediation_in_progress",
+        "cured",
+        "waiver_granted"
       ],
-      "timestamp_columns": {"confirmed_active": "confirmed_at", "cured": "remediated_at", "waiver_granted": "waived_at"},
+      "transitions": [
+        {
+          "from": "detected",
+          "to": "confirmed_active",
+          "probability": 0.7,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 6,
+            "sigma": 0.8,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "detected",
+          "to": "false_positive",
+          "probability": 0.3,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 4,
+            "sigma": 0.7,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "confirmed_active",
+          "to": "remediation_in_progress",
+          "probability": 0.94,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 10,
+            "sigma": 0.8,
+            "unit": "hours"
+          }
+        },
+        {
+          "from": "confirmed_active",
+          "to": "waiver_granted",
+          "probability": 0.06,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 1,
+            "sigma": 0.5,
+            "unit": "days"
+          }
+        },
+        {
+          "from": "remediation_in_progress",
+          "to": "cured",
+          "probability": 0.95,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 3,
+            "sigma": 0.8,
+            "unit": "days"
+          }
+        },
+        {
+          "from": "remediation_in_progress",
+          "to": "waiver_granted",
+          "probability": 0.05,
+          "dwell": {
+            "distribution": "lognormal",
+            "median": 5,
+            "sigma": 0.7,
+            "unit": "days"
+          }
+        }
+      ],
+      "timestamp_columns": {
+        "confirmed_active": "confirmed_at",
+        "cured": "remediated_at",
+        "waiver_granted": "waived_at"
+      },
       "history_table": "risk.guideline_breach_event",
       "truncate_at_as_of": true
     }
@@ -525,152 +3823,597 @@
       "name": "raw_custodian_position_extract",
       "sql": [
         "insert into raw.custodian_position_extract",
-        "select cast(raw_position_id as text), cast(account_id as text), portfolio_id, custodian_id, custodian_security_id, security_id, strftime('%m/%d/%Y', position_date), quantity, market_value, feed_file_name from custodian.raw_position;"
+        "with base as (select raw_position_id,account_id,portfolio_id,custodian_id,custodian_security_id,security_id,position_date,quantity,market_value,feed_file_name,loaded_at,'POS-'||strftime('%Y%m%d',position_date)||'-'||custodian_id as file_batch_id from custodian.raw_position)",
+        "select raw_position_id,cast(raw_position_id as text),cast(account_id as text),portfolio_id,custodian_id,custodian_security_id,security_id,strftime('%m/%d/%Y',position_date),quantity,market_value,feed_file_name,file_batch_id,loaded_at from base union all select 9000000+raw_position_id,cast(raw_position_id as text),cast(account_id as text),portfolio_id,custodian_id,custodian_security_id,security_id,strftime('%m/%d/%Y',position_date),quantity,market_value,replace(feed_file_name,'.csv','_RESENT.csv'),file_batch_id||'-RESENT',datetime(loaded_at,'+90 minutes') from base where raw_position_id % 37 = 0;"
+      ]
+    },
+    {
+      "name": "raw_custodian_transaction_file",
+      "sql": [
+        "insert into raw.custodian_transaction_file",
+        "with acct as (select portfolio_id,min(account_id) account_id,min(custodian_id) custodian_id from portfolio.account group by portfolio_id), base as (select e.execution_id,a.account_id,e.portfolio_id,a.custodian_id,e.security_id,'CTXN-'||printf('%08d',e.execution_id) transaction_ref,e.side transaction_type,e.fill_qty quantity,e.fill_price price,e.gross_amount,e.execution_date,'CUSTTXN-'||strftime('%Y%m%d',e.execution_date)||'-'||a.custodian_id file_batch_id,datetime(e.execution_date||' 05:15:00') ingested_at from trading.execution e join acct a on a.portfolio_id=e.portfolio_id)",
+        "select execution_id,cast(execution_id as text),cast(account_id as text),portfolio_id,custodian_id,security_id,transaction_ref,transaction_type,quantity,price,gross_amount,strftime('%m/%d/%Y',execution_date),strftime('%m/%d/%Y',date(execution_date,'+2 days')),file_batch_id,ingested_at from base union all select 9100000+execution_id,cast(execution_id as text),cast(account_id as text),portfolio_id,custodian_id,security_id,transaction_ref,transaction_type,quantity,price,gross_amount,strftime('%m/%d/%Y',execution_date),strftime('%m/%d/%Y',date(execution_date,'+2 days')),file_batch_id||'-RESENT',datetime(ingested_at,'+75 minutes') from base where execution_id % 41 = 0;"
+      ]
+    },
+    {
+      "name": "raw_oms_trade_extract",
+      "sql": [
+        "insert into raw.oms_trade_extract",
+        "select e.execution_id,cast(o.order_id as text),cast(e.execution_id as text),cast(e.portfolio_id as text),cast(e.security_id as text),e.side,e.order_qty,e.fill_qty,o.limit_price,e.fill_price,o.order_date,e.execution_date,'OMS-'||strftime('%Y%m%d',e.execution_date),case when datetime(e.executed_at,'+20 minutes') > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(e.executed_at,'+20 minutes') end from trading.execution e join trading.trade_order o on o.order_id=e.order_id;"
+      ]
+    },
+    {
+      "name": "raw_security_master_vendor_feed",
+      "sql": [
+        "insert into raw.security_master_vendor_feed",
+        "select security_id,cast(security_id as text),security_uid,isin,cusip,security_name,asset_class_code,currency,replace(issue_date,'-',''),active_flag,'SECMSTR-'||strftime('%Y%m%d',issue_date),datetime(issue_date||' 03:00:00') from sec.security;"
+      ]
+    },
+    {
+      "name": "raw_private_asset_manager_statement",
+      "sql": [
+        "insert into raw.private_asset_manager_statement",
+        "select n.nav_statement_id,cast(n.nav_statement_id as text),cast(n.commitment_id as text),c.commitment_ref,cast(n.portfolio_id as text),c.fund_name,c.strategy,strftime('%m/%d/%Y',n.valuation_date),n.received_at,n.statement_version,n.nav_amount,'PMSTMT-'||strftime('%Y%m',n.valuation_date)||'-'||n.portfolio_id,n.received_at from private.nav_statement n join private.commitment c on c.commitment_id=n.commitment_id;"
       ]
     },
     {
       "name": "stg_custodian_position",
       "sql": [
         "insert into stg.custodian_position",
-        "select cast(raw_position_ref as integer), cast(account_ref as integer), portfolio_id, custodian_id, custodian_security_id, security_id,",
-        "       case when source_position_date like '__/__/____' then substr(source_position_date,7,4) || '-' || substr(source_position_date,1,2) || '-' || substr(source_position_date,4,2) else null end,",
-        "       quantity, market_value, case when source_position_date like '__/__/____' then 'parsed' else 'date_parse_error' end",
-        "from raw.custodian_position_extract;"
+        "with ranked as (select r.*,row_number() over (partition by raw_position_ref order by ingested_at desc,file_batch_id desc,raw_landing_id desc) rn from raw.custodian_position_extract r)",
+        "select cast(raw_position_ref as integer),cast(account_ref as integer),portfolio_id,custodian_id,custodian_security_id,security_id,case when source_position_date like '__/__/____' then substr(source_position_date,7,4)||'-'||substr(source_position_date,1,2)||'-'||substr(source_position_date,4,2) else null end,quantity,market_value,file_name,file_batch_id,ingested_at,case when source_position_date like '__/__/____' then 'parsed' else 'date_parse_error' end,rn from ranked where rn=1;"
+      ]
+    },
+    {
+      "name": "stg_custodian_transaction",
+      "sql": [
+        "insert into stg.custodian_transaction",
+        "with ranked as (select r.*,row_number() over (partition by source_transaction_id order by ingested_at desc,file_batch_id desc,raw_txn_file_id desc) rn from raw.custodian_transaction_file r)",
+        "select cast(source_transaction_id as integer),cast(account_ref as integer),portfolio_id,custodian_id,security_id,transaction_ref,transaction_type,quantity,price,gross_amount,case when source_trade_date like '__/__/____' then substr(source_trade_date,7,4)||'-'||substr(source_trade_date,1,2)||'-'||substr(source_trade_date,4,2) else null end,case when source_settle_date like '__/__/____' then substr(source_settle_date,7,4)||'-'||substr(source_settle_date,1,2)||'-'||substr(source_settle_date,4,2) else null end,file_batch_id,ingested_at,case when source_trade_date like '__/__/____' and source_settle_date like '__/__/____' then 'parsed' else 'date_parse_error' end,rn from ranked where rn=1;"
+      ]
+    },
+    {
+      "name": "stg_oms_trade",
+      "sql": [
+        "insert into stg.oms_trade",
+        "select cast(execution_id as integer),cast(order_id as integer),cast(portfolio_ref as integer),cast(security_ref as integer),side,order_qty,fill_qty,limit_price,fill_price,case when source_order_date like '____-__-__' then source_order_date else null end,case when source_execution_date like '____-__-__' then source_execution_date else null end,file_batch_id,ingested_at,case when source_order_date like '____-__-__' and source_execution_date like '____-__-__' then 'parsed' else 'date_parse_error' end from raw.oms_trade_extract;"
+      ]
+    },
+    {
+      "name": "stg_security_master_vendor",
+      "sql": [
+        "insert into stg.security_master_vendor",
+        "select cast(security_id_ref as integer),vendor_security_ref,isin,cusip,trim(security_name),asset_class_code,currency,case when source_issue_date like '________' then substr(source_issue_date,1,4)||'-'||substr(source_issue_date,5,2)||'-'||substr(source_issue_date,7,2) else null end,active_flag,file_batch_id,ingested_at,case when source_issue_date like '________' then 'parsed' else 'date_parse_error' end from raw.security_master_vendor_feed;"
+      ]
+    },
+    {
+      "name": "stg_private_asset_manager_statement",
+      "sql": [
+        "insert into stg.private_asset_manager_statement",
+        "select cast(nav_statement_ref as integer),cast(commitment_id_ref as integer),cast(portfolio_ref as integer),fund_name,strategy,case when source_valuation_date like '__/__/____' then substr(source_valuation_date,7,4)||'-'||substr(source_valuation_date,1,2)||'-'||substr(source_valuation_date,4,2) else null end,case when source_received_at like '____-__-__%' then source_received_at else null end,statement_version,nav_amount,file_batch_id,ingested_at,case when source_valuation_date like '__/__/____' and source_received_at like '____-__-__%' then 'parsed' else 'date_parse_error' end from raw.private_asset_manager_statement;"
       ]
     },
     {
       "name": "xref_security_identifier_map",
       "sql": [
         "insert into xref.security_identifier_map",
-        "select row_number() over (order by security_id), 'CustoLink', custodian_security_id, min(security_id), min(position_date), null, 1 from stg.custodian_position where position_date is not null group by custodian_security_id;"
+        "select row_number() over (order by custodian_security_id),'CustoLink',custodian_security_id,min(security_id),min(position_date),null,1 from stg.custodian_position where position_date is not null group by custodian_security_id;"
       ]
     },
     {
       "name": "core_holding_position",
       "sql": [
         "insert into core.holding_position",
-        "select s.raw_position_id, s.portfolio_id, s.account_id, x.security_id, s.position_date, s.quantity, s.market_value, case when x.security_id is not null then 1 else 0 end",
-        "from stg.custodian_position s left join xref.security_identifier_map x on x.source_security_id = s.custodian_security_id and x.active_flag = 1 where s.position_date is not null;"
+        "select s.raw_position_id,s.portfolio_id,s.account_id,s.custodian_id,x.security_id,s.position_date,s.quantity,s.market_value,case when x.security_id is not null then 1 else 0 end,s.file_batch_id from stg.custodian_position s left join xref.security_identifier_map x on x.source_security_id=s.custodian_security_id and x.active_flag=1 where s.position_date is not null;"
       ]
     },
     {
       "name": "wh_dimensions",
       "sql": [
-        "insert into wh.dim_portfolio select portfolio_id, portfolio_code, portfolio_name, portfolio_type, asset_class_bias, status, aum_tier from portfolio.portfolio;",
-        "insert into wh.dim_security select security_id, security_uid, security_name, asset_class_code, currency, active_flag from sec.security;"
+        "insert into wh.dim_portfolio select portfolio_id,portfolio_code,portfolio_name,portfolio_type,asset_class_bias,base_currency,status,aum_tier from portfolio.portfolio;",
+        "insert into wh.dim_security select security_id,security_uid,security_name,asset_class_code,currency,issue_date,active_flag from stg.security_master_vendor;",
+        "insert into wh.dim_custodian select custodian_id,custodian_code,custodian_name,feed_protocol,active_flag from ref.custodian;",
+        "insert into wh.dim_date with recursive d(dt) as (select date('2024-01-01') union all select date(dt,'+1 day') from d where dt<'2025-12-31') select dt,cast(strftime('%Y',dt) as integer),cast(strftime('%m',dt) as integer),substr(dt,1,7),cast(strftime('%d',dt) as integer),cast(strftime('%w',dt) as integer),case when strftime('%w',dt) in ('0','6') then 1 else 0 end,case when date(dt,'+1 day')=date(dt,'start of month','+1 month') then 1 else 0 end from d;"
       ]
     },
     {
       "name": "wh_fact_trade_allocation",
       "sql": [
         "insert into wh.fact_trade_allocation",
-        "select execution_id, execution_date, portfolio_id, security_id, side, fill_qty, fill_price, case when side = 'BUY' then gross_amount else -gross_amount end from trading.execution;"
+        "with acct as (select portfolio_id,min(custodian_id) custodian_id from portfolio.account group by portfolio_id) select t.execution_id,t.execution_date,t.execution_date,t.order_id,t.execution_id,t.portfolio_id,a.custodian_id,t.security_id,t.side,t.fill_qty,t.fill_price,round(t.fill_qty*t.fill_price,2),case when t.side='BUY' then round(t.fill_qty*t.fill_price,2) else -round(t.fill_qty*t.fill_price,2) end from stg.oms_trade t left join acct a on a.portfolio_id=t.portfolio_id where t.execution_date is not null;"
       ]
     },
     {
       "name": "wh_fact_holding_daily",
       "sql": [
         "insert into wh.fact_holding_daily",
-        "select h.holding_position_id, h.position_date, h.portfolio_id, h.security_id, coalesce(s.asset_class_code, 'UNMAPPED'), h.quantity, h.market_value, h.mapped_flag from core.holding_position h left join sec.security s on s.security_id = h.security_id;"
+        "select h.holding_position_id,h.position_date,h.position_date,h.portfolio_id,h.account_id,h.custodian_id,h.security_id,coalesce(s.asset_class_code,'UNMAPPED'),h.quantity,h.market_value,h.mapped_flag from core.holding_position h left join wh.dim_security s on s.security_key=h.security_id;"
       ]
     },
     {
-      "name": "mart_aum_by_asset_class",
+      "name": "nv_holding_detail",
       "sql": [
-        "create view mart_aum_by_asset_class as",
-        "select position_date, asset_class_code, count(distinct portfolio_id) as portfolios, count(*) as position_rows, round(sum(market_value), 2) as market_value from wh.fact_holding_daily group by 1, 2;"
+        "create view nv_holding_detail as",
+        "select f.holding_key,f.position_date,d.month_key,d.is_month_end,f.portfolio_id,p.portfolio_code,p.portfolio_name,p.portfolio_type,p.asset_class_bias as source_strategy,f.account_id,f.custodian_id,c.custodian_code,c.custodian_name,f.security_id,coalesce(s.security_uid,'UNMAPPED') security_uid,coalesce(s.security_name,'Unmapped security') security_name,f.asset_class_code,coalesce(s.currency,'USD') security_currency,f.quantity,f.market_value,f.mapped_flag from wh.fact_holding_daily f join wh.dim_portfolio p on p.portfolio_key=f.portfolio_id left join wh.dim_security s on s.security_key=f.security_id left join wh.dim_custodian c on c.custodian_key=f.custodian_id left join wh.dim_date d on d.date_key=f.date_key;"
       ]
     },
     {
-      "name": "mart_private_nav_rollforward",
+      "name": "nv_trade_detail",
       "sql": [
-        "create view mart_private_nav_rollforward as",
-        "select c.strategy, count(distinct c.commitment_id) as commitments, round(sum(c.commitment_amount),2) as committed, round(sum(n.nav_amount),2) as reported_nav from private.commitment c left join private.nav_statement n on n.commitment_id = c.commitment_id group by 1;"
+        "create view nv_trade_detail as",
+        "select f.allocation_key,f.allocation_date,d.month_key,f.order_id,f.execution_id,f.portfolio_id,p.portfolio_code,p.portfolio_name,p.portfolio_type,p.asset_class_bias as source_strategy,f.custodian_id,c.custodian_code,c.custodian_name,f.security_id,s.security_uid,s.security_name,s.asset_class_code,s.currency as security_currency,f.side,f.quantity,f.price,f.gross_amount,f.net_amount from wh.fact_trade_allocation f join wh.dim_portfolio p on p.portfolio_key=f.portfolio_id left join wh.dim_security s on s.security_key=f.security_id left join wh.dim_custodian c on c.custodian_key=f.custodian_id left join wh.dim_date d on d.date_key=f.date_key;"
       ]
     },
     {
-      "name": "mart_trade_settlement_funnel",
+      "name": "bv_holdings_rollforward",
       "sql": [
-        "create view mart_trade_settlement_funnel as",
-        "select status, count(*) as orders, round(sum(notional_amount),2) as notional from trading.trade_order group by 1;"
+        "create view bv_holdings_rollforward as",
+        "with month_pos as (select month_key,portfolio_id,portfolio_code,source_strategy,security_id,security_name,max(position_date) month_end_date,round(sum(market_value),2) ending_market_value,sum(quantity) ending_quantity from nv_holding_detail group by month_key,portfolio_id,portfolio_code,source_strategy,security_id,security_name), trades as (select month_key,portfolio_id,security_id,round(sum(case when side='BUY' then gross_amount else 0 end),2) purchases,round(sum(case when side='SELL' then gross_amount else 0 end),2) sales from nv_trade_detail group by month_key,portfolio_id,security_id) select m.month_key,m.month_end_date,m.portfolio_id,m.portfolio_code,m.source_strategy,m.security_id,m.security_name,coalesce(lag(m.ending_market_value) over (partition by m.portfolio_id,m.security_id order by m.month_key),0) beginning_market_value,coalesce(t.purchases,0) purchases,coalesce(t.sales,0) sales,round(m.ending_market_value-coalesce(lag(m.ending_market_value) over (partition by m.portfolio_id,m.security_id order by m.month_key),0)-coalesce(t.purchases,0)+coalesce(t.sales,0),2) market_movement,m.ending_market_value,m.ending_quantity from month_pos m left join trades t on t.month_key=m.month_key and t.portfolio_id=m.portfolio_id and t.security_id=m.security_id;"
+      ]
+    },
+    {
+      "name": "bv_aum_by_strategy",
+      "sql": [
+        "create view bv_aum_by_strategy as",
+        "select month_key,month_end_date,source_strategy,count(distinct portfolio_id) portfolios,count(distinct security_id) securities,round(sum(ending_market_value),2) aum_market_value from bv_holdings_rollforward group by month_key,month_end_date,source_strategy;"
+      ]
+    },
+    {
+      "name": "bv_guideline_breach_funnel",
+      "sql": [
+        "create view bv_guideline_breach_funnel as",
+        "select substr(detected_date,1,7) breach_month,severity,status,count(*) breaches,round(sum(exposure_amount),2) exposure_amount,sum(case when waiver_flag=1 then 1 else 0 end) waived_breaches,round(avg(case when status in ('cured','waiver_granted','false_positive') then 1.0 else 0.0 end),4) closed_share from risk.guideline_breach group by substr(detected_date,1,7),severity,status;"
+      ]
+    },
+    {
+      "name": "mv_month_end_aum_snapshot",
+      "expect": {
+        "at_least_rows": 200
+      },
+      "sql": [
+        "insert into mv.month_end_aum_snapshot",
+        "with latest as (select month_key,portfolio_id,max(month_end_date) snapshot_date from bv_holdings_rollforward group by month_key,portfolio_id), snap as (select r.month_key,l.snapshot_date,r.portfolio_id,max(r.portfolio_code) portfolio_code,max(r.source_strategy) source_strategy,count(distinct h.custodian_id) custodian_count,count(*) position_rows,round(sum(r.ending_market_value),2) market_value from bv_holdings_rollforward r join latest l on l.month_key=r.month_key and l.portfolio_id=r.portfolio_id and l.snapshot_date=r.month_end_date left join nv_holding_detail h on h.month_key=r.month_key and h.portfolio_id=r.portfolio_id and h.security_id=r.security_id and h.position_date=r.month_end_date group by r.month_key,l.snapshot_date,r.portfolio_id) select row_number() over (order by month_key,portfolio_id),month_key,snapshot_date,portfolio_id,portfolio_code,source_strategy,custodian_count,position_rows,market_value,'MV-AUM-'||replace(month_key,'-','') from snap;"
+      ]
+    },
+    {
+      "name": "mart_performance_aum_by_strategy",
+      "sql": [
+        "create view mart_performance_aum_by_strategy as",
+        "with active_mapping as (select portfolio_id,composite_code,composite_name,source_strategy,effective_start_date,effective_end_date,row_number() over (partition by portfolio_id order by uploaded_at desc,mapping_id desc) rn from manual.strategy_composite_mapping where approved_flag=1 and current_flag=1 and stale_flag=0 and conflict_flag=0 and portfolio_id % 11 != 0) select s.snapshot_month,coalesce(m.composite_code,'UNASSIGNED') composite_code,coalesce(m.composite_name,'UNASSIGNED') composite_name,s.source_strategy,count(distinct s.portfolio_id) portfolios,round(sum(s.market_value),2) performance_aum from mv.month_end_aum_snapshot s left join active_mapping m on m.portfolio_id=s.portfolio_id and m.rn=1 and s.snapshot_date>=m.effective_start_date and (m.effective_end_date is null or s.snapshot_date<=m.effective_end_date) group by s.snapshot_month,coalesce(m.composite_code,'UNASSIGNED'),coalesce(m.composite_name,'UNASSIGNED'),s.source_strategy;"
+      ]
+    },
+    {
+      "name": "mart_performance_composite_proxy",
+      "sql": [
+        "create view mart_performance_composite_proxy as",
+        "select snapshot_month,composite_code,composite_name,portfolios,performance_aum,round(((abs(length(composite_code))+cast(substr(snapshot_month,6,2) as integer))%140-45)/10000.0,4) return_proxy,round(performance_aum*(1.0+(((abs(length(composite_code))+cast(substr(snapshot_month,6,2) as integer))%140-45)/10000.0)),2) linked_value_proxy from mart_performance_aum_by_strategy;"
+      ]
+    },
+    {
+      "name": "mart_clientreporting_aum_by_strategy",
+      "sql": [
+        "create view mart_clientreporting_aum_by_strategy as",
+        "with private_nav as (select substr(valuation_date,1,7) month_key,portfolio_id,strategy,round(sum(nav_amount),2) private_statement_nav from stg.private_asset_manager_statement where valuation_date is not null group by substr(valuation_date,1,7),portfolio_id,strategy) select s.snapshot_month,s.source_strategy client_strategy,count(distinct s.portfolio_id) portfolios,round(sum(s.market_value),2) custodian_reported_aum,round(coalesce(sum(p.private_statement_nav),0),2) private_statement_nav,round(sum(s.market_value)+coalesce(sum(p.private_statement_nav),0),2) client_reporting_aum from mv.month_end_aum_snapshot s left join private_nav p on p.month_key=s.snapshot_month and p.portfolio_id=s.portfolio_id group by s.snapshot_month,s.source_strategy;"
+      ]
+    },
+    {
+      "name": "mart_clientreporting_statement_inventory",
+      "sql": [
+        "create view mart_clientreporting_statement_inventory as",
+        "select substr(valuation_date,1,7) statement_month,strategy,count(distinct commitment_id) commitments,count(*) statement_rows,round(sum(nav_amount),2) statement_nav from stg.private_asset_manager_statement where valuation_date is not null group by substr(valuation_date,1,7),strategy;"
       ]
     },
     {
       "name": "control_recon_custodian_vs_ibor",
       "sql": [
         "create view control_recon_custodian_vs_ibor as",
-        "with c as (select portfolio_id, security_id, position_date, round(sum(market_value),2) as custodian_mv from core.holding_position group by 1,2,3),",
-        "t as (select portfolio_id, security_id, allocation_date as position_date, round(sum(net_amount),2) as ibor_trade_mv from wh.fact_trade_allocation group by 1,2,3)",
-        "select c.portfolio_id, c.security_id, c.position_date, c.custodian_mv, coalesce(t.ibor_trade_mv,0) as ibor_trade_mv, round(c.custodian_mv - coalesce(t.ibor_trade_mv,0),2) as break_amount",
-        "from c left join t on t.portfolio_id = c.portfolio_id and t.security_id = c.security_id and t.position_date = c.position_date where abs(c.custodian_mv - coalesce(t.ibor_trade_mv,0)) > 1000000 limit 5000;"
+        "with c as (select portfolio_id,security_id,position_date,round(sum(market_value),2) custodian_mv from wh.fact_holding_daily group by 1,2,3), t as (select portfolio_id,security_id,allocation_date position_date,round(sum(net_amount),2) ibor_trade_mv from wh.fact_trade_allocation group by 1,2,3) select c.portfolio_id,c.security_id,c.position_date,c.custodian_mv,coalesce(t.ibor_trade_mv,0) ibor_trade_mv,round(c.custodian_mv-coalesce(t.ibor_trade_mv,0),2) break_amount from c left join t on t.portfolio_id=c.portfolio_id and t.security_id=c.security_id and t.position_date=c.position_date where abs(c.custodian_mv-coalesce(t.ibor_trade_mv,0))>1000000 limit 5000;"
       ]
     },
     {
       "name": "control_private_nav_restatement",
       "sql": [
         "create view control_private_nav_restatement as",
-        "select commitment_id, valuation_date, count(*) as versions, round(sum(nav_amount),2) as net_nav_versions from private.nav_statement group by 1,2 having count(*) > 1;"
+        "select commitment_id,valuation_date,count(*) versions,round(sum(nav_amount),2) net_nav_versions from private.nav_statement group by 1,2 having count(*)>1;"
+      ]
+    },
+    {
+      "name": "control_recon_performance_vs_client_aum",
+      "sql": [
+        "create view control_recon_performance_vs_client_aum as",
+        "with perf as (select snapshot_month,round(sum(performance_aum),2) performance_aum from mart_performance_aum_by_strategy group by snapshot_month), client as (select snapshot_month,round(sum(client_reporting_aum),2) client_reporting_aum from mart_clientreporting_aum_by_strategy group by snapshot_month) select coalesce(p.snapshot_month,c.snapshot_month) snapshot_month,coalesce(p.performance_aum,0) performance_aum,coalesce(c.client_reporting_aum,0) client_reporting_aum,round(coalesce(c.client_reporting_aum,0)-coalesce(p.performance_aum,0),2) aum_delta,case when abs(coalesce(c.client_reporting_aum,0)-coalesce(p.performance_aum,0))>1000000 then 'private_nav_in_client_reporting' else 'within_tolerance' end break_type from perf p left join client c on c.snapshot_month=p.snapshot_month where abs(coalesce(c.client_reporting_aum,0)-coalesce(p.performance_aum,0))>1000000;"
       ]
     },
     {
       "name": "dq_rule_result_current",
       "sql": [
         "create view dq_rule_result_current as",
-        "select 'DQ-001' as rule_code, 'duplicate security names' as issue, cast(security_id as text) as entity_id from sec.security s where exists (select 1 from sec.security s2 where s2.security_name = s.security_name and s2.security_id <> s.security_id)",
-        "union all select 'DQ-002', 'custodian position security not in security master', cast(raw_position_id as text) from custodian.raw_position rp where not exists (select 1 from sec.security s where s.security_id = rp.security_id)",
-        "union all select 'DQ-003', 'unparseable custodian position date', raw_position_ref from raw.custodian_position_extract where source_position_date not like '__/__/____'",
-        "union all select 'DQ-004', 'active security mapping past valid_to', cast(security_map_id as text) from xref.security_identifier_map where active_flag = 1 and valid_to is not null and valid_to < '2025-12-31'",
-        "union all select 'DQ-005', 'duplicate feed load file', file_name from integration.file_load group by file_name having count(*) > 1",
-        "union all select 'DQ-006', 'manual guideline waiver', cast(breach_id as text) from risk.guideline_breach where waiver_flag = 1",
-        "union all select 'DQ-007', 'staged custodian security missing map', cast(raw_position_id as text) from stg.custodian_position s where not exists (select 1 from xref.security_identifier_map x where x.source_security_id = s.custodian_security_id and x.active_flag = 1)",
-        "union all select 'DQ-008', 'trade order blocked by compliance', cast(order_id as text) from trading.trade_order where status = 'compliance_blocked'",
-        "union all select 'DQ-009', 'NAV restatement reason present', cast(nav_statement_id as text) from private.nav_statement where restatement_reason is not null;"
+        "select 'DQ-001' rule_code,'duplicate security names' issue,cast(security_id as text) entity_id from sec.security s where exists (select 1 from sec.security s2 where s2.security_name=s.security_name and s2.security_id<>s.security_id) union all select 'DQ-002','custodian position security not in security master',cast(raw_position_id as text) from custodian.raw_position rp where not exists (select 1 from sec.security s where s.security_id=rp.security_id) union all select 'DQ-003','unparseable custodian position date',cast(raw_landing_id as text) from raw.custodian_position_extract where source_position_date not like '__/__/____' union all select 'DQ-004','active security mapping past valid_to',cast(security_map_id as text) from xref.security_identifier_map where active_flag=1 and valid_to is not null and valid_to<'2025-12-31' union all select 'DQ-005','duplicate feed load file',file_name from integration.file_load group by file_name having count(*)>1 union all select 'DQ-006','manual guideline waiver',cast(breach_id as text) from risk.guideline_breach where waiver_flag=1 union all select 'DQ-007','staged custodian security missing map',cast(raw_position_id as text) from stg.custodian_position sp where not exists (select 1 from xref.security_identifier_map x where x.source_security_id=sp.custodian_security_id and x.active_flag=1) union all select 'DQ-008','trade order blocked by compliance',cast(order_id as text) from trading.trade_order where status='compliance_blocked' union all select 'DQ-009','NAV restatement reason present',cast(nav_statement_id as text) from private.nav_statement where restatement_reason is not null union all select 'DQ-010','portfolio unassigned in performance composite mapping',snapshot_month||':'||source_strategy from mart_performance_aum_by_strategy where composite_code='UNASSIGNED' union all select 'DQ-011','manual strategy mapping stale or conflicting',cast(mapping_id as text) from manual.strategy_composite_mapping where stale_flag=1 or conflict_flag=1 or approved_flag=0 or current_flag=0 union all select 'DQ-012','integration job failed or partial',cast(run_id as text) from integration.job_run where run_status in ('failed','partial') union all select 'DQ-013','performance and client-reporting AUM definitions differ',snapshot_month from control_recon_performance_vs_client_aum;"
+      ]
+    },
+    {
+      "name": "workflow_mapping_request_queue",
+      "expect": {
+        "at_least_rows": 1
+      },
+      "sql": [
+        "insert into workflow.mapping_request_queue",
+        "select row_number() over (order by p.snapshot_month,p.source_strategy),'MAP-'||replace(p.snapshot_month,'-','')||'-'||printf('%04d',row_number() over (order by p.snapshot_month,p.source_strategy)),min(s.portfolio_id),min(s.portfolio_code),p.source_strategy,'strategy_composite_mapping_request',case when sum(p.performance_aum)>=50000000 then 'high' when sum(p.performance_aum)>=10000000 then 'medium' else 'low' end,'open','performance_mapping',datetime(p.snapshot_month||'-15 09:00:00'),datetime(p.snapshot_month||'-20 17:00:00'),'mart_performance_aum_by_strategy' from mart_performance_aum_by_strategy p join mv.month_end_aum_snapshot s on s.snapshot_month=p.snapshot_month and s.source_strategy=p.source_strategy where p.composite_code='UNASSIGNED' group by p.snapshot_month,p.source_strategy;"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "sql": [
+        "insert into catalog.code_object",
+        "select row_number() over (order by name),case when name like 'nv_%' then 'nv' when name like 'bv_%' then 'bv' when name like 'mart_performance_%' then 'mart_performance' when name like 'mart_clientreporting_%' then 'mart_clientreporting' when name like 'control_%' then 'control' when name like 'dq_%' then 'dq' else 'view' end,name,'view','sqlite',sql,case when name like 'mart_performance_%' then 'performance_analytics' when name like 'mart_clientreporting_%' then 'client_reporting' when name like 'control_%' then 'investment_controls' else 'analytics_engineering' end,'2024-01-15 09:00:00','2025-12-31 05:45:00','deployed',null from sqlite_master where type='view' and name not like 'sqlite_%' union all select 1001,'procedure','proc_nightly_position_roll','procedure','sqlserver','create procedure proc_nightly_position_roll as insert into wh_fact_holding_daily select holding_position_id, position_date, position_date, portfolio_id, account_id, custodian_id, security_id, ''ASSET'', quantity, market_value, mapped_flag from core_holding_position;','investment_data_platform','2024-03-01 09:00:00','2025-12-28 04:10:00','deployed','Rebuilds daily position roll-forward after custodian files land' union all select 1002,'procedure','proc_rebuild_performance_composites','procedure','sqlserver','create procedure proc_rebuild_performance_composites as select snapshot_month, composite_code, sum(performance_aum) from mart_performance_aum_by_strategy group by snapshot_month, composite_code;','performance_analytics','2024-04-01 09:00:00','2025-12-31 05:20:00','deployed','Rebuilds composite AUM and return proxy after mapping uploads' union all select 1003,'procedure','proc_refresh_mv_month_end_aum_snapshot','procedure','sqlserver','create procedure proc_refresh_mv_month_end_aum_snapshot as delete from mv_month_end_aum_snapshot; insert into mv_month_end_aum_snapshot select * from bv_aum_by_strategy;','analytics_engineering','2024-05-01 09:00:00','2025-12-31 05:30:00','deployed','Modeled materialized-view refresh procedure' union all select 1004,'function','fn_fx_convert_to_base','function','sql','create function fn_fx_convert_to_base(amount numeric, fx_rate numeric) returns numeric as begin return round(amount * coalesce(fx_rate, 1), 2); end;','market_data','2024-02-15 09:00:00','2025-10-11 13:15:00','deployed','Used by warehouse procedures where non-USD holdings are converted to base currency' union all select 1005,'extract','extract_client_statement_positions','extract','sql','select snapshot_month, client_strategy, client_reporting_aum from mart_clientreporting_aum_by_strategy where snapshot_month = :period for csv sftp client-reporting;','client_reporting','2024-06-01 09:00:00','2025-12-31 07:00:00','deployed','Monthly client statement AUM extract' union all select 1006,'extract','extract_regulatory_holdings','extract','sql','select position_date, portfolio_code, security_uid, market_value from nv_holding_detail where position_date = :as_of_date for pipe delimited regulatory portal;','regulatory_reporting','2024-06-15 09:00:00','2025-12-31 07:30:00','deployed','Month-end holdings extract for regulatory filing';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "sql": [
+        "insert into catalog.lineage_edge",
+        "select 1,'raw.custodian_position_extract','stg.custodian_position','stg_custodian_position','landing_to_staging','2025-12-31 06:00:00' union all select 2,'raw.custodian_transaction_file','stg.custodian_transaction','stg_custodian_transaction','landing_to_staging','2025-12-31 06:00:00' union all select 3,'raw.oms_trade_extract','stg.oms_trade','stg_oms_trade','landing_to_staging','2025-12-31 06:00:00' union all select 4,'raw.security_master_vendor_feed','stg.security_master_vendor','stg_security_master_vendor','landing_to_staging','2025-12-31 06:00:00' union all select 5,'raw.private_asset_manager_statement','stg.private_asset_manager_statement','stg_private_asset_manager_statement','landing_to_staging','2025-12-31 06:00:00' union all select 6,'stg.custodian_position','core.holding_position','core_holding_position','staging_to_canonical','2025-12-31 06:00:00' union all select 7,'core.holding_position','wh.fact_holding_daily','wh_fact_holding_daily','canonical_to_fact','2025-12-31 06:00:00' union all select 8,'stg.oms_trade','wh.fact_trade_allocation','wh_fact_trade_allocation','staging_to_fact','2025-12-31 06:00:00' union all select 9,'wh.fact_holding_daily','nv_holding_detail','nv_holding_detail','fact_to_normalized_view','2025-12-31 06:00:00' union all select 10,'wh.fact_trade_allocation','nv_trade_detail','nv_trade_detail','fact_to_normalized_view','2025-12-31 06:00:00' union all select 11,'nv_holding_detail','bv_holdings_rollforward','bv_holdings_rollforward','normalized_to_business_view','2025-12-31 06:00:00' union all select 12,'bv_holdings_rollforward','mv.month_end_aum_snapshot','proc_refresh_mv_month_end_aum_snapshot','business_view_to_materialized_table','2025-12-31 06:00:00' union all select 13,'manual.strategy_composite_mapping','mart_performance_aum_by_strategy','mart_performance_aum_by_strategy','manual_mapping_to_bu_view','2025-12-31 06:00:00' union all select 14,'stg.private_asset_manager_statement','mart_clientreporting_aum_by_strategy','mart_clientreporting_aum_by_strategy','statement_feed_to_bu_view','2025-12-31 06:00:00' union all select 15,'mart_performance_aum_by_strategy','control_recon_performance_vs_client_aum','control_recon_performance_vs_client_aum','bu_metric_reconciliation','2025-12-31 06:00:00' union all select 16,'mart_clientreporting_aum_by_strategy','control_recon_performance_vs_client_aum','control_recon_performance_vs_client_aum','bu_metric_reconciliation','2025-12-31 06:00:00' union all select 17,'mart_performance_aum_by_strategy','workflow.mapping_request_queue','workflow_mapping_request_queue','dq_to_workflow','2025-12-31 06:00:00' union all select 18,'nv_holding_detail','extract_regulatory_holdings','extract_regulatory_holdings','outbound_extract','2025-12-31 06:00:00' union all select 19,'mart_clientreporting_aum_by_strategy','extract_client_statement_positions','extract_client_statement_positions','outbound_extract','2025-12-31 06:00:00';"
       ]
     }
   ],
   "imperfections": [
-    {"name": "security_duplicate_setup", "type": "duplicate_entity", "table": "sec.security", "rate": 0.006, "stage": "pre_derivation", "params": {"fuzz_columns": ["security_name"]}, "scenario": "Vendor and custodian identifiers create near-duplicate securities; DQ-001 catches the duplicate-name population."},
-    {"name": "security_name_typos", "type": "typo", "table": "sec.security", "rate": 0.012, "stage": "pre_derivation", "params": {"column": "security_name"}, "scenario": "Manual security setup typo before steward review."},
-    {"name": "custodian_security_orphans", "type": "orphan_fk", "table": "custodian.raw_position", "rate": 0.006, "stage": "pre_derivation", "params": {"column": "security_id"}, "scenario": "Custodian sends a position for an unapproved security id; DQ-002 and DQ-007 catch it."},
-    {"name": "feed_late_arrivals", "type": "late_arrival", "table": "integration.file_load", "rate": 0.04, "stage": "pre_derivation", "params": {"column": "arrived_at", "lag_days": {"distribution": "lognormal", "median": 2, "sigma": 0.8}}, "scenario": "Custodian or market-data files arrive after the warehouse cutoff."},
-    {"name": "manual_guideline_waivers", "type": "manual_override", "table": "risk.guideline_breach", "rate": 0.025, "stage": "pre_derivation", "params": {"column": "waiver_flag", "value": 1, "note_column": "override_note"}, "scenario": "CIO-approved waivers are visible in DQ-006."},
-    {"name": "file_load_duplicates", "type": "duplicate_webhook", "table": "integration.file_load", "rate": 0.01, "stage": "pre_derivation", "scenario": "SFTP resend lands the same file twice; DQ-005 dedupe queue catches it."},
-    {"name": "raw_position_date_drift", "type": "format_drift", "table": "raw.custodian_position_extract", "rate": 0.025, "stage": "post_derivation", "params": {"column": "source_position_date", "format": "padded"}, "scenario": "Custodian changes date padding; staging cannot parse the padded rows."},
-    {"name": "missing_security_maps", "type": "missing_xref", "table": "xref.security_identifier_map", "rate": 0.025, "stage": "post_derivation", "scenario": "Security crosswalk rows missing after onboarding a new custodian."},
-    {"name": "stale_security_maps", "type": "stale_mapping", "table": "xref.security_identifier_map", "rate": 0.015, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired custodian identifier mappings remain active."},
-    {"name": "private_nav_restatements", "type": "restatement_reversal", "table": "private.nav_statement", "rate": 0.018, "stage": "post_derivation", "params": {"amount_columns": ["nav_amount"], "reason_column": "restatement_reason"}, "scenario": "Quarterly manager NAV corrections create reversal/restated versions and valuation review work."}
+    {
+      "name": "security_duplicate_setup",
+      "type": "duplicate_entity",
+      "table": "sec.security",
+      "rate": 0.006,
+      "stage": "pre_derivation",
+      "params": {
+        "fuzz_columns": [
+          "security_name"
+        ]
+      },
+      "scenario": "Vendor and custodian identifiers create near-duplicate securities; DQ-001 catches the duplicate-name population."
+    },
+    {
+      "name": "security_name_typos",
+      "type": "typo",
+      "table": "sec.security",
+      "rate": 0.012,
+      "stage": "pre_derivation",
+      "params": {
+        "column": "security_name"
+      },
+      "scenario": "Manual security setup typo before steward review."
+    },
+    {
+      "name": "custodian_security_orphans",
+      "type": "orphan_fk",
+      "table": "custodian.raw_position",
+      "rate": 0.006,
+      "stage": "pre_derivation",
+      "params": {
+        "column": "security_id"
+      },
+      "scenario": "Custodian sends a position for an unapproved security id; DQ-002 and DQ-007 catch it."
+    },
+    {
+      "name": "feed_late_arrivals",
+      "type": "late_arrival",
+      "table": "integration.file_load",
+      "rate": 0.04,
+      "stage": "pre_derivation",
+      "params": {
+        "column": "arrived_at",
+        "lag_days": {
+          "distribution": "lognormal",
+          "median": 2,
+          "sigma": 0.8
+        }
+      },
+      "scenario": "Custodian or market-data files arrive after the warehouse cutoff."
+    },
+    {
+      "name": "manual_guideline_waivers",
+      "type": "manual_override",
+      "table": "risk.guideline_breach",
+      "rate": 0.025,
+      "stage": "pre_derivation",
+      "params": {
+        "column": "waiver_flag",
+        "value": 1,
+        "note_column": "override_note"
+      },
+      "scenario": "CIO-approved waivers are visible in DQ-006."
+    },
+    {
+      "name": "file_load_duplicates",
+      "type": "duplicate_webhook",
+      "table": "integration.file_load",
+      "rate": 0.01,
+      "stage": "pre_derivation",
+      "scenario": "SFTP resend lands the same file twice; DQ-005 dedupe queue catches it."
+    },
+    {
+      "name": "raw_position_date_drift",
+      "type": "format_drift",
+      "table": "raw.custodian_position_extract",
+      "rate": 0.025,
+      "stage": "post_derivation",
+      "params": {
+        "column": "source_position_date",
+        "format": "padded"
+      },
+      "scenario": "Custodian changes date padding; staging cannot parse the padded rows."
+    },
+    {
+      "name": "missing_security_maps",
+      "type": "missing_xref",
+      "table": "xref.security_identifier_map",
+      "rate": 0.025,
+      "stage": "post_derivation",
+      "scenario": "Security crosswalk rows missing after onboarding a new custodian."
+    },
+    {
+      "name": "stale_security_maps",
+      "type": "stale_mapping",
+      "table": "xref.security_identifier_map",
+      "rate": 0.015,
+      "stage": "post_derivation",
+      "params": {
+        "column": "valid_to"
+      },
+      "scenario": "Expired custodian identifier mappings remain active."
+    },
+    {
+      "name": "private_nav_restatements",
+      "type": "restatement_reversal",
+      "table": "private.nav_statement",
+      "rate": 0.018,
+      "stage": "post_derivation",
+      "params": {
+        "amount_columns": [
+          "nav_amount"
+        ],
+        "reason_column": "restatement_reason"
+      },
+      "scenario": "Quarterly manager NAV corrections create reversal/restated versions and valuation review work."
+    }
   ],
   "controls": [
-    {"rule_id": "CTL-001", "rule_name": "Custodian market value reconciles to IBOR trade/holding view", "source_dataset": "core.holding_position", "target_dataset": "wh.fact_trade_allocation", "grain": "portfolio-security-date", "tolerance": "1,000,000 demo tolerance", "frequency": "daily", "owner": "investment_operations", "severity": "high", "expected_break_rate": "timing and mapping breaks visible in control_recon_custodian_vs_ibor", "break_view": "control_recon_custodian_vs_ibor"},
-    {"rule_id": "CTL-002", "rule_name": "Private NAV statement restatements reviewed", "source_dataset": "private.nav_statement", "target_dataset": "control_private_nav_restatement", "grain": "commitment valuation period", "tolerance": "all restatements reviewed", "frequency": "quarterly", "owner": "valuation_committee", "severity": "high", "expected_break_rate": "~1-2% restatement reversal pairs", "break_view": "control_private_nav_restatement"},
-    {"rule_id": "CTL-003", "rule_name": "Security identifier crosswalk coverage", "source_dataset": "stg.custodian_position", "target_dataset": "xref.security_identifier_map", "grain": "custodian_security_id", "tolerance": "0 unmapped active securities", "frequency": "daily", "owner": "security_master", "severity": "high", "expected_break_rate": "~2.5% missing maps", "break_view": "dq_rule_result_current"}
+    {
+      "rule_id": "CTL-001",
+      "rule_name": "Custodian market value reconciles to IBOR trade/holding view",
+      "source_dataset": "core.holding_position",
+      "target_dataset": "wh.fact_trade_allocation",
+      "grain": "portfolio-security-date",
+      "tolerance": "1,000,000 demo tolerance",
+      "frequency": "daily",
+      "owner": "investment_operations",
+      "severity": "high",
+      "expected_break_rate": "timing and mapping breaks visible in control_recon_custodian_vs_ibor",
+      "break_view": "control_recon_custodian_vs_ibor"
+    },
+    {
+      "rule_id": "CTL-002",
+      "rule_name": "Private NAV statement restatements reviewed",
+      "source_dataset": "private.nav_statement",
+      "target_dataset": "control_private_nav_restatement",
+      "grain": "commitment valuation period",
+      "tolerance": "all restatements reviewed",
+      "frequency": "quarterly",
+      "owner": "valuation_committee",
+      "severity": "high",
+      "expected_break_rate": "~1-2% restatement reversal pairs",
+      "break_view": "control_private_nav_restatement"
+    },
+    {
+      "rule_id": "CTL-003",
+      "rule_name": "Security identifier crosswalk coverage",
+      "source_dataset": "stg.custodian_position",
+      "target_dataset": "xref.security_identifier_map",
+      "grain": "custodian_security_id",
+      "tolerance": "0 unmapped active securities",
+      "frequency": "daily",
+      "owner": "security_master",
+      "severity": "high",
+      "expected_break_rate": "~2.5% missing maps",
+      "break_view": "dq_rule_result_current"
+    },
+    {
+      "rule_id": "CTL-004",
+      "rule_name": "Performance AUM reconciles to client-reporting AUM definition",
+      "source_dataset": "mart_performance_aum_by_strategy",
+      "target_dataset": "mart_clientreporting_aum_by_strategy",
+      "grain": "snapshot_month",
+      "tolerance": "1,000,000 demo tolerance",
+      "frequency": "monthly",
+      "owner": "performance_controls",
+      "severity": "medium",
+      "expected_break_rate": "private NAV statements included in client reporting but not performance composites",
+      "break_view": "control_recon_performance_vs_client_aum"
+    }
   ],
   "dq_rules": [
-    {"rule_id": "DQ-001", "dataset": "sec.security", "rule_type": "uniqueness", "condition": "security names should not duplicate across active ids", "severity": "warning", "expected_failure_rate": 0.006},
-    {"rule_id": "DQ-002", "dataset": "custodian.raw_position", "rule_type": "fk_exists", "condition": "raw positions reference a known security", "severity": "error", "expected_failure_rate": 0.006},
-    {"rule_id": "DQ-003", "dataset": "raw.custodian_position_extract", "rule_type": "format", "condition": "source position date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.025},
-    {"rule_id": "DQ-004", "dataset": "xref.security_identifier_map", "rule_type": "validity", "condition": "active mappings are not stale", "severity": "warning", "expected_failure_rate": 0.015},
-    {"rule_id": "DQ-005", "dataset": "integration.file_load", "rule_type": "uniqueness", "condition": "feed files load once", "severity": "error", "expected_failure_rate": 0.010},
-    {"rule_id": "DQ-006", "dataset": "risk.guideline_breach", "rule_type": "review", "condition": "manual guideline waivers are reviewed", "severity": "warning", "expected_failure_rate": 0.025},
-    {"rule_id": "DQ-007", "dataset": "stg.custodian_position", "rule_type": "coverage", "condition": "staged securities have active crosswalk mappings", "severity": "error", "expected_failure_rate": 0.025},
-    {"rule_id": "DQ-008", "dataset": "trading.trade_order", "rule_type": "compliance", "condition": "blocked trades remain visible for compliance review", "severity": "warning", "expected_failure_rate": 0.035},
-    {"rule_id": "DQ-009", "dataset": "private.nav_statement", "rule_type": "review", "condition": "NAV restatements carry a reason", "severity": "warning", "expected_failure_rate": 0.018}
+    {
+      "rule_id": "DQ-001",
+      "dataset": "sec.security",
+      "rule_type": "uniqueness",
+      "condition": "security names should not duplicate across active ids",
+      "severity": "warning",
+      "expected_failure_rate": 0.006
+    },
+    {
+      "rule_id": "DQ-002",
+      "dataset": "custodian.raw_position",
+      "rule_type": "fk_exists",
+      "condition": "raw positions reference a known security",
+      "severity": "error",
+      "expected_failure_rate": 0.006
+    },
+    {
+      "rule_id": "DQ-003",
+      "dataset": "raw.custodian_position_extract",
+      "rule_type": "format",
+      "condition": "source position date parses as MM/DD/YYYY",
+      "severity": "warning",
+      "expected_failure_rate": 0.025
+    },
+    {
+      "rule_id": "DQ-004",
+      "dataset": "xref.security_identifier_map",
+      "rule_type": "validity",
+      "condition": "active mappings are not stale",
+      "severity": "warning",
+      "expected_failure_rate": 0.015
+    },
+    {
+      "rule_id": "DQ-005",
+      "dataset": "integration.file_load",
+      "rule_type": "uniqueness",
+      "condition": "feed files load once",
+      "severity": "error",
+      "expected_failure_rate": 0.01
+    },
+    {
+      "rule_id": "DQ-006",
+      "dataset": "risk.guideline_breach",
+      "rule_type": "review",
+      "condition": "manual guideline waivers are reviewed",
+      "severity": "warning",
+      "expected_failure_rate": 0.025
+    },
+    {
+      "rule_id": "DQ-007",
+      "dataset": "stg.custodian_position",
+      "rule_type": "coverage",
+      "condition": "staged securities have active crosswalk mappings",
+      "severity": "error",
+      "expected_failure_rate": 0.025
+    },
+    {
+      "rule_id": "DQ-008",
+      "dataset": "trading.trade_order",
+      "rule_type": "compliance",
+      "condition": "blocked trades remain visible for compliance review",
+      "severity": "warning",
+      "expected_failure_rate": 0.035
+    },
+    {
+      "rule_id": "DQ-009",
+      "dataset": "private.nav_statement",
+      "rule_type": "review",
+      "condition": "NAV restatements carry a reason",
+      "severity": "warning",
+      "expected_failure_rate": 0.018
+    },
+    {
+      "rule_id": "DQ-010",
+      "dataset": "mart_performance_aum_by_strategy",
+      "rule_type": "coverage",
+      "condition": "portfolio has assigned performance composite mapping",
+      "severity": "error",
+      "expected_failure_rate": 0.09
+    },
+    {
+      "rule_id": "DQ-011",
+      "dataset": "manual.strategy_composite_mapping",
+      "rule_type": "validity",
+      "condition": "manual mappings are approved, current, non-stale, and non-conflicting",
+      "severity": "warning",
+      "expected_failure_rate": 0.08
+    },
+    {
+      "rule_id": "DQ-012",
+      "dataset": "integration.job_run",
+      "rule_type": "job_health",
+      "condition": "scheduled jobs complete successfully",
+      "severity": "warning",
+      "expected_failure_rate": 0.12
+    },
+    {
+      "rule_id": "DQ-013",
+      "dataset": "control_recon_performance_vs_client_aum",
+      "rule_type": "metric_reconciliation",
+      "condition": "performance and client reporting AUM deltas are explained",
+      "severity": "warning",
+      "expected_failure_rate": 0.1
+    }
   ],
   "dataflows": [
-    {"name": "trade_to_settle", "sequence": "portfolio.portfolio -> trading.trade_order -> trade_order_lifecycle -> execution -> wh.fact_trade_allocation"},
-    {"name": "custodian_position_recon", "sequence": "custodian.raw_position -> raw extract -> stg -> xref -> core.holding_position -> wh.fact_holding_daily -> control_recon_custodian_vs_ibor"},
-    {"name": "private_nav_rollforward", "sequence": "private.commitment -> private.nav_statement -> mart_private_nav_rollforward -> control_private_nav_restatement"},
-    {"name": "guideline_monitoring", "sequence": "risk.guideline_rule -> guideline_breach -> breach workflow -> dq_rule_result_current"},
-    {"name": "security_mastering", "sequence": "sec.security + custodian security ids -> xref.security_identifier_map -> mapped core holdings"}
+    {
+      "name": "trade_to_settle",
+      "sequence": "portfolio.portfolio -> trading.trade_order -> trade_order_lifecycle -> execution -> raw.oms_trade_extract -> stg.oms_trade -> wh.fact_trade_allocation -> nv_trade_detail"
+    },
+    {
+      "name": "custodian_position_recon",
+      "sequence": "custodian.raw_position -> raw.custodian_position_extract -> stg.custodian_position -> xref.security_identifier_map -> core.holding_position -> wh.fact_holding_daily -> nv_holding_detail -> control_recon_custodian_vs_ibor"
+    },
+    {
+      "name": "custodian_transaction_ingest",
+      "sequence": "trading.execution -> raw.custodian_transaction_file -> stg.custodian_transaction -> catalog.lineage_edge"
+    },
+    {
+      "name": "security_mastering",
+      "sequence": "sec.security -> raw.security_master_vendor_feed -> stg.security_master_vendor -> wh.dim_security"
+    },
+    {
+      "name": "private_nav_rollforward",
+      "sequence": "private.commitment -> private.nav_statement -> raw.private_asset_manager_statement -> stg.private_asset_manager_statement -> mart_clientreporting_aum_by_strategy -> control_private_nav_restatement"
+    },
+    {
+      "name": "aum_view_stack",
+      "sequence": "wh facts -> nv_holding_detail/nv_trade_detail -> bv_holdings_rollforward/bv_aum_by_strategy -> mv.month_end_aum_snapshot -> mart_performance_* and mart_clientreporting_* -> control_recon_performance_vs_client_aum"
+    },
+    {
+      "name": "strategy_mapping_workflow",
+      "sequence": "manual.strategy_composite_mapping -> mart_performance_aum_by_strategy -> dq_rule_result_current -> workflow.mapping_request_queue"
+    },
+    {
+      "name": "code_catalog_lineage",
+      "sequence": "sqlite_master views + procedure/function/extract rows -> catalog.code_object -> catalog.lineage_edge -> integration.job/job_run"
+    },
+    {
+      "name": "guideline_monitoring",
+      "sequence": "risk.guideline_rule -> guideline_breach -> breach workflow -> bv_guideline_breach_funnel -> dq_rule_result_current"
+    }
   ],
   "validation": {
-    "required_views": ["mart_aum_by_asset_class", "mart_private_nav_rollforward", "mart_trade_settlement_funnel", "control_recon_custodian_vs_ibor", "control_private_nav_restatement", "dq_rule_result_current"],
+    "required_views": [
+      "nv_holding_detail",
+      "nv_trade_detail",
+      "bv_holdings_rollforward",
+      "bv_aum_by_strategy",
+      "bv_guideline_breach_funnel",
+      "mart_performance_aum_by_strategy",
+      "mart_performance_composite_proxy",
+      "mart_clientreporting_aum_by_strategy",
+      "mart_clientreporting_statement_inventory",
+      "control_recon_custodian_vs_ibor",
+      "control_private_nav_restatement",
+      "control_recon_performance_vs_client_aum",
+      "dq_rule_result_current"
+    ],
     "expected_row_ranges": {
-      "portfolio.portfolio": [170, 210],
-      "sec.security": [1300, 1550],
-      "trading.trade_order": [7000, 23000],
-      "custodian.raw_position": [18000, 65000],
-      "private.nav_statement": [1100, 3800]
+      "portfolio.portfolio": [
+        170,
+        210
+      ],
+      "sec.security": [
+        1300,
+        1550
+      ],
+      "trading.trade_order": [
+        7000,
+        23000
+      ],
+      "custodian.raw_position": [
+        18000,
+        65000
+      ],
+      "private.nav_statement": [
+        1100,
+        3800
+      ],
+      "mv.month_end_aum_snapshot": [
+        1000,
+        6500
+      ]
     }
   }
 }
