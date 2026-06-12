@@ -1,8 +1,8 @@
 # Bluestone Mutual Bank — Worked Example
 
-A complete fictional regional retail/commercial bank: core banking customers and accounts, debit cards with merchant-skewed spend, an ACH/wire payment hub with a right-censored lifecycle state machine, an AML alert-to-case-to-SAR funnel, raw/staging/xref/canonical layers derived via SQL, a double-entry GL daily summary, a window-sum balance roll-forward where opening + credits − debits = closing holds by construction, warehouse facts and dims, mart/control/DQ views, and 12 logged controlled imperfections — every one aimed at a DQ rule, the GL reconciliation, or a workflow queue. Identifier safety throughout: `iban`, `aba_routing`, and `masked_card` identifier kinds only, with 555-01xx phones and example.com emails.
+A complete fictional regional retail/commercial bank modeling the **full layered warehouse stack** end to end: core banking customers and accounts, debit cards with merchant-skewed spend, an ACH/wire payment hub with a right-censored lifecycle state machine, an AML alert-to-case-to-SAR funnel; landing (`raw_*`) and staging (`stg_*`) tables per source feed (core extract, card settlement file, payment stream, GL extract); `xref`/canonical normalization; a double-entry GL daily summary and a window-sum balance roll-forward where opening + credits − debits = closing holds by construction; warehouse facts and dims; a stacked view tier (`nv_*` normalized → `bv_*` business → `mv_*` materialized → `mart_<bu>_*` per-business-unit); a human-entered GL account mapping applied asymmetrically across finance vs branch-ops; a code-object catalog (`catalog.code_object`/`lineage_edge`) with self-registered views and authored procedures/function/extracts; reconciliation and DQ views; workflow queues; and 15 logged controlled imperfections — every one aimed at a DQ rule, a reconciliation, or a workflow queue. Identifier safety throughout: `iban`, `aba_routing`, and `masked_card` identifier kinds only, with 555-01xx phones and example.com emails.
 
-At multiplier 1.0 this builds ~290k rows across 31 tables and 4 views in well under a minute and passes strict validation (zero critical, zero warnings, full realism score).
+At multiplier 1.0 this builds ~408k rows across 45 tables and 13 views in well under a minute and passes strict validation (zero critical, zero warnings, full realism score).
 
 ## Run It
 
@@ -16,44 +16,48 @@ python scripts/profile_sqlite_database.py --db examples/banking/build/bluestone_
 
 ## Patterns Worth Copying
 
-- **Weekend dip on human channels with flat card volume** — one global calendar can't shape two channels differently, so the calendar carries the consumer-card week (mild Fri/Sat lift) and the `core_posted_transaction` derivation rolls ACH/wire posting to the next business day. The mart shows zero weekend ACH/wire rows, a 3x Monday catch-up spike, and seven-day card spend — three real banking signatures from one CASE expression.
-- **Vintage-tier throttle kills the as_of pile-up** — per-parent volume draws don't know how long a parent has existed, so an account opened in December dumps a two-year transaction count into its last three weeks. `corebank.account.activity_tier` and `cardlink.card.usage_tier` are expression columns that string-compare the ISO-serialized parent onboarding date (`status if customer_since < '2025-04-01' else ...`) and feed `scale_by`, cutting late-vintage volume to a ramp rate. Before the fix, 2025-12-31 carried 15x normal card volume; after, it's a plausible year-end bump.
-- **Recurring-payment duplicate mass via quantization** — `payment_instruction.amount` is `round(round(amount_raw / rounding_unit) * rounding_unit, 2)` where `rounding_unit` is segment- and type-conditioned (0.01 exact-cents one-offs; 5/25/100 recurring bills and payroll; 100/1000 round wires). The top-20 exact values carry ~17% of rows — real amount columns repeat.
-- **Wire value skew without distorting ACH** — `wire_scale` (retail 0.32, commercial 2.6) applies only inside the amount expression's conditional (`amount_raw * (wire_scale if is_wire == 1 else 1)`), so commercial customers (5% of the book) carry ~60% of wire value while payroll deposits stay segment-neutral.
-- **Balance roll-forward derived, never sampled** — `wh.fact_account_balance` is a window-sum over the posting ledger with a deterministic per-account opening anchor (`(account_id * 263) % 17500` — no `random()`), so opening + credits − debits = closing holds on every row.
-- **Recon breaks from derivation ordering** — `ledger.gl_daily_summary` is double-entry by construction (deposits GL vs channel clearing GLs, debits = credits per day) and derives *before* the post-derivation `restatement_reversal` pairs land in `core.posted_transaction`. The `control_recon_txn_vs_gl` view is exactly the late-restatement story a finance-controls team chases.
-- **AML funnel with coherent terminal stamps** — alerts fire on ~1.3% of payment instructions, skewed to wires via `scale_by` on payment_type, generated next morning by the overnight batch (`date_offset` +1 day). Two terminal states (`closed_false_positive`, `closed_no_action`) map to the *same* `closed_at` column; `aml.case_file` derives from escalated alerts so every case references an alert by construction.
-- **Every imperfection has a catcher** — ghost merchants → DQ-004 and `UNKNOWN MERCHANT` postings; missing/stale xref → DQ-002/DQ-005; padded raw dates → DQ-003; CDC event swaps → DQ-006; nulled emails → DQ-007; the product-affinity 2% leak → DQ-001; GL restatements → the recon view; analyst overrides → `mart_aml_funnel`.
+- **Landing + staging per feed**: one `raw_*` table per source feed (core customer extract, card settlement file, payment stream, GL extract) landed as text with file/batch ids and `ingested_at` (the next-morning batch, clamped to as_of), then a `stg_*` table per landing table that trims, types, dedups (`row_number` against re-sent batches), and parses dates with a `case`-guard so drifted formats land NULL. `format_drift` corrupts the landed dates and the DQ views catch them (DQ-003/009/010).
+- **The view stack stacks** (`nv_* → bv_* → mv_* / mart_<bu>_*`): `nv_transaction`/`nv_account_balance`/`nv_gl_posting` re-join facts to dims with no metric logic; `bv_balance_rollforward` surfaces the opening + credits − debits = closing equation with a window recency rank, `bv_deposit_portfolio` aggregates each account's latest balance by segment×product, `bv_aml_alert_funnel` is the alert→investigation→SAR case ladder; `mv_eod_balance_snapshot` is a day-grain materialized table refreshed by insert-select from a business view; mart views read business/normalized views, never raw facts. Each rung reads the rung beneath it.
+- **A human-entered mapping applied asymmetrically**: `manual.gl_account_mapping` (a finance spreadsheet upload mapping product code → GL account hierarchy node — 12 of 14 live products mapped, one unapproved draft, two retired rows, one conflicting SAV-CORE re-upload) is joined by `mart_finance_deposits` (left join + `coalesce` to `UNMAPPED`, dedup to the latest approved row) but **not** by `mart_branchops_deposits`. Finance also **excludes internal/settlement accounts** (a deterministic `account_id % 50 = 0` slice) that branch ops includes. The two legitimately disagree on total deposits; `control_recon_finance_branchops` proves the gap equals exactly the internal/settlement balance (`unexplained_difference` is 0) and quantifies the UNMAPPED bucket. The gap feeds DQ-008 and the `gl_mapping_request` workflow queue.
+- **Code is catalogued as data**: `catalog.code_object` self-registers every deployed view from `sqlite_master` (the catalog provably matches the code) and carries authored target-platform source for an end-of-day batch posting procedure, a GL close procedure, the `rebuild_mv_eod_balance_snapshot` refresh procedure, a `deposit_interest_accrual` function (intentionally stale — references a retired column, flagged as known debt), and the regulatory-transaction-report and card-network-settlement outbound extracts; `catalog.lineage_edge` links them to the tables they read/write; `integration.job`/`job_run` give them scheduled run history with occasional failures.
+- **Weekend dip on human channels with flat card volume** — the calendar carries the consumer-card week (mild Fri/Sat lift) and the `core_posted_transaction` derivation rolls ACH/wire posting to the next business day, so the mart shows zero weekend ACH/wire rows and seven-day card spend from one CASE expression.
+- **Balance roll-forward derived, never sampled** — `wh.fact_account_balance` is a window-sum over the posting ledger with a deterministic per-account opening anchor (`(account_id * 263) % 17500` — no `random()`), so opening + credits − debits = closing holds on every row and `bv_balance_rollforward.rollforward_break` is 0 everywhere.
+- **Recon breaks from derivation ordering** — `ledger.gl_daily_summary` is double-entry by construction and derives *before* the post-derivation `restatement_reversal` pairs land in `core.posted_transaction`. The `control_recon_txn_vs_gl` view is exactly the late-restatement story a finance-controls team chases.
+- **Every imperfection has a catcher** — ghost merchants → DQ-004 and `UNKNOWN MERCHANT` postings; missing/stale xref → DQ-002/DQ-005; padded raw dates → DQ-003/009/010; CDC event swaps → DQ-006; nulled emails → DQ-007; the unmapped product gap → DQ-008 + `control_recon_finance_branchops`; GL restatements → the recon view; analyst overrides → `mart_aml_funnel`.
 
 ## Things to Query
 
 ```sql
--- Weekend dip on ACH/wire, flat card week, 3x Monday ACH catch-up
-select channel, strftime('%w', txn_date) as weekday, count(*) as txns
-from core_posted_transaction group by 1, 2 order by 1, 2;
+-- The competing-metric discrepancy and its reconciliation
+select * from control_recon_finance_branchops;   -- difference == internal_excluded; unexplained_difference == 0
+select gl_account_node, total_deposits from mart_finance_deposits order by 2 desc;     -- GL-mapped, internal excluded, UNMAPPED bucket
+select reported_product_code, round(sum(total_deposits),2) from mart_branchops_deposits group by 1 order by 2 desc;  -- raw code, internal included
 
--- Recurring payments repeat exact amounts (50/100/1000 lead)
-select amount, count(*) from paystream_payment_instruction
-group by 1 order by 2 desc limit 10;
+-- The code catalog and lineage
+select object_type, count(*) from catalog_code_object group by 1;
+select object_name, notes from catalog_code_object where object_type != 'view';  -- authored procs/function/extracts (note the known-debt function)
+select * from catalog_lineage_edge order by edge_id;
 
--- Commercial customers: 5% of the book, ~60% of wire value
-select segment, count(*) as wires, round(sum(amount)/1e6, 1) as value_mm
-from paystream_payment_instruction where payment_type like 'wire%' group by 1;
+-- Job-run history with occasional failures
+select j.job_name, r.run_status, count(*) from integration_job_run r
+join integration_job j on j.job_id = r.job_id group by 1, 2 order by 1, 2;
+
+-- The materialized snapshot and the business views
+select * from mv_eod_balance_snapshot order by posting_date desc limit 7;            -- day-grain bank-wide EOD, bounded ~730 rows
+select * from bv_deposit_portfolio order by total_balance desc limit 10;             -- segment x product latest balances
+select funnel_stage, alerts, linked_cases, sars_filed from bv_aml_alert_funnel order by stage_order;
 
 -- Balance equation holds on every roll-forward row
-select count(*) from wh_fact_account_balance
-where abs(opening_balance + total_credits - total_debits - closing_balance) > 0.02;
+select count(*) from bv_balance_rollforward where abs(rollforward_break) > 0.02;
+
+-- Weekend dip on ACH/wire, flat card week
+select channel, strftime('%w', txn_date) as weekday, count(*) as txns
+from nv_transaction group by 1, 2 order by 1, 2;
 
 -- GL recon breaks from late restatement reversals
 select * from control_recon_txn_vs_gl order by abs(break_amount) desc limit 10;
 
--- AML funnel: false positives dominate, a few SARs, open items mid-flight
-select * from mart_aml_funnel order by alerts desc;
-
--- Payments initiated in the final week sit legitimately mid-pipeline
-select status, count(*) from paystream_payment_instruction
-where initiated_date >= '2025-12-25' group by 1;
-
 -- DQ results reconcile to the logged imperfections that caused them
-select rule_code, count(*) from dq_rule_result_current group by 1 order by 1;
+select rule_code, count(*) from dq_rule_result_current group by 1 order by 1;        -- DQ-001..010
+select imperfection_name, count(*) from meta_imperfection_log group by 1 order by 2 desc;
 ```
