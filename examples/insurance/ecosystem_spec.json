@@ -1,31 +1,13 @@
 {
-  "_note": "Worked example: Granite Point Mutual Insurance, a fictional regional P&C carrier writing personal auto and property. Demonstrates: policy book per household with effective dating, a quote->bound->renewed/cancelled policy machine, rate-table coverage premiums (rate x exposure units x tier factor), billing schedules DERIVED from bound policies with a written-vs-billed recon control, claims with lognormal long-tail severity and an FNOL->reserve->paid/denied machine, reserve transactions that develop over time (initial -> strengthening -> closing takedown), derived claim payments, raw->stg->xref->core lineage for policyholders across PAS and CRM, and a loss-ratio mart that lands in the 55-75% band by line.",
+  "_note": "Worked example: Granite Point Mutual Insurance, a fictional regional P&C carrier writing personal auto and property. Demonstrates: policy book per household with effective dating, a quote->bound->renewed/cancelled policy machine, rate-table coverage premiums (rate x exposure units x tier factor), billing schedules DERIVED from bound policies with a written-vs-billed recon control, claims with lognormal long-tail severity and an FNOL->reserve->paid/denied machine, reserve transactions that develop over time (initial -> strengthening -> closing takedown), derived claim payments, the full layered warehouse stack (landing raw.* + staging stg.* per feed, canonical core.*, warehouse dims/facts, normalized nv_* views, business bv_* views, a materialized mv.* table, and competing business-unit mart_* views), a human-entered manual.line_of_business_mapping applied asymmetrically across actuarial vs distribution written-premium with an exact reconciliation, a workflow.case queue for mapping-request and exception review, the catalog.code_object code-object catalog with lineage and integration job-run history, and a loss-ratio mart that lands in the 55-75% band by line.",
   "spec_version": 2,
-  "organization": {
-    "name": "Granite Point Mutual Insurance",
-    "archetype": "pnc_insurance_carrier",
-    "industry": "Property & casualty insurance",
-    "currency": "USD"
-  },
+  "organization": {"name": "Granite Point Mutual Insurance", "archetype": "pnc_insurance_carrier", "industry": "Property & casualty insurance", "currency": "USD"},
   "platform": "sqlite",
   "seed": 29,
   "scale": {"profile": "small", "multiplier": 1.0},
-  "time": {
-    "start_date": "2024-01-01",
-    "end_date": "2025-12-31",
-    "as_of_date": "2025-12-31"
-  },
-  "calendar": {
-    "_note": "Monday FNOL peak (weekend losses reported late); spring hail / Q3 storm season in month weights.",
-    "weekday_weights": [1.25, 1.1, 1.05, 1.0, 0.95, 0.4, 0.3],
-    "month_weights": [1.05, 1.0, 1.02, 1.06, 1.1, 1.04, 1.08, 1.1, 1.06, 1.0, 0.96, 0.98],
-    "holidays": ["2024-01-01", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-07-04", "2025-11-27", "2025-12-25"],
-    "annual_growth": 0.06,
-    "business_hours": [8, 18]
-  },
-  "vocab": {
-    "loss_description": ["Rear-ended at a stoplight, bumper and trunk damage.", "Backed into a parked vehicle in a lot.", "Hail dents across hood and roof.", "Tree limb fell on the garage roof.", "Burst supply line under the kitchen sink.", "Windshield cracked by road debris.", "Kitchen fire contained to cabinets and ceiling.", "Theft of personal property from the vehicle.", "Wind lifted shingles along the ridge line.", "Slip and fall on the front walk, guest injured.", "Sideswiped while merging on the interstate.", "Water intrusion through flashing after storm.", "Single-vehicle slide-off on ice, front end damage.", "Dog bite to a visiting neighbor.", "Sump pump failure flooded the finished basement."]
-  },
+  "time": {"start_date": "2024-01-01", "end_date": "2025-12-31", "as_of_date": "2025-12-31"},
+  "calendar": {"_note": "Monday FNOL peak (weekend losses reported late); spring hail / Q3 storm season in month weights.", "weekday_weights": [1.25, 1.1, 1.05, 1.0, 0.95, 0.4, 0.3], "month_weights": [1.05, 1.0, 1.02, 1.06, 1.1, 1.04, 1.08, 1.1, 1.06, 1.0, 0.96, 0.98], "holidays": ["2024-01-01", "2024-07-04", "2024-11-28", "2024-12-25", "2025-01-01", "2025-07-04", "2025-11-27", "2025-12-25"], "annual_growth": 0.06, "business_hours": [8, 18]},
+  "vocab": {"loss_description": ["Rear-ended at a stoplight, bumper and trunk damage.", "Backed into a parked vehicle in a lot.", "Hail dents across hood and roof.", "Tree limb fell on the garage roof.", "Burst supply line under the kitchen sink.", "Windshield cracked by road debris.", "Kitchen fire contained to cabinets and ceiling.", "Theft of personal property from the vehicle.", "Wind lifted shingles along the ridge line.", "Slip and fall on the front walk, guest injured.", "Sideswiped while merging on the interstate.", "Water intrusion through flashing after storm.", "Single-vehicle slide-off on ice, front end damage.", "Dog bite to a visiting neighbor.", "Sump pump failure flooded the finished basement."]},
   "tables": [
     {
       "schema": "app", "name": "application", "layer": "app",
@@ -74,8 +56,7 @@
       "schema": "dist", "name": "agency", "layer": "source",
       "purpose": "Appointed independent agencies; production concentrates heavily in the top decile.",
       "source_system": "AgencyLink Producer Hub",
-      "primary_key": ["agency_id"], "natural_key": ["agency_code"],
-      "rows": 220, "scale_exempt": true,
+      "primary_key": ["agency_id"], "natural_key": ["agency_code"], "rows": 220, "scale_exempt": true,
       "columns": [
         {"name": "agency_id", "type": "integer"},
         {"name": "agency_code", "type": "string", "gen": {"type": "pattern", "pattern": "AGY-####", "unique": true}},
@@ -92,8 +73,7 @@
       "schema": "pas", "name": "policyholder", "layer": "source",
       "purpose": "Policyholder master in the policy administration system.",
       "source_system": "PolicyForge PAS",
-      "primary_key": ["policyholder_id"], "natural_key": ["holder_code"],
-      "rows": 6000, "traits": ["audited"],
+      "primary_key": ["policyholder_id"], "natural_key": ["holder_code"], "rows": 6000, "traits": ["audited"],
       "indexes": [["risk_tier"], ["state"]],
       "columns": [
         {"name": "policyholder_id", "type": "integer"},
@@ -116,9 +96,7 @@
       "schema": "crm", "name": "party", "layer": "source",
       "purpose": "CRM party master, synced nightly from the PAS.",
       "source_system": "Atrium CRM",
-      "primary_key": ["party_id"], "natural_key": ["party_code"],
-      "rows": {"per_parent": "pas.policyholder", "distribution": {"distribution": "constant", "value": 1}, "max": 1},
-      "traits": ["audited", "source_stamped"],
+      "primary_key": ["party_id"], "natural_key": ["party_code"], "rows": {"per_parent": "pas.policyholder", "distribution": {"distribution": "constant", "value": 1}, "max": 1}, "traits": ["audited", "source_stamped"],
       "columns": [
         {"name": "party_id", "type": "integer", "gen": "seq"},
         {"name": "party_code", "type": "string", "gen": {"type": "pattern", "pattern": "PTY-#######", "unique": true}},
@@ -138,9 +116,7 @@
       "purpose": "Policy master: one row per quoted/issued personal-lines policy term.",
       "grain": "one row per policy",
       "source_system": "PolicyForge PAS",
-      "primary_key": ["policy_id"], "natural_key": ["policy_number"],
-      "rows": {"per_parent": "pas.policyholder", "distribution": {"distribution": "lognormal", "median": 1.4, "sigma": 0.55}, "min": 1, "max": 6, "_note": "~1.6 policies per household: auto+home bundles are common, a few holders run to 4-6."},
-      "traits": ["audited"],
+      "primary_key": ["policy_id"], "natural_key": ["policy_number"], "rows": {"per_parent": "pas.policyholder", "distribution": {"distribution": "lognormal", "median": 1.4, "sigma": 0.55}, "min": 1, "max": 6, "_note": "~1.6 policies per household: auto+home bundles are common, a few holders run to 4-6."}, "traits": ["audited"],
       "indexes": [["policyholder_id"], ["agency_id"], ["status"], ["effective_date"]],
       "columns": [
         {"name": "policy_id", "type": "integer", "gen": "seq"},
@@ -148,7 +124,7 @@
         {"name": "policyholder_id", "type": "integer", "gen": "parent_key"},
         {"name": "line", "type": "string", "gen": "choice:auto=0.62,property=0.38"},
         {"name": "rating_tier", "type": "string", "gen": {"type": "parent_copy", "source_column": "risk_tier"}},
-        {"name": "exposure_units", "type": "integer", "_note": "Rating exposure: vehicles on auto, dwelling-value band (per $150k of Coverage A) on property — gives both lines a realistic premium spread.", "gen": {"type": "case", "on": "line", "cases": {"auto": {"type": "choice", "values": [1, 2, 3], "weights": [0.58, 0.32, 0.10]}}, "default": {"type": "choice", "values": [1, 2, 3, 4], "weights": [0.35, 0.40, 0.18, 0.07]}}},
+        {"name": "exposure_units", "type": "integer", "_note": "Rating exposure: vehicles on auto, dwelling-value band (per $150k of Coverage A) on property — gives both lines a realistic premium spread.", "gen": {"type": "case", "on": "line", "cases": {"auto": {"type": "choice", "values": [1, 2, 3], "weights": [0.58, 0.32, 0.1]}}, "default": {"type": "choice", "values": [1, 2, 3, 4], "weights": [0.35, 0.4, 0.18, 0.07]}}},
         {"name": "agency_id", "type": "integer", "_note": "zipf 1.1: top-decile agencies carry over half of production, matching real agency concentration.", "gen": "fk:dist.agency@zipf"},
         {"name": "payment_plan", "type": "string", "gen": "choice:full_pay=0.35,semi_annual=0.10,quarterly=0.15,monthly=0.40"},
         {"name": "quote_date", "type": "date", "gen": {"type": "date", "min": "parent.created_at"}},
@@ -184,8 +160,7 @@
       "purpose": "Coverage-level rating detail per policy.",
       "grain": "one row per policy per coverage",
       "source_system": "PolicyForge PAS",
-      "primary_key": ["coverage_id"],
-      "rows": {"per_parent": "pas.policy", "distribution": {"distribution": "poisson", "lam": 2.2}, "min": 2, "max": 6},
+      "primary_key": ["coverage_id"], "rows": {"per_parent": "pas.policy", "distribution": {"distribution": "poisson", "lam": 2.2}, "min": 2, "max": 6},
       "indexes": [["policy_id"], ["coverage_type_id"]],
       "columns": [
         {"name": "coverage_id", "type": "integer", "gen": "seq"},
@@ -200,7 +175,9 @@
         {"name": "limit_amount", "type": "integer", "gen": {"type": "fk_copy", "column": "coverage_type_id", "ref": "ref.coverage_type", "source_column": "default_limit"}},
         {"name": "deductible", "type": "integer", "gen": {"type": "case", "on": "line", "cases": {"auto": {"type": "choice", "values": [250, 500, 1000], "weights": [0.2, 0.55, 0.25]}}, "default": {"type": "choice", "values": [500, 1000, 2500], "weights": [0.3, 0.5, 0.2]}}},
         {"name": "tier_factor", "type": "decimal", "gen": {"type": "case", "on": "rating_tier", "cases": {"preferred": 0.85, "standard": 1.0, "substandard": 1.3}, "default": 1.0}},
-        {"name": "coverage_premium", "type": "decimal", "gen": "expr:round(rate_snapshot * exposure_units * tier_factor, 2)"}
+        {"name": "coverage_premium", "type": "decimal", "gen": "expr:round(rate_snapshot * exposure_units * tier_factor, 2)"},
+        {"name": "is_endorsement", "type": "boolean", "_note": "~14% of coverages are mid-term endorsements (added/changed after binding) rather than at-issue base coverage; distribution counts them at submission, actuarial only counts approved ones.", "gen": "bool:0.14"},
+        {"name": "endorsement_status", "type": "string", "_note": "Endorsements await UW sign-off: ~20% of endorsements sit pending/unapproved. Base coverages are not_applicable. Drives the asymmetric exclusion in mart_actuarial_written_premium.", "gen": {"type": "case", "on": "is_endorsement", "cases": {"1": {"type": "choice", "values": ["approved", "pending"], "weights": [0.8, 0.2]}}, "default": "not_applicable"}}
       ]
     },
     {
@@ -209,15 +186,14 @@
       "purpose": "Claims from FNOL through resolution.",
       "grain": "one row per reported claim",
       "source_system": "ClearClaim CMS",
-      "primary_key": ["claim_id"], "natural_key": ["claim_number"],
-      "rows": {"per_parent": "pas.policy", "distribution": {"distribution": "lognormal", "median": 0.153, "sigma": 0.9}, "scale_by": {"parent_column": "line", "factors": {"auto": 1.0, "property": 0.94}, "default": 1.0}, "min": 0, "max": 4, "_note": "Continuous draw rounded to a count: ~10% of auto and ~8.7% of property policies see a claim, a few see 2-3. scale_by needs a CONTINUOUS distribution at low frequencies — round(1 x factor) swallows factors between 0.5 and 1.5 on integer draws."},
+      "primary_key": ["claim_id"], "natural_key": ["claim_number"], "rows": {"per_parent": "pas.policy", "distribution": {"distribution": "lognormal", "median": 0.153, "sigma": 0.9}, "scale_by": {"parent_column": "line", "factors": {"auto": 1.0, "property": 0.94}, "default": 1.0}, "min": 0, "max": 4, "_note": "Continuous draw rounded to a count: ~10% of auto and ~8.7% of property policies see a claim, a few see 2-3. scale_by needs a CONTINUOUS distribution at low frequencies — round(1 x factor) swallows factors between 0.5 and 1.5 on integer draws."},
       "indexes": [["policy_id"], ["loss_date"], ["status"]],
       "columns": [
         {"name": "claim_id", "type": "integer", "gen": "seq"},
         {"name": "claim_number", "type": "string", "gen": {"type": "pattern", "pattern": "CLM-########", "unique": true}},
         {"name": "policy_id", "type": "integer", "gen": "parent_key"},
         {"name": "line", "type": "string", "gen": {"type": "parent_copy", "source_column": "line"}},
-        {"name": "claim_type", "type": "string", "gen": {"type": "case", "on": "line", "cases": {"auto": {"type": "choice", "values": ["collision", "comprehensive", "property_damage_liability", "bodily_injury_liability"], "weights": [0.42, 0.25, 0.13, 0.20]}}, "default": {"type": "choice", "values": ["water_damage", "wind_hail", "fire", "theft", "liability"], "weights": [0.30, 0.33, 0.07, 0.16, 0.14]}}},
+        {"name": "claim_type", "type": "string", "gen": {"type": "case", "on": "line", "cases": {"auto": {"type": "choice", "values": ["collision", "comprehensive", "property_damage_liability", "bodily_injury_liability"], "weights": [0.42, 0.25, 0.13, 0.2]}}, "default": {"type": "choice", "values": ["water_damage", "wind_hail", "fire", "theft", "liability"], "weights": [0.3, 0.33, 0.07, 0.16, 0.14]}}},
         {"name": "estimated_loss_amount", "type": "decimal", "_note": "Lognormal severity by claim type: bodily injury and fire carry the long tail.", "gen": {"type": "case", "on": "claim_type", "cases": {"collision": {"type": "money", "median": 3900, "sigma": 0.9}, "comprehensive": {"type": "money", "median": 2000, "sigma": 0.8}, "property_damage_liability": {"type": "money", "median": 3200, "sigma": 0.9}, "bodily_injury_liability": {"type": "money", "median": 15500, "sigma": 1.2}, "water_damage": {"type": "money", "median": 6300, "sigma": 0.9}, "wind_hail": {"type": "money", "median": 5600, "sigma": 0.9}, "fire": {"type": "money", "median": 22000, "sigma": 1.1}, "theft": {"type": "money", "median": 3400, "sigma": 0.85}, "liability": {"type": "money", "median": 11500, "sigma": 1.0}}, "default": {"type": "money", "median": 5000, "sigma": 0.9}}},
         {"name": "loss_date", "type": "date", "gen": {"type": "date", "min": "parent.effective_date", "max": "parent.expiration_date"}},
         {"name": "reported_date", "type": "date", "_note": "FNOL lag: median 2 days, tail to 40 (late-reported storm losses). business_days rolls weekend losses to Monday — the classic Monday FNOL peak.", "gen": {"type": "date_offset", "from": "loss_date", "unit": "days", "offset": {"distribution": "lognormal", "median": 2, "sigma": 1.1, "min": 0, "max": 40}, "business_days": true, "as": "date"}},
@@ -230,7 +206,7 @@
         {"name": "closed_at", "type": "timestamp", "nullable": true, "gen": "skip"},
         {"name": "adjuster", "type": "string", "gen": "staff_user"},
         {"name": "siu_referral_flag", "type": "boolean", "gen": "bool:0.03"},
-        {"name": "loss_description", "type": "string", "null_rate": 0.30, "gen": "text:loss_description"}
+        {"name": "loss_description", "type": "string", "null_rate": 0.3, "gen": "text:loss_description"}
       ]
     },
     {
@@ -252,8 +228,8 @@
       "schema": "cms", "name": "reserve_transaction", "layer": "transaction",
       "purpose": "Case reserve transactions per claim.",
       "grain": "one row per claim per reserve change",
-      "source": "derivation",
       "source_system": "ClearClaim CMS",
+      "source": "derivation",
       "primary_key": ["reserve_txn_id"],
       "indexes": [["claim_id"], ["txn_date"]],
       "columns": [
@@ -270,8 +246,8 @@
       "schema": "cms", "name": "claim_payment", "layer": "transaction",
       "purpose": "Indemnity payments on paid claims; ~25% settle in two installments.",
       "grain": "one row per claim payment",
-      "source": "derivation",
       "source_system": "ClearClaim CMS",
+      "source": "derivation",
       "primary_key": ["payment_id"],
       "indexes": [["claim_id"], ["payment_date"]],
       "columns": [
@@ -290,8 +266,8 @@
       "schema": "billing", "name": "installment", "layer": "transaction",
       "purpose": "Premium installment schedule per bound policy.",
       "grain": "one row per policy per scheduled installment or credit",
-      "source": "derivation",
       "source_system": "BillFlow Billing",
+      "source": "derivation",
       "primary_key": ["installment_id"],
       "indexes": [["policy_id"], ["due_date"]],
       "columns": [
@@ -309,8 +285,8 @@
       "schema": "billing", "name": "payment", "layer": "transaction",
       "purpose": "Premium payments collected via the gateway; ~4% of due installments remain unpaid.",
       "grain": "one row per gateway payment",
-      "source": "derivation",
       "source_system": "BillFlow Billing",
+      "source": "derivation",
       "primary_key": ["payment_id"],
       "indexes": [["installment_id"], ["policy_id"], ["payment_date"]],
       "columns": [
@@ -339,21 +315,105 @@
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (live results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 12, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 16, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "policyholders sharing an email", "2": "claim references unknown policy", "3": "claim reported over 30 days after loss", "4": "claim on policy that never bound", "5": "unparseable raw extract date", "6": "policyholder missing source mapping", "7": "expired xref mapping still active", "8": "holder name mismatch PAS vs CRM", "9": "mailing city mismatch PAS vs CRM", "10": "party feed latency breach", "11": "duplicate gateway payment reference", "12": "policy bound via manual underwriting override"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "pas.policyholder", "2": "cms.claim", "3": "cms.claim", "4": "cms.claim", "5": "raw.pas_policyholder_extract", "6": "xref.entity_identifier", "7": "xref.entity_identifier", "8": "crm.party", "9": "crm.party", "10": "crm.party", "11": "billing.payment", "12": "pas.policy"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "warning", "4": "error", "5": "warning", "6": "error", "7": "warning", "8": "warning", "9": "warning", "10": "warning", "11": "error", "12": "warning"}}},
-        {"name": "owner_queue", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "mdm_stewards", "2": "coverage_verification", "3": "coverage_verification", "4": "coverage_verification", "5": "data_engineering", "6": "mdm_stewards", "7": "mdm_stewards", "8": "mdm_stewards", "9": "mdm_stewards", "10": "data_engineering", "11": "premium_accounting", "12": "underwriting_audit"}}}
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012", "13": "DQ-013", "14": "DQ-014", "15": "DQ-015", "16": "DQ-016"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "policyholders sharing an email", "2": "claim references unknown policy", "3": "claim reported over 30 days after loss", "4": "claim on policy that never bound", "5": "unparseable raw extract date", "6": "policyholder missing source mapping", "7": "expired xref mapping still active", "8": "holder name mismatch PAS vs CRM", "9": "mailing city mismatch PAS vs CRM", "10": "party feed latency breach", "11": "duplicate gateway payment reference", "12": "policy bound via manual underwriting override", "13": "coverage code missing approved LOB mapping", "14": "unparseable raw claim date", "15": "unparseable raw installment date", "16": "unparseable raw agency production date"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "pas.policyholder", "2": "cms.claim", "3": "cms.claim", "4": "cms.claim", "5": "raw.pas_policyholder_extract", "6": "xref.entity_identifier", "7": "xref.entity_identifier", "8": "crm.party", "9": "crm.party", "10": "crm.party", "11": "billing.payment", "12": "pas.policy", "13": "manual.line_of_business_mapping", "14": "raw.cms_claim_extract", "15": "raw.billing_installment_extract", "16": "raw.dist_agency_production_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "warning", "4": "error", "5": "warning", "6": "error", "7": "warning", "8": "warning", "9": "warning", "10": "warning", "11": "error", "12": "warning", "13": "error", "14": "warning", "15": "warning", "16": "warning"}}},
+        {"name": "owner_queue", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "mdm_stewards", "2": "coverage_verification", "3": "coverage_verification", "4": "coverage_verification", "5": "data_engineering", "6": "mdm_stewards", "7": "mdm_stewards", "8": "mdm_stewards", "9": "mdm_stewards", "10": "data_engineering", "11": "premium_accounting", "12": "underwriting_audit", "13": "actuarial_mapping", "14": "data_engineering", "15": "data_engineering", "16": "data_engineering"}}}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case", "layer": "workflow",
+      "purpose": "Exception and review queues (coverage verification, MDM, premium accounting, and the LOB mapping-request queue).",
+      "source_system": "FlowBridge Integration",
+      "primary_key": ["case_id"], "rows": 180, "traits": ["audited"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-######", "unique": true}},
+        {"name": "case_type", "type": "string", "gen": "choice:coverage_verification=0.24,recon_break=0.2,duplicate_party_review=0.16,siu_review=0.1,data_correction=0.18,lob_mapping_request=0.12"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"coverage_verification": "coverage_verification", "recon_break": "premium_accounting", "duplicate_party_review": "mdm_stewards", "siu_review": "siu_desk", "data_correction": "data_stewards", "lob_mapping_request": "actuarial_mapping"}}},
+        {"name": "priority", "type": "string", "gen": "choice:low=0.3,medium=0.5,high=0.2"},
+        {"name": "related_entity", "type": "string", "gen": "pattern:ENT-#######"},
+        {"name": "status", "type": "string", "gen": "const:open"},
+        {"name": "assigned_to", "type": "string", "gen": "staff_user"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "triaged_at", "type": "timestamp", "nullable": true, "gen": "skip"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true, "gen": "skip"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "case_event", "layer": "workflow",
+      "purpose": "Case status history emitted by the case lifecycle machine.",
+      "source": "state_machine",
+      "primary_key": ["case_id", "event_seq"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "event_seq", "type": "integer"},
+        {"name": "state", "type": "string"},
+        {"name": "entered_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "_note": "Job catalog for the code objects below. integration.job_run history references these; the procedures/function/extracts in catalog.code_object name them.",
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled job catalog (ETL feeds, refresh/recalc procedures, outbound extracts).",
+      "source_system": "FlowBridge Integration",
+      "primary_key": ["job_id"], "rows": 9, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "pas_policyholder_extract", "2": "cms_claim_extract", "3": "billing_installment_extract", "4": "agency_production_extract", "5": "warehouse_refresh", "6": "calc_earned_premium_monthly", "7": "reserve_recalc", "8": "rebuild_mv_quarter_end_reserve_snapshot", "9": "nightly_bureau_stat_report"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "etl_script", "2": "etl_script", "3": "etl_script", "4": "etl_script", "5": "etl_script", "6": "procedure", "7": "procedure", "8": "procedure", "9": "extract"}}},
+        {"name": "code_object", "type": "string", "nullable": true, "gen": {"type": "case", "on": "job_id", "cases": {"6": "calc_earned_premium_monthly", "7": "reserve_recalc", "8": "rebuild_mv_quarter_end_reserve_snapshot", "9": "nightly_bureau_stat_report"}, "default": {"type": "constant", "value": null}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "0 1 * * *", "2": "0 2 * * *", "3": "30 2 * * *", "4": "0 3 * * *", "5": "0 4 * * *", "6": "0 5 1 * *", "7": "0 5 * * *", "8": "0 6 1 1,4,7,10 *", "9": "0 23 * * *"}}},
+        {"name": "target_object", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "raw.pas_policyholder_extract", "2": "raw.cms_claim_extract", "3": "raw.billing_installment_extract", "4": "raw.dist_agency_production_extract", "5": "wh.fact_policy_term", "6": "wh.fact_premium_earned_monthly", "7": "cms.reserve_transaction", "8": "mv.quarter_end_reserve_snapshot", "9": "bureau_statistical_report_feed"}}},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.95"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Batch job run log; each run belongs to a catalog job, with occasional failures.",
+      "primary_key": ["run_id"], "rows": 650,
+      "indexes": [["job_id"]],
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_id", "type": "integer", "gen": "fk:integration.job"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=3000,sigma=1.0,min=0)"},
+        {"name": "error_note", "type": "string", "nullable": true, "_note": "Non-null only when the run failed or ran partially.", "gen": {"type": "case", "on": "run_status", "cases": {"failed": {"type": "lorem_note", "pool": "exception_note"}, "partial": {"type": "lorem_note", "pool": "exception_note"}}, "default": {"type": "constant", "value": null}}}
+      ]
+    },
+    {
+      "_note": "Human-entered mapping table. Actuarial maintains coverage-code -> line-of-business hierarchy node in a spreadsheet, uploaded here. Applied asymmetrically: mart_actuarial_written_premium joins it (left join + coalesce UNMAPPED), mart_distribution_written_premium uses the raw coverage code. 11 of 12 live coverage codes mapped (WTRBKP only has an unapproved row -> stays UNMAPPED); two retired-code rows; one conflicting COMP re-upload (last upload wins via row_number). Total-preserving: every coverage premium still counts, mapped or not, so the actuarial-vs-distribution difference is exactly the unapproved-endorsement exclusion.",
+      "schema": "manual", "name": "line_of_business_mapping", "layer": "operational",
+      "purpose": "Actuarial-maintained coverage-code to LOB-hierarchy-node mapping (spreadsheet upload).",
+      "source_system": "Actuarial LOB Workbook",
+      "primary_key": ["mapping_id"], "rows": 16, "traits": ["audited"], "scale_exempt": true,
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_code", "type": "string", "_note": "coverage_code from ref.coverage_type. 11 live codes mapped; WTRBKP only appears on an unapproved row (id 13) so it stays UNMAPPED. COMP appears twice (ids 4 and 14: a conflicting re-upload, later upload wins). RIDESHARE/DRVASSIST/PETINJ are retired endorsement codes no longer rated.", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "BI", "2": "PD", "3": "COLL", "4": "COMP", "5": "UMBI", "6": "MEDPAY", "7": "DWELL", "8": "PERSPROP", "9": "PLIAB", "10": "LOU", "11": "OTHSTRUCT", "12": "RIDESHARE", "13": "WTRBKP", "14": "COMP", "15": "DRVASSIST", "16": "PETINJ"}}},
+        {"name": "mapped_code", "type": "string", "_note": "LOB hierarchy node: AUTO.* and PROP.* leaves.", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "AUTO.LIABILITY", "2": "AUTO.LIABILITY", "3": "AUTO.PHYSICAL_DAMAGE", "4": "AUTO.PHYSICAL_DAMAGE", "5": "AUTO.UNINSURED", "6": "AUTO.MEDICAL", "7": "PROP.DWELLING", "8": "PROP.CONTENTS", "9": "PROP.LIABILITY", "10": "PROP.ADDITIONAL_LIVING", "11": "PROP.OTHER_STRUCTURES", "12": "AUTO.RIDESHARE", "13": "PROP.WATER", "14": "AUTO.PHYS_DMG", "15": "AUTO.TELEMATICS", "16": "PROP.PET"}}},
+        {"name": "mapped_description", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"1": "Auto Liability", "2": "Auto Liability", "3": "Auto Physical Damage", "4": "Auto Physical Damage", "5": "Auto Uninsured Motorist", "6": "Auto Medical Payments", "7": "Property Dwelling", "8": "Property Contents", "9": "Property Liability", "10": "Property Additional Living Expense", "11": "Property Other Structures", "12": "Auto Rideshare (retired)", "13": "Property Water Backup", "14": "Auto Physical Damage (re-upload)", "15": "Auto Telematics (retired)", "16": "Property Pet Injury (retired)"}}},
+        {"name": "business_unit", "type": "string", "gen": "const:actuarial"},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_id", "cases": {"13": "2025-04-01", "14": "2025-05-01", "15": "2021-01-01", "16": "2021-01-01", "12": "2021-06-01"}, "default": {"type": "constant", "value": "2023-01-01"}}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_id", "cases": {"15": "2022-12-31", "16": "2022-06-30", "12": "2023-06-30"}, "default": {"type": "constant", "value": null}}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_id", "cases": {"13": {"type": "constant", "value": "2025-04-02 10:20:00"}, "14": {"type": "constant", "value": "2025-05-02 14:30:00"}, "15": {"type": "constant", "value": "2021-02-01 09:00:00"}, "16": {"type": "constant", "value": "2021-02-01 09:05:00"}, "12": {"type": "constant", "value": "2021-06-15 09:00:00"}}, "default": {"type": "constant", "value": "2024-02-01 09:15:00"}}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"13": "lob_map_2025Q2_draft.xlsx", "14": "lob_map_2025Q2.xlsx"}, "default": {"type": "constant", "value": "lob_map_2024Q1.xlsx"}}},
+        {"name": "approved_flag", "type": "boolean", "_note": "id 13 (WTRBKP) is the unapproved row that leaves WTRBKP UNMAPPED in the actuarial mart and feeds DQ-013 + the lob_mapping_request workflow case.", "gen": {"type": "case", "on": "mapping_id", "cases": {"13": {"type": "constant", "value": 0}}, "default": {"type": "constant", "value": 1}}}
       ]
     },
     {
       "_note": "Everything below is populated by SQL derivations — raw -> stg -> xref -> core lineage, then warehouse dims/facts.",
       "schema": "raw", "name": "pas_policyholder_extract", "layer": "raw",
       "purpose": "Nightly PAS extract as landed: all text, US-format dates.",
-      "source": "derivation", "primary_key": ["policyholder_id"],
+      "source": "derivation",
+      "primary_key": ["policyholder_id"],
       "columns": [
         {"name": "policyholder_id", "type": "string"},
         {"name": "holder_code", "type": "string"},
@@ -369,7 +429,8 @@
     {
       "schema": "stg", "name": "policyholder", "layer": "staging",
       "purpose": "Typed and cleaned policyholders; normalizes raw extract dates.",
-      "source": "derivation", "primary_key": ["policyholder_id"],
+      "source": "derivation",
+      "primary_key": ["policyholder_id"],
       "columns": [
         {"name": "policyholder_id", "type": "integer"},
         {"name": "holder_code", "type": "string"},
@@ -382,9 +443,119 @@
       ]
     },
     {
+      "_note": "Landing layer (rung 1), one raw.* table per source feed: verbatim text payloads with file/batch ids and ingested_at. format_drift corrupts the date columns post-derivation; the DQ views read these live and catch unparseable dates.",
+      "schema": "raw", "name": "cms_claim_extract", "layer": "raw",
+      "purpose": "Nightly claims-system FNOL/claim extract as landed: all text, US-format dates.",
+      "source": "derivation",
+      "primary_key": ["claim_id"],
+      "columns": [
+        {"name": "claim_id", "type": "string"},
+        {"name": "claim_number", "type": "string"},
+        {"name": "policy_id", "type": "string"},
+        {"name": "line", "type": "string"},
+        {"name": "claim_type", "type": "string"},
+        {"name": "claim_status", "type": "string"},
+        {"name": "fnol_channel", "type": "string"},
+        {"name": "estimated_loss_amount", "type": "string"},
+        {"name": "loss_date_raw", "type": "string"},
+        {"name": "reported_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "claim", "layer": "staging",
+      "purpose": "Cleaned claims; typed, trimmed, case-guarded date parse, dedup against re-sent batches.",
+      "source": "derivation",
+      "primary_key": ["claim_id"],
+      "columns": [
+        {"name": "claim_id", "type": "integer"},
+        {"name": "claim_number", "type": "string"},
+        {"name": "policy_id", "type": "integer"},
+        {"name": "line", "type": "string"},
+        {"name": "claim_type", "type": "string"},
+        {"name": "claim_status", "type": "string"},
+        {"name": "fnol_channel", "type": "string"},
+        {"name": "estimated_loss_amount", "type": "decimal"},
+        {"name": "loss_date", "type": "date", "nullable": true},
+        {"name": "reported_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "billing_installment_extract", "layer": "raw",
+      "purpose": "Nightly billing installment-schedule extract as landed; runs after billing.installment so the rows exist.",
+      "source": "derivation",
+      "primary_key": ["installment_id"],
+      "columns": [
+        {"name": "installment_id", "type": "string"},
+        {"name": "policy_id", "type": "string"},
+        {"name": "installment_no", "type": "string"},
+        {"name": "transaction_type", "type": "string"},
+        {"name": "installment_amount", "type": "string"},
+        {"name": "fee_amount", "type": "string"},
+        {"name": "due_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "installment", "layer": "staging",
+      "purpose": "Cleaned billing installments; typed, case-guarded date parse, dedup.",
+      "source": "derivation",
+      "primary_key": ["installment_id"],
+      "columns": [
+        {"name": "installment_id", "type": "integer"},
+        {"name": "policy_id", "type": "integer"},
+        {"name": "installment_no", "type": "integer"},
+        {"name": "transaction_type", "type": "string"},
+        {"name": "installment_amount", "type": "decimal"},
+        {"name": "fee_amount", "type": "decimal"},
+        {"name": "due_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "dist_agency_production_extract", "layer": "raw",
+      "purpose": "Monthly agency production file as landed (written premium booked by agency at submission); runs after core.policy.",
+      "source": "derivation",
+      "primary_key": ["policy_id"],
+      "columns": [
+        {"name": "policy_id", "type": "string"},
+        {"name": "policy_number", "type": "string"},
+        {"name": "agency_id", "type": "string"},
+        {"name": "line", "type": "string"},
+        {"name": "policy_status", "type": "string"},
+        {"name": "written_premium", "type": "string"},
+        {"name": "submitted_date_raw", "type": "string"},
+        {"name": "source_file_name", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "agency_production", "layer": "staging",
+      "purpose": "Cleaned agency production rows; typed, case-guarded date parse, dedup.",
+      "source": "derivation",
+      "primary_key": ["policy_id"],
+      "columns": [
+        {"name": "policy_id", "type": "integer"},
+        {"name": "policy_number", "type": "string"},
+        {"name": "agency_id", "type": "integer"},
+        {"name": "line", "type": "string"},
+        {"name": "policy_status", "type": "string"},
+        {"name": "written_premium", "type": "decimal"},
+        {"name": "submitted_date", "type": "date", "nullable": true},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
       "schema": "xref", "name": "entity_identifier", "layer": "xref",
       "purpose": "Source-system identifier crosswalk for canonical policyholders (PAS + CRM).",
-      "source": "derivation", "primary_key": ["entity_identifier_id"],
+      "source": "derivation",
+      "primary_key": ["entity_identifier_id"],
       "indexes": [["canonical_entity_id"], ["source_system"]],
       "columns": [
         {"name": "entity_identifier_id", "type": "integer"},
@@ -401,7 +572,8 @@
     {
       "schema": "core", "name": "policyholder", "layer": "canonical",
       "purpose": "Canonical policyholder joining PAS and CRM through the crosswalk.",
-      "source": "derivation", "primary_key": ["policyholder_uid"],
+      "source": "derivation",
+      "primary_key": ["policyholder_uid"],
       "columns": [
         {"name": "policyholder_uid", "type": "integer"},
         {"name": "holder_code", "type": "string"},
@@ -417,7 +589,8 @@
     {
       "schema": "core", "name": "policy", "layer": "canonical",
       "purpose": "Canonical policy with written premium rolled up from coverage-level rating.",
-      "source": "derivation", "primary_key": ["policy_uid"],
+      "source": "derivation",
+      "primary_key": ["policy_uid"],
       "indexes": [["policyholder_id"], ["line"], ["status"]],
       "columns": [
         {"name": "policy_uid", "type": "integer"},
@@ -440,7 +613,8 @@
     {
       "schema": "wh", "name": "dim_date", "layer": "warehouse_dimension",
       "purpose": "Calendar dimension.",
-      "source": "derivation", "primary_key": ["date_key"],
+      "source": "derivation",
+      "primary_key": ["date_key"],
       "columns": [
         {"name": "date_key", "type": "date"},
         {"name": "year_num", "type": "integer"},
@@ -454,7 +628,8 @@
     {
       "schema": "wh", "name": "dim_policyholder", "layer": "warehouse_dimension",
       "purpose": "Policyholder dimension from the canonical layer.",
-      "source": "derivation", "primary_key": ["policyholder_key"],
+      "source": "derivation",
+      "primary_key": ["policyholder_key"],
       "columns": [
         {"name": "policyholder_key", "type": "integer"},
         {"name": "holder_name", "type": "string"},
@@ -467,7 +642,8 @@
     {
       "schema": "wh", "name": "dim_agency", "layer": "warehouse_dimension",
       "purpose": "Agency dimension.",
-      "source": "derivation", "primary_key": ["agency_key"],
+      "source": "derivation",
+      "primary_key": ["agency_key"],
       "columns": [
         {"name": "agency_key", "type": "integer"},
         {"name": "agency_name", "type": "string"},
@@ -480,7 +656,8 @@
     {
       "schema": "wh", "name": "dim_policy", "layer": "warehouse_dimension",
       "purpose": "Policy dimension.",
-      "source": "derivation", "primary_key": ["policy_key"],
+      "source": "derivation",
+      "primary_key": ["policy_key"],
       "columns": [
         {"name": "policy_key", "type": "integer"},
         {"name": "policy_number", "type": "string"},
@@ -496,7 +673,8 @@
       "schema": "wh", "name": "fact_policy_term", "layer": "warehouse_fact",
       "purpose": "Policy-term fact with written premium and commission.",
       "grain": "one row per bound policy term",
-      "source": "derivation", "primary_key": ["policy_key"],
+      "source": "derivation",
+      "primary_key": ["policy_key"],
       "indexes": [["agency_key"], ["line"], ["effective_date"]],
       "columns": [
         {"name": "policy_key", "type": "integer"},
@@ -520,7 +698,8 @@
       "schema": "wh", "name": "fact_premium_earned_monthly", "layer": "warehouse_fact",
       "purpose": "Monthly earned premium per bound policy, day-prorated from effective date to the earlier of expiration, cancellation, or as-of.",
       "grain": "one row per bound policy per calendar month with earned exposure",
-      "source": "derivation", "primary_key": ["policy_key", "month_start"],
+      "source": "derivation",
+      "primary_key": ["policy_key", "month_start"],
       "indexes": [["month_start"], ["line"]],
       "columns": [
         {"name": "policy_key", "type": "integer"},
@@ -534,7 +713,8 @@
       "schema": "wh", "name": "fact_claim_transaction", "layer": "warehouse_fact",
       "purpose": "Claim financial transactions: reserve changes and indemnity payments.",
       "grain": "one row per claim financial transaction (reserve change or payment)",
-      "source": "derivation", "primary_key": ["fact_txn_id"],
+      "source": "derivation",
+      "primary_key": ["fact_txn_id"],
       "indexes": [["claim_id"], ["line"], ["txn_date"]],
       "columns": [
         {"name": "fact_txn_id", "type": "integer"},
@@ -546,6 +726,73 @@
         {"name": "txn_date", "type": "date"},
         {"name": "txn_type", "type": "string"},
         {"name": "amount", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Coverage-grain written-premium fact: one row per rated coverage on a bound policy, carrying the coverage code, the endorsement/approval flag (for the asymmetric exclusion), and agency/line/date keys. The competing actuarial-vs-distribution written-premium metric is built on this via nv_written_premium.",
+      "schema": "wh", "name": "fact_written_premium", "layer": "warehouse_fact",
+      "purpose": "Coverage-level written premium for bound policy terms.",
+      "grain": "one row per coverage on a bound policy",
+      "source": "derivation",
+      "primary_key": ["coverage_id"],
+      "indexes": [["policy_key"], ["agency_key"], ["coverage_code"], ["effective_date"]],
+      "columns": [
+        {"name": "coverage_id", "type": "integer"},
+        {"name": "policy_key", "type": "integer"},
+        {"name": "policyholder_key", "type": "integer"},
+        {"name": "agency_key", "type": "integer"},
+        {"name": "line", "type": "string"},
+        {"name": "coverage_code", "type": "string"},
+        {"name": "effective_date", "type": "date"},
+        {"name": "is_endorsement", "type": "boolean"},
+        {"name": "endorsement_status", "type": "string"},
+        {"name": "written_premium", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Materialized view (rung: mart). SQLite has no native matviews -> a mart table refreshed by insert-select from bv_loss_triangles. scale_exempt: ~8 quarters over the 2-year horizon regardless of multiplier. Paired with the rebuild_mv_quarter_end_reserve_snapshot code object and its job runs.",
+      "schema": "mv", "name": "quarter_end_reserve_snapshot", "layer": "mart",
+      "purpose": "Quarter-grain outstanding case-reserve snapshot, materialized from bv_loss_triangles.",
+      "grain": "one row per line per accident quarter",
+      "source": "derivation",
+      "primary_key": ["line", "accident_quarter"], "scale_exempt": true,
+      "columns": [
+        {"name": "line", "type": "string"},
+        {"name": "accident_quarter", "type": "string"},
+        {"name": "claims_count", "type": "integer"},
+        {"name": "cumulative_incurred", "type": "decimal"},
+        {"name": "cumulative_paid", "type": "decimal"},
+        {"name": "outstanding_reserve", "type": "decimal"}
+      ]
+    },
+    {
+      "_note": "Code-object catalog (rung: catalog). Self-registers every view from sqlite_master, plus authored target-platform source for the earned-premium procedure, reserve-recalc procedure, mv refresh procedure, pro-rata earning function, and the outbound bureau/reinsurance extracts.",
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed code objects (views, procedures, functions, extracts) with source text.",
+      "source": "derivation",
+      "primary_key": ["object_name"],
+      "columns": [
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "string"},
+        {"name": "owner", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Lineage edges linking code objects to the tables they read and write.",
+      "source": "derivation",
+      "primary_key": ["edge_id"],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "code_object", "type": "string"},
+        {"name": "operation", "type": "string"},
+        {"name": "table_name", "type": "string"},
+        {"name": "edge_note", "type": "string", "nullable": true}
       ]
     }
   ],
@@ -563,7 +810,7 @@
         {"from": "quoted", "to": "quote_declined", "probability": 0.05, "dwell": {"distribution": "lognormal", "median": 9, "sigma": 0.6, "unit": "days"}},
         {"from": "bound", "to": "in_force", "probability": 1.0, "dwell": {"distribution": "lognormal", "median": 8, "sigma": 0.5, "unit": "days"}},
         {"from": "in_force", "to": "renewed", "probability": 0.58, "dwell": {"distribution": "lognormal", "median": 352, "sigma": 0.06, "unit": "days"}},
-        {"from": "in_force", "to": "lapsed", "probability": 0.10, "dwell": {"distribution": "lognormal", "median": 358, "sigma": 0.05, "unit": "days"}},
+        {"from": "in_force", "to": "lapsed", "probability": 0.1, "dwell": {"distribution": "lognormal", "median": 358, "sigma": 0.05, "unit": "days"}},
         {"from": "in_force", "to": "cancelled_nonpay", "probability": 0.05, "dwell": {"distribution": "lognormal", "median": 140, "sigma": 0.45, "max": 330, "unit": "days"}},
         {"from": "in_force", "to": "cancelled_insured", "probability": 0.04, "dwell": {"distribution": "lognormal", "median": 165, "sigma": 0.45, "max": 330, "unit": "days"}}
       ],
@@ -584,13 +831,32 @@
         {"from": "fnol_received", "to": "closed_no_payment", "probability": 0.01, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.6, "unit": "days"}},
         {"from": "open", "to": "reserved", "probability": 0.97, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
         {"from": "open", "to": "closed_no_payment", "probability": 0.03, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "days"}},
-        {"from": "reserved", "to": "paid", "probability": 0.70, "dwell": {"distribution": "lognormal", "median": 22, "sigma": 1.0, "unit": "days"}},
+        {"from": "reserved", "to": "paid", "probability": 0.7, "dwell": {"distribution": "lognormal", "median": 22, "sigma": 1.0, "unit": "days"}},
         {"from": "reserved", "to": "denied", "probability": 0.06, "dwell": {"distribution": "lognormal", "median": 28, "sigma": 0.7, "unit": "days"}},
         {"from": "reserved", "to": "closed_no_payment", "probability": 0.17, "dwell": {"distribution": "lognormal", "median": 12, "sigma": 0.8, "unit": "days"}},
         {"from": "paid", "to": "closed", "probability": 0.96, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.5, "unit": "days"}}
       ],
       "timestamp_columns": {"open": "opened_at", "reserved": "reserved_at", "paid": "paid_at", "denied": "denied_at", "closed_no_payment": "closed_at", "closed": "closed_at"},
       "history_table": "cms.claim_event",
+      "truncate_at_as_of": true
+    },
+    {
+      "name": "case_lifecycle",
+      "_note": "Workflow queue lifecycle: open -> triaged -> in_review -> resolved, with an escalation branch. Right-censored: recent cases legitimately sit open/in_review at the as-of date.",
+      "table": "workflow.case",
+      "status_column": "status",
+      "start_column": "created_at",
+      "entry_state": "open",
+      "states": ["open", "triaged", "in_review", "escalated", "resolved"],
+      "transitions": [
+        {"from": "open", "to": "triaged", "probability": 0.92, "dwell": {"distribution": "lognormal", "median": 1.5, "sigma": 0.8, "unit": "days"}},
+        {"from": "triaged", "to": "in_review", "probability": 0.95, "dwell": {"distribution": "lognormal", "median": 2, "sigma": 0.7, "unit": "days"}},
+        {"from": "in_review", "to": "resolved", "probability": 0.8, "dwell": {"distribution": "lognormal", "median": 4, "sigma": 0.8, "unit": "days"}},
+        {"from": "in_review", "to": "escalated", "probability": 0.12, "dwell": {"distribution": "lognormal", "median": 6, "sigma": 0.7, "unit": "days"}},
+        {"from": "escalated", "to": "resolved", "probability": 0.85, "dwell": {"distribution": "lognormal", "median": 8, "sigma": 0.7, "unit": "days"}}
+      ],
+      "timestamp_columns": {"triaged": "triaged_at", "resolved": "resolved_at"},
+      "history_table": "workflow.case_event",
       "truncate_at_as_of": true
     }
   ],
@@ -614,6 +880,41 @@
         "            then substr(source_created_date,7,4) || '-' || substr(source_created_date,1,2) || '-' || substr(source_created_date,4,2)",
         "            else null end",
         "from raw.pas_policyholder_extract;"
+      ]
+    },
+    {
+      "name": "raw_cms_claim_extract",
+      "_note": "Claims feed landed verbatim as text with US-format dates; raw_claim_date_drift corrupts a slice of loss/reported dates post-derivation (DQ-014 catches them). ingested_at clamped at the as-of so no future timestamps.",
+      "sql": [
+        "insert into raw.cms_claim_extract",
+        "select cast(claim_id as text), claim_number, cast(policy_id as text), line, claim_type, status, fnol_channel,",
+        "       printf('%.2f', estimated_loss_amount), strftime('%m/%d/%Y', loss_date), strftime('%m/%d/%Y', reported_date),",
+        "       'cms_claims_' || replace(reported_date, '-', '') || '.csv', 'BATCH-CMS-CLM',",
+        "       min(strftime('%Y-%m-%d 02:00:00', reported_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from cms.claim;"
+      ]
+    },
+    {
+      "name": "stg_claim",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL); row_number dedup against re-sent batches.",
+      "sql": [
+        "insert into stg.claim",
+        "select claim_id, claim_number, policy_id, line, claim_type, claim_status, fnol_channel, estimated_loss_amount, loss_date, reported_date, ingested_at",
+        "from (",
+        "  select cast(claim_id as integer) as claim_id, trim(claim_number) as claim_number,",
+        "         cast(policy_id as integer) as policy_id, lower(line) as line, lower(claim_type) as claim_type,",
+        "         lower(claim_status) as claim_status, lower(fnol_channel) as fnol_channel,",
+        "         cast(estimated_loss_amount as real) as estimated_loss_amount,",
+        "         case when loss_date_raw like '__/__/____'",
+        "              then substr(loss_date_raw,7,4)||'-'||substr(loss_date_raw,1,2)||'-'||substr(loss_date_raw,4,2)",
+        "              else null end as loss_date,",
+        "         case when reported_date_raw like '__/__/____'",
+        "              then substr(reported_date_raw,7,4)||'-'||substr(reported_date_raw,1,2)||'-'||substr(reported_date_raw,4,2)",
+        "              else null end as reported_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(claim_id as integer) order by ingested_at desc) as rn",
+        "  from raw.cms_claim_extract",
+        ") where rn = 1;"
       ]
     },
     {
@@ -654,6 +955,37 @@
       ]
     },
     {
+      "name": "raw_dist_agency_production_extract",
+      "_note": "Agency production file landed verbatim from the derived core.policy rows (everything an agency booked at submission, including never-bound quotes); runs after core_policy. raw_agency_date_drift corrupts submitted dates post-derivation (DQ-016).",
+      "sql": [
+        "insert into raw.dist_agency_production_extract",
+        "select cast(p.policy_uid as text), p.policy_number, cast(p.agency_id as text), p.line, p.status,",
+        "       printf('%.2f', coalesce(p.written_premium, 0)), strftime('%m/%d/%Y', p.quote_date),",
+        "       'agency_production_' || strftime('%Y%m', p.quote_date) || '.csv', 'BATCH-DIST-PROD',",
+        "       min(strftime('%Y-%m-%d 03:00:00', p.quote_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from core.policy p;"
+      ]
+    },
+    {
+      "name": "stg_agency_production",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL); row_number dedup against re-sent files.",
+      "sql": [
+        "insert into stg.agency_production",
+        "select policy_id, policy_number, agency_id, line, policy_status, written_premium, submitted_date, ingested_at",
+        "from (",
+        "  select cast(policy_id as integer) as policy_id, trim(policy_number) as policy_number,",
+        "         cast(agency_id as integer) as agency_id, lower(line) as line, lower(policy_status) as policy_status,",
+        "         cast(written_premium as real) as written_premium,",
+        "         case when submitted_date_raw like '__/__/____'",
+        "              then substr(submitted_date_raw,7,4)||'-'||substr(submitted_date_raw,1,2)||'-'||substr(submitted_date_raw,4,2)",
+        "              else null end as submitted_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(policy_id as integer) order by ingested_at desc) as rn",
+        "  from raw.dist_agency_production_extract",
+        ") where rn = 1;"
+      ]
+    },
+    {
       "name": "billing_installment",
       "_note": "Installment counts by plan (1/2/4/12); first installment absorbs rounding so the schedule sums to written premium exactly. Cancelled policies get a pro-rata return-premium credit.",
       "expect": {"at_least_rows": 5000},
@@ -680,6 +1012,37 @@
         "       0.0, 'pro-rata return premium on cancellation'",
         "from core.policy p",
         "where p.cancelled_date is not null and p.cancelled_date < p.expiration_date;"
+      ]
+    },
+    {
+      "name": "raw_billing_installment_extract",
+      "_note": "Billing installment-schedule feed landed verbatim from the derived billing.installment rows; runs after billing_installment. raw_installment_date_drift corrupts a slice of due dates post-derivation (DQ-015).",
+      "sql": [
+        "insert into raw.billing_installment_extract",
+        "select cast(installment_id as text), cast(policy_id as text), cast(installment_no as text), transaction_type,",
+        "       printf('%.2f', installment_amount), printf('%.2f', fee_amount), strftime('%m/%d/%Y', due_date),",
+        "       'billing_installments_' || strftime('%Y%m', due_date) || '.csv', 'BATCH-BILL-INST',",
+        "       min(strftime('%Y-%m-%d 02:30:00', due_date, '+1 day'), '2025-12-31 23:59:59')",
+        "from billing.installment;"
+      ]
+    },
+    {
+      "name": "stg_installment",
+      "_note": "Typed/trimmed; case-guarded date parse (drifted formats land NULL); row_number dedup against re-sent batches.",
+      "sql": [
+        "insert into stg.installment",
+        "select installment_id, policy_id, installment_no, transaction_type, installment_amount, fee_amount, due_date, ingested_at",
+        "from (",
+        "  select cast(installment_id as integer) as installment_id, cast(policy_id as integer) as policy_id,",
+        "         cast(installment_no as integer) as installment_no, lower(transaction_type) as transaction_type,",
+        "         cast(installment_amount as real) as installment_amount, cast(fee_amount as real) as fee_amount,",
+        "         case when due_date_raw like '__/__/____'",
+        "              then substr(due_date_raw,7,4)||'-'||substr(due_date_raw,1,2)||'-'||substr(due_date_raw,4,2)",
+        "              else null end as due_date,",
+        "         ingested_at,",
+        "         row_number() over (partition by cast(installment_id as integer) order by ingested_at desc) as rn",
+        "  from raw.billing_installment_extract",
+        ") where rn = 1;"
       ]
     },
     {
@@ -840,19 +1203,180 @@
       ]
     },
     {
+      "name": "wh_fact_written_premium",
+      "_note": "Coverage-grain written premium for bound policy terms. policy_key/policyholder_key/agency_key are in the canonical id space (core.policy.policy_uid = dim_policy.policy_key). Carries the coverage code and endorsement/approval flags so the actuarial mart can exclude unapproved endorsements.",
+      "expect": {"at_least_rows": 5000},
+      "sql": [
+        "insert into wh.fact_written_premium",
+        "select cov.coverage_id, p.policy_uid, p.policyholder_id, p.agency_id, p.line, cov.coverage_code,",
+        "       p.effective_date, cov.is_endorsement, cov.endorsement_status, cov.coverage_premium",
+        "from pas.policy_coverage cov",
+        "join core.policy p on p.policy_uid = cov.policy_id",
+        "where p.status not in ('quoted', 'quote_declined');"
+      ]
+    },
+    {
+      "name": "nv_written_premium",
+      "_note": "Normalized view (rung 6): wide re-join of the coverage-grain written-premium fact to policy/agency dims with business column names. No aggregation. left joins because unmastered agencies/policies can legitimately lose a dim row.",
+      "sql": [
+        "create view nv_written_premium as",
+        "select f.coverage_id, f.policy_key, dp.policy_number, dp.rating_tier, dp.payment_plan, dp.status as policy_status,",
+        "       f.agency_key, da.agency_name, da.state as agency_state, da.commission_tier,",
+        "       f.line, f.coverage_code, f.effective_date, f.is_endorsement, f.endorsement_status, f.written_premium",
+        "from wh.fact_written_premium f",
+        "left join wh.dim_policy dp on dp.policy_key = f.policy_key",
+        "left join wh.dim_agency da on da.agency_key = f.agency_key;"
+      ]
+    },
+    {
+      "name": "nv_premium_earned",
+      "_note": "Normalized view: monthly earned-premium fact re-joined to the policy dim with month attributes for the earned-premium business view.",
+      "sql": [
+        "create view nv_premium_earned as",
+        "select e.policy_key, dp.policy_number, dp.rating_tier, dp.status as policy_status,",
+        "       e.line, e.month_start, e.earned_days, e.earned_amount,",
+        "       strftime('%Y-%m', e.month_start) as earn_month",
+        "from wh.fact_premium_earned_monthly e",
+        "left join wh.dim_policy dp on dp.policy_key = e.policy_key;"
+      ]
+    },
+    {
+      "name": "nv_claim_transaction",
+      "_note": "Normalized view: claim financial-transaction fact with accident-period and development-age columns derived once, consumed by the loss-triangle business view.",
+      "sql": [
+        "create view nv_claim_transaction as",
+        "select t.fact_txn_id, t.claim_id, t.policy_id, t.line, t.claim_type, t.loss_date, t.txn_date, t.txn_type, t.amount,",
+        "       strftime('%Y', t.loss_date) || '-Q' || ((cast(strftime('%m', t.loss_date) as integer) + 2) / 3) as accident_quarter,",
+        "       cast((julianday(t.txn_date) - julianday(t.loss_date)) / 91.0 as integer) as dev_age_quarters",
+        "from wh.fact_claim_transaction t;"
+      ]
+    },
+    {
+      "name": "bv_earned_premium_monthly",
+      "_note": "Business view (rung 7): monthly earned premium by line with a window running total of earned-to-date over the calendar — pro-rata earning rolled up via sum() over.",
+      "sql": [
+        "create view bv_earned_premium_monthly as",
+        "with monthly as (",
+        "  select line, earn_month, min(month_start) as month_start,",
+        "         count(distinct policy_key) as earning_policies,",
+        "         sum(earned_days) as earned_days,",
+        "         round(sum(earned_amount), 2) as earned_premium",
+        "  from nv_premium_earned group by line, earn_month",
+        ")",
+        "select line, earn_month, month_start, earning_policies, earned_days, earned_premium,",
+        "       round(sum(earned_premium) over (partition by line order by earn_month rows between unbounded preceding and current row), 2) as earned_premium_running_total",
+        "from monthly;"
+      ]
+    },
+    {
+      "name": "bv_loss_triangles",
+      "_note": "Business view: loss-development triangles by line x accident quarter x development age. lag() exposes the prior-age cumulative; the case ladder labels maturity. Cumulative incurred climbs toward ultimate as payments replace reserves.",
+      "sql": [
+        "create view bv_loss_triangles as",
+        "with agg as (",
+        "  select line, accident_quarter, dev_age_quarters,",
+        "         count(distinct claim_id) as claims_count,",
+        "         round(sum(amount), 2) as incremental_incurred,",
+        "         round(sum(case when txn_type = 'claim_payment' then amount else 0 end), 2) as incremental_paid",
+        "  from nv_claim_transaction group by line, accident_quarter, dev_age_quarters",
+        "),",
+        "cumulative as (",
+        "  select line, accident_quarter, dev_age_quarters, claims_count, incremental_incurred, incremental_paid,",
+        "         round(sum(incremental_incurred) over w, 2) as cumulative_incurred,",
+        "         round(sum(incremental_paid) over w, 2) as cumulative_paid",
+        "  from agg",
+        "  window w as (partition by line, accident_quarter order by dev_age_quarters rows between unbounded preceding and current row)",
+        ")",
+        "select line, accident_quarter, dev_age_quarters, claims_count, incremental_incurred, incremental_paid,",
+        "       cumulative_incurred, cumulative_paid,",
+        "       lag(cumulative_incurred) over (partition by line, accident_quarter order by dev_age_quarters) as prior_age_cumulative_incurred,",
+        "       case when dev_age_quarters = 0 then 'initial'",
+        "            when dev_age_quarters <= 2 then 'developing'",
+        "            else 'mature' end as development_band",
+        "from cumulative;"
+      ]
+    },
+    {
+      "name": "bv_agency_production",
+      "_note": "Business view: written premium and commission by agency with window rank/ntile so the top-decile production concentration is queryable.",
+      "sql": [
+        "create view bv_agency_production as",
+        "with agency as (",
+        "  select f.agency_key, da.agency_name, da.state, da.commission_tier, da.status,",
+        "         count(*) as bound_terms,",
+        "         round(sum(f.written_premium), 2) as written_premium,",
+        "         round(sum(f.commission_amount), 2) as commission_amount",
+        "  from wh.fact_policy_term f left join wh.dim_agency da on da.agency_key = f.agency_key",
+        "  group by f.agency_key, da.agency_name, da.state, da.commission_tier, da.status",
+        ")",
+        "select agency_key, agency_name, state, commission_tier, status, bound_terms, written_premium, commission_amount,",
+        "       rank() over (order by written_premium desc) as production_rank,",
+        "       ntile(10) over (order by written_premium desc) as production_decile",
+        "from agency;"
+      ]
+    },
+    {
+      "name": "mv_quarter_end_reserve_snapshot",
+      "_note": "Materialized view (rung: mart): insert-select into the mv.quarter_end_reserve_snapshot table from nv_claim_transaction, aggregated to line x accident quarter (cumulative incurred/paid at ultimate development). scale_exempt: ~8 quarters over the 2-year horizon. The rebuild_mv_quarter_end_reserve_snapshot code object refreshes it quarterly from bv_loss_triangles.",
+      "sql": [
+        "insert into mv.quarter_end_reserve_snapshot",
+        "select line, accident_quarter,",
+        "       count(distinct claim_id) as claims_count,",
+        "       round(sum(amount), 2) as cumulative_incurred,",
+        "       round(sum(case when txn_type = 'claim_payment' then amount else 0 end), 2) as cumulative_paid,",
+        "       round(sum(amount) - sum(case when txn_type = 'claim_payment' then amount else 0 end), 2) as outstanding_reserve",
+        "from nv_claim_transaction",
+        "group by line, accident_quarter;"
+      ]
+    },
+    {
+      "name": "mart_actuarial_written_premium",
+      "_note": "Business-unit view (rung 9), ACTUARIAL. Applies the human-entered LOB mapping (left join + coalesce to UNMAPPED), dedups the conflicting COMP re-upload to the latest approved active row, and EXCLUDES unapproved endorsements (endorsement_status='pending'). Competes with mart_distribution_written_premium. Total-preserving on the mapping: every counted coverage rolls into a LOB node or the UNMAPPED bucket.",
+      "sql": [
+        "create view mart_actuarial_written_premium as",
+        "with mapping as (",
+        "  select source_code, mapped_code, mapped_description,",
+        "         row_number() over (partition by source_code order by uploaded_at desc, mapping_id desc) as rn",
+        "  from manual.line_of_business_mapping",
+        "  where approved_flag = 1 and (effective_end_date is null or effective_end_date > '2025-12-31')",
+        ")",
+        "select coalesce(m.mapped_code, 'UNMAPPED') as lob_node,",
+        "       coalesce(m.mapped_description, 'Unmapped coverage') as lob_node_name,",
+        "       n.line,",
+        "       round(sum(n.written_premium), 2) as written_premium,",
+        "       count(*) as coverage_count",
+        "from nv_written_premium n",
+        "left join mapping m on m.source_code = n.coverage_code and m.rn = 1",
+        "where not (n.is_endorsement = 1 and n.endorsement_status = 'pending')",
+        "group by 1, 2, 3;"
+      ]
+    },
+    {
+      "name": "mart_distribution_written_premium",
+      "_note": "Business-unit view, DISTRIBUTION. Raw coverage code, NO LOB mapping, INCLUDES every coverage booked by the agency at submission (unapproved endorsements included). Legitimately disagrees with actuarial on the grand total by exactly the unapproved-endorsement amount.",
+      "sql": [
+        "create view mart_distribution_written_premium as",
+        "select n.agency_key, n.agency_name, n.line, n.coverage_code,",
+        "       round(sum(n.written_premium), 2) as written_premium,",
+        "       count(*) as coverage_count",
+        "from nv_written_premium n",
+        "group by n.agency_key, n.agency_name, n.line, n.coverage_code;"
+      ]
+    },
+    {
       "name": "mart_loss_ratio_by_line",
-      "_note": "Window-to-date loss ratio by line: earned premium vs paid + open case reserves. Lands in the 55-75% band for both lines; accident-period detail lives in mart_reserve_development.",
+      "_note": "Window-to-date loss ratio by line: earned premium vs paid + open case reserves. Built on the nv_ layer. Lands in the 55-75% band for both lines; accident-period detail lives in mart_reserve_development.",
       "sql": [
         "create view mart_loss_ratio_by_line as",
         "with earned as (",
         "  select line, sum(earned_amount) as earned_premium, count(distinct policy_key) as earning_policies",
-        "  from wh.fact_premium_earned_monthly group by 1",
+        "  from nv_premium_earned group by 1",
         "),",
         "losses as (",
         "  select line, count(distinct claim_id) as claims_with_financials,",
         "         sum(case when txn_type = 'claim_payment' then amount else 0 end) as paid_losses,",
         "         sum(case when txn_type != 'claim_payment' then amount else 0 end) as case_reserves",
-        "  from wh.fact_claim_transaction group by 1",
+        "  from nv_claim_transaction group by 1",
         ")",
         "select e.line, e.earning_policies, l.claims_with_financials,",
         "       round(e.earned_premium, 2) as earned_premium,",
@@ -865,32 +1389,23 @@
     },
     {
       "name": "mart_reserve_development",
-      "_note": "Incurred development by line x accident quarter x development age: cumulative incurred climbs from initial reserves toward ultimate as payments replace reserves.",
+      "_note": "Incurred development by line x accident quarter x development age, surfaced from bv_loss_triangles. Cumulative incurred climbs from initial reserves toward ultimate as payments replace reserves.",
       "sql": [
         "create view mart_reserve_development as",
-        "with txn as (",
-        "  select line,",
-        "         strftime('%Y', loss_date) || '-Q' || ((cast(strftime('%m', loss_date) as integer) + 2) / 3) as accident_quarter,",
-        "         cast((julianday(txn_date) - julianday(loss_date)) / 91.0 as integer) as dev_age_quarters,",
-        "         amount",
-        "  from wh.fact_claim_transaction",
-        ")",
-        "select line, accident_quarter, dev_age_quarters,",
-        "       round(sum(amount), 2) as incremental_incurred,",
-        "       round(sum(sum(amount)) over (partition by line, accident_quarter order by dev_age_quarters), 2) as cumulative_incurred",
-        "from txn group by line, accident_quarter, dev_age_quarters;"
+        "select line, accident_quarter, dev_age_quarters, development_band,",
+        "       incremental_incurred, cumulative_incurred, cumulative_paid",
+        "from bv_loss_triangles;"
       ]
     },
     {
       "name": "mart_agency_production",
+      "_note": "Agency production surfaced from bv_agency_production (ranked written premium).",
       "sql": [
         "create view mart_agency_production as",
-        "select a.agency_key, a.agency_name, a.state, a.commission_tier, a.status,",
-        "       count(f.policy_key) as bound_policies,",
-        "       round(sum(f.written_premium), 2) as written_premium,",
-        "       round(sum(f.commission_amount), 2) as commission_amount",
-        "from wh.dim_agency a join wh.fact_policy_term f on f.agency_key = a.agency_key",
-        "group by 1, 2, 3, 4, 5;"
+        "select agency_key, agency_name, state, commission_tier, status,",
+        "       bound_terms as bound_policies, written_premium, commission_amount,",
+        "       production_rank, production_decile",
+        "from bv_agency_production;"
       ]
     },
     {
@@ -906,6 +1421,33 @@
         "      from billing.installment where transaction_type = 'premium_installment'",
         "      group by policy_id) b on b.policy_id = p.policy_uid",
         "where abs(b.billed - p.written_premium) > 0.01;"
+      ]
+    },
+    {
+      "name": "control_recon_actuarial_distribution",
+      "_note": "Reconciles the competing written-premium metric. distribution_written_premium (everything booked, raw coverage code) minus actuarial_written_premium (unapproved endorsements excluded, LOB-mapped) must equal the unapproved-endorsement amount; unexplained_difference proves it (must be 0 because the LOB mapping is total-preserving). actuarial_unmapped quantifies the mapping coverage gap (the WTRBKP UNMAPPED bucket).",
+      "sql": [
+        "create view control_recon_actuarial_distribution as",
+        "with dist as (select round(sum(written_premium), 2) as total from nv_written_premium),",
+        "     act as (select round(sum(written_premium), 2) as total from nv_written_premium",
+        "             where not (is_endorsement = 1 and endorsement_status = 'pending')),",
+        "     excluded as (select coalesce(round(sum(written_premium), 2), 0) as excluded_amount from nv_written_premium",
+        "                  where is_endorsement = 1 and endorsement_status = 'pending'),",
+        "     unmapped as (",
+        "       select coalesce(round(sum(written_premium), 2), 0) as unmapped_amount",
+        "       from nv_written_premium n",
+        "       where not (n.is_endorsement = 1 and n.endorsement_status = 'pending')",
+        "         and not exists (select 1 from manual.line_of_business_mapping m",
+        "                         where m.source_code = n.coverage_code and m.approved_flag = 1",
+        "                           and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "     )",
+        "select d.total as distribution_written_premium,",
+        "       a.total as actuarial_written_premium,",
+        "       round(d.total - a.total, 2) as difference,",
+        "       e.excluded_amount as unapproved_endorsements_excluded,",
+        "       round(d.total - a.total - e.excluded_amount, 2) as unexplained_difference,",
+        "       u.unmapped_amount as actuarial_unmapped",
+        "from dist d, act a, excluded e, unmapped u;"
       ]
     },
     {
@@ -954,7 +1496,58 @@
         "from billing.payment b group by b.gateway_ref having count(*) > 1",
         "union all",
         "select 'DQ-012', 'policy bound via manual underwriting override', cast(p.policy_id as text)",
-        "from pas.policy p where p.uw_override_flag = 1;"
+        "from pas.policy p where p.uw_override_flag = 1",
+        "union all",
+        "select 'DQ-013', 'coverage code missing approved LOB mapping', ct.coverage_code",
+        "from ref.coverage_type ct",
+        "where not exists (select 1 from manual.line_of_business_mapping m",
+        "                  where m.source_code = ct.coverage_code and m.approved_flag = 1",
+        "                    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31'))",
+        "union all",
+        "select 'DQ-014', 'unparseable raw claim date', r.claim_id",
+        "from raw.cms_claim_extract r where r.loss_date_raw not like '__/__/____' or r.reported_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-015', 'unparseable raw installment date', r.installment_id",
+        "from raw.billing_installment_extract r where r.due_date_raw not like '__/__/____'",
+        "union all",
+        "select 'DQ-016', 'unparseable raw agency production date', r.policy_id",
+        "from raw.dist_agency_production_extract r where r.submitted_date_raw not like '__/__/____';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "_note": "Lineage edges for the authored procedures/function/extracts -> the tables they read and write.",
+      "sql": [
+        "insert into catalog.lineage_edge (edge_id, code_object, operation, table_name, edge_note) values",
+        "  (1, 'calc_earned_premium_monthly', 'reads',  'core.policy', 'Bound policy terms and written premium'),",
+        "  (2, 'calc_earned_premium_monthly', 'writes', 'wh.fact_premium_earned_monthly', 'Truncate-and-reload monthly earned'),",
+        "  (3, 'reserve_recalc', 'reads',  'cms.claim', 'Open claims and loss estimates'),",
+        "  (4, 'reserve_recalc', 'reads',  'cms.claim_payment', 'Indemnity paid to date'),",
+        "  (5, 'reserve_recalc', 'writes', 'cms.reserve_transaction', 'Books strengthening/takedown rows'),",
+        "  (6, 'rebuild_mv_quarter_end_reserve_snapshot', 'reads',  'bv_loss_triangles', 'Quarterly refresh source'),",
+        "  (7, 'rebuild_mv_quarter_end_reserve_snapshot', 'writes', 'mv.quarter_end_reserve_snapshot', 'Truncate-and-reload'),",
+        "  (8, 'nightly_bureau_stat_report', 'reads', 'wh.fact_written_premium', 'Statistical premium records'),",
+        "  (9, 'nightly_bureau_stat_report', 'feeds', 'bureau_statistical_report_feed', 'SFTP fixed-width to the statistical bureau'),",
+        "  (10, 'reinsurance_bordereau_extract', 'reads', 'wh.fact_claim_transaction', 'Ceded claim transactions'),",
+        "  (11, 'reinsurance_bordereau_extract', 'feeds', 'reinsurance_bordereau_feed', 'Monthly bordereau to reinsurer'),",
+        "  (12, 'mart_actuarial_written_premium', 'reads', 'manual.line_of_business_mapping', 'Asymmetric LOB mapping join'),",
+        "  (13, 'prorata_earned_factor', 'referenced_by', 'calc_earned_premium_monthly', 'UDF used for day-prorated earning');"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Authored target-platform source for the procedures/function/extracts, then self-registration of every deployed view from sqlite_master so the catalog provably matches the code. Runs LAST so all views exist. reserve_recalc is intentionally stale (references a renamed column) -- noted as known debt.",
+      "sql": [
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes) values",
+        "  ('calc_earned_premium_monthly', 'procedure', 'plpgsql', 'create or replace procedure calc_earned_premium_monthly() language sql as $$ delete from wh_fact_premium_earned_monthly; insert into wh_fact_premium_earned_monthly (policy_key, month_start, line, earned_days, earned_amount) select p.policy_uid, m.month_start, p.line, prorata_earned_factor(p.effective_date, p.expiration_date, m.month_start) as earned_days, round(p.written_premium * prorata_earned_factor(p.effective_date, p.expiration_date, m.month_start) / (julianday(p.expiration_date) - julianday(p.effective_date)), 2) from core_policy p cross join calendar_month m where p.status not in (''quoted'', ''quote_declined''); $$;', 'actuarial_systems', '2024-01-15 09:00:00', '2025-02-03 11:20:00', 'Monthly earned-premium build; scheduled by integration.job calc_earned_premium_monthly.'),",
+        "  ('reserve_recalc', 'procedure', 'plpgsql', 'create or replace procedure reserve_recalc(as_of date) language plpgsql as $$ begin insert into cms_reserve_transaction (claim_id, line, txn_type, amount) select c.claim_id, c.line, ''reserve_strengthening'', round(c.estimated_loss_amount * 1.12, 0) - c.case_reserve_balance from cms_claim c where c.status = ''reserved'' and c.estimated_loss_amount > 9000; end; $$;', 'claims_finance', '2024-01-20 08:30:00', '2025-01-31 17:45:00', 'KNOWN DEBT: references retired column cms_claim.case_reserve_balance (now derived from reserve_transaction); flagged for cleanup.'),",
+        "  ('rebuild_mv_quarter_end_reserve_snapshot', 'procedure', 'plpgsql', 'create or replace procedure rebuild_mv_quarter_end_reserve_snapshot() language sql as $$ delete from mv_quarter_end_reserve_snapshot; insert into mv_quarter_end_reserve_snapshot (line, accident_quarter, claims_count, cumulative_incurred, cumulative_paid, outstanding_reserve) select line, accident_quarter, claims_count, cumulative_incurred, cumulative_paid, round(cumulative_incurred - cumulative_paid, 2) from bv_loss_triangles t where t.dev_age_quarters = (select max(dev_age_quarters) from bv_loss_triangles t2 where t2.line = t.line and t2.accident_quarter = t.accident_quarter); $$;', 'actuarial_systems', '2024-02-01 09:00:00', '2025-04-10 09:15:00', 'Quarterly reserve-snapshot refresh; scheduled by integration.job rebuild_mv_quarter_end_reserve_snapshot.'),",
+        "  ('prorata_earned_factor', 'function', 'plpgsql', 'create or replace function prorata_earned_factor(eff date, exp date, month_start date) returns integer language sql as $$ select cast(min(julianday(date(month_start, ''+1 month'')), julianday(exp)) - max(julianday(month_start), julianday(eff)) as integer); $$;', 'actuarial_systems', '2023-11-02 10:00:00', '2024-06-15 10:00:00', 'Day-count of a policy term earned within a calendar month; used by calc_earned_premium_monthly.'),",
+        "  ('nightly_bureau_stat_report', 'extract', 'sql', 'select f.policy_key, f.coverage_code, f.line, f.effective_date, round(f.written_premium, 2) as stat_premium from wh_fact_written_premium f where f.effective_date >= date(''now'', ''start of year''); -- format: fixed-width; destination: sftp://stat-bureau.example.org/in/; schedule: 0 23 * * *', 'regulatory_reporting', '2024-03-01 09:00:00', '2025-04-10 09:15:00', 'Outbound nightly statistical premium report to the bureau (job nightly_bureau_stat_report).'),",
+        "  ('reinsurance_bordereau_extract', 'extract', 'sql', 'select c.claim_number, c.line, c.loss_date, round(sum(case when t.txn_type = ''claim_payment'' then t.amount else 0 end), 2) as ceded_paid, round(sum(case when t.txn_type != ''claim_payment'' then t.amount else 0 end), 2) as ceded_reserve from wh_fact_claim_transaction t join cms_claim c on c.claim_id = t.claim_id where c.estimated_loss_amount > 25000 group by 1,2,3; -- format: CSV; destination: sftp://reinsurer.example.com/bordereau/; schedule: 0 6 1 * *', 'reinsurance_accounting', '2024-04-01 09:00:00', '2025-05-12 09:15:00', 'Monthly excess-of-loss bordereau to the reinsurer (job reinsurance_bordereau_extract).');",
+        "insert into catalog.code_object (object_name, object_type, language, source_text, owner, created_at, last_altered_at, notes)",
+        "select name, 'view', 'sql', sql, 'data_engineering', '2024-01-15 09:00:00', '2024-01-15 09:00:00', 'Auto-registered from sqlite_master.'",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';"
       ]
     }
   ],
@@ -969,12 +1562,17 @@
     {"name": "missing_crm_mappings", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "scenario": "Mappings lost in the 2024 CRM migration; DQ-006 shows unmapped policyholders."},
     {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.015, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired mappings never re-pointed; DQ-007 flags active rows past their valid_to."},
     {"name": "installment_restatements", "type": "restatement_reversal", "table": "billing.installment", "rate": 0.0035, "stage": "post_derivation", "params": {"amount_columns": ["installment_amount"], "reason_column": "adjustment_note"}, "scenario": "Billing corrections issued as reversal + restated pairs; these are the only breaks in the written-vs-billed recon."},
-    {"name": "payment_webhook_dups", "type": "duplicate_webhook", "table": "billing.payment", "rate": 0.004, "stage": "post_derivation", "scenario": "Payment gateway retries post the same settlement twice; DQ-011 spots repeated gateway references."}
+    {"name": "payment_webhook_dups", "type": "duplicate_webhook", "table": "billing.payment", "rate": 0.004, "stage": "post_derivation", "scenario": "Payment gateway retries post the same settlement twice; DQ-011 spots repeated gateway references."},
+    {"name": "raw_claim_date_drift", "type": "format_drift", "table": "raw.cms_claim_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "reported_date_raw", "format": "padded"}, "scenario": "Legacy claims extract pads dates differently after a patch; DQ-014 catches the unparseable ones."},
+    {"name": "raw_installment_date_drift", "type": "format_drift", "table": "raw.billing_installment_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "due_date_raw", "format": "padded"}, "scenario": "Billing extract date format drifts after a patch; DQ-015 catches it."},
+    {"name": "raw_agency_date_drift", "type": "format_drift", "table": "raw.dist_agency_production_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "submitted_date_raw", "format": "padded"}, "scenario": "Agency production file date format drifts after a patch; DQ-016 catches it."},
+    {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries log duplicate run records."}
   ],
   "controls": [
     {"rule_id": "CTL-001", "rule_name": "Written premium ties to billed installments", "source_dataset": "core.policy", "target_dataset": "billing.installment", "grain": "policy", "tolerance": "0.01", "frequency": "daily", "owner": "premium_accounting", "severity": "high", "expected_break_rate": "~2% of bound policies (installment restatement pairs)", "break_view": "control_recon_written_vs_billed"},
     {"rule_id": "CTL-002", "rule_name": "Case reserve equals reserve transaction sum and zeroes at closure", "source_dataset": "cms.reserve_transaction", "target_dataset": "cms.claim", "grain": "claim", "tolerance": "0.01", "frequency": "monthly", "owner": "claims_finance", "severity": "medium", "expected_break_rate": "0 by construction; monitored via mart_reserve_development"},
-    {"rule_id": "CTL-003", "rule_name": "Gateway cash applied to installments due", "source_dataset": "billing.payment", "target_dataset": "billing.installment", "grain": "installment", "tolerance": "0.01", "frequency": "daily", "owner": "premium_accounting", "severity": "medium", "expected_break_rate": "~0.4% duplicate webhook postings (DQ-011)"}
+    {"rule_id": "CTL-003", "rule_name": "Gateway cash applied to installments due", "source_dataset": "billing.payment", "target_dataset": "billing.installment", "grain": "installment", "tolerance": "0.01", "frequency": "daily", "owner": "premium_accounting", "severity": "medium", "expected_break_rate": "~0.4% duplicate webhook postings (DQ-011)"},
+    {"rule_id": "CTL-004", "rule_name": "Actuarial written premium reconciles to distribution booked premium", "source_dataset": "mart_distribution_written_premium", "target_dataset": "mart_actuarial_written_premium", "grain": "grand total", "tolerance": "0.01", "frequency": "monthly", "owner": "actuarial_finance", "severity": "medium", "expected_break_rate": "difference equals unapproved-endorsement premium; unexplained_difference must be 0", "break_view": "control_recon_actuarial_distribution"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "pas.policyholder", "rule_type": "uniqueness", "condition": "no two policyholders share an email", "severity": "warning", "expected_failure_rate": 0.016},
@@ -988,22 +1586,33 @@
     {"rule_id": "DQ-009", "dataset": "crm.party", "rule_type": "consistency", "condition": "mailing city agrees across PAS and CRM", "severity": "warning", "expected_failure_rate": 0.03},
     {"rule_id": "DQ-010", "dataset": "crm.party", "rule_type": "freshness", "condition": "ingested within 5 days of source update", "severity": "warning", "expected_failure_rate": 0.03},
     {"rule_id": "DQ-011", "dataset": "billing.payment", "rule_type": "uniqueness", "condition": "gateway reference posts once", "severity": "error", "expected_failure_rate": 0.004},
-    {"rule_id": "DQ-012", "dataset": "pas.policy", "rule_type": "review", "condition": "manual underwriting overrides carry secondary approval", "severity": "warning", "expected_failure_rate": 0.012}
+    {"rule_id": "DQ-012", "dataset": "pas.policy", "rule_type": "review", "condition": "manual underwriting overrides carry secondary approval", "severity": "warning", "expected_failure_rate": 0.012},
+    {"rule_id": "DQ-013", "dataset": "manual.line_of_business_mapping", "rule_type": "coverage", "condition": "every live coverage code has an approved LOB mapping", "severity": "error", "expected_failure_rate": 0.08},
+    {"rule_id": "DQ-014", "dataset": "raw.cms_claim_extract", "rule_type": "format", "condition": "claim dates parse as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-015", "dataset": "raw.billing_installment_extract", "rule_type": "format", "condition": "due date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
+    {"rule_id": "DQ-016", "dataset": "raw.dist_agency_production_extract", "rule_type": "format", "condition": "submitted date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03}
   ],
   "dataflows": [
-    {"name": "policyholder_mastering", "sequence": "pas.policyholder -> raw extract -> stg -> xref -> core.policyholder -> wh.dim_policyholder"},
+    {"name": "policyholder_mastering", "sequence": "pas.policyholder -> raw.pas_policyholder_extract -> stg.policyholder -> xref -> core.policyholder -> wh.dim_policyholder"},
+    {"name": "claim_landing", "sequence": "cms.claim -> raw.cms_claim_extract -> stg.claim -> DQ-014"},
+    {"name": "installment_landing", "sequence": "billing.installment -> raw.billing_installment_extract -> stg.installment -> DQ-015"},
+    {"name": "agency_production_landing", "sequence": "core.policy -> raw.dist_agency_production_extract -> stg.agency_production -> DQ-016"},
     {"name": "quote_to_bill", "sequence": "pas.policy -> policy_lifecycle machine -> core.policy (written premium) -> billing.installment -> billing.payment -> recon CTL-001"},
     {"name": "claims_lifecycle", "sequence": "cms.claim (FNOL) -> claim_lifecycle machine -> cms.reserve_transaction + cms.claim_payment -> wh.fact_claim_transaction -> loss ratio / development marts"},
-    {"name": "premium_earning", "sequence": "core.policy -> wh.fact_premium_earned_monthly -> mart_loss_ratio_by_line"}
+    {"name": "premium_earning", "sequence": "core.policy -> wh.fact_premium_earned_monthly -> nv_premium_earned -> bv_earned_premium_monthly -> mart_loss_ratio_by_line"},
+    {"name": "view_stack", "sequence": "wh facts/dims -> nv_written_premium / nv_premium_earned / nv_claim_transaction -> bv_earned_premium_monthly / bv_loss_triangles / bv_agency_production -> mv.quarter_end_reserve_snapshot / mart_actuarial_written_premium / mart_distribution_written_premium / mart_loss_ratio_by_line / mart_reserve_development / mart_agency_production"},
+    {"name": "written_premium_competing_metric", "sequence": "wh.fact_written_premium -> nv_written_premium -> mart_actuarial_written_premium (mapping applied, unapproved endorsements excluded) vs mart_distribution_written_premium (raw, everything booked) -> control_recon_actuarial_distribution + DQ-013 + workflow lob_mapping_request"},
+    {"name": "code_catalog", "sequence": "sqlite_master views + authored procs/function/extracts -> catalog.code_object; catalog.lineage_edge; integration.job -> integration.job_run"}
   ],
   "validation": {
-    "required_views": ["mart_loss_ratio_by_line", "mart_reserve_development", "mart_agency_production", "control_recon_written_vs_billed", "dq_rule_result_current"],
+    "required_views": ["nv_written_premium", "nv_premium_earned", "nv_claim_transaction", "bv_earned_premium_monthly", "bv_loss_triangles", "bv_agency_production", "mart_actuarial_written_premium", "mart_distribution_written_premium", "mart_loss_ratio_by_line", "mart_reserve_development", "mart_agency_production", "control_recon_written_vs_billed", "control_recon_actuarial_distribution", "dq_rule_result_current"],
     "expected_row_ranges": {
       "pas.policyholder": [4500, 7500],
       "pas.policy": [6500, 14500],
       "pas.policy_coverage": [16000, 42000],
       "billing.installment": [30000, 95000],
-      "wh.fact_premium_earned_monthly": [45000, 150000]
+      "wh.fact_premium_earned_monthly": [45000, 150000],
+      "mv.quarter_end_reserve_snapshot": [6, 18]
     }
   }
 }
