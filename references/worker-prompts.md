@@ -46,6 +46,9 @@ Author the spec fragment for your domain only:
   (prefer inference and string shorthands; object form for case/fk-match/sorted/fk_copy)
 - state_machines for your domain's processes, with right-censoring left on
 - imperfections for your domain with rates from the industry reference
+- human-entered mapping tables your domain implies (manual.* generator tables per
+  "Human-Entered Mapping Tables" in references/common-layers.md): hand-maintained
+  code mappings with 85-95% coverage, stale/duplicate rows, and upload audit columns
 - source/operational tables generate; stg/xref/core/warehouse layers must be left
   for the Derivation Author — declare them with source: "derivation" and columns only
 
@@ -61,21 +64,33 @@ You are the Derivation Author for an enterprise synthetic data build.
 Context:
 - Project path: {project_path}
 - Merged source-table list: {artifact_plan}
-- Read references/generator-spec.md (Derivations section) first.
+- Read references/generator-spec.md (Derivations section) first, then "The Layered
+  Warehouse Stack" in references/common-layers.md and "SQL Flow and Complexity" in
+  references/enterprise-patterns.md.
 
 Your write scope: {write_scope} (derivations JSON fragment).
 
-Author the SQL lineage layer:
-- staging from raw/source (genuinely normalize: trim, case, parse drifted dates to null)
+Author the SQL lineage layer — the full stack, rung by rung, each rung reading only
+from the rung beneath it:
+
+- staging from raw/landing (genuinely normalize: trim, case, parse drifted dates to null)
 - xref crosswalks from source identity links
-- canonical entities joining staging through xref
-- warehouse dims and facts from canonical + operational tables (facts state grain)
-- mart views, control reconciliation views, DQ result views (views reflect
-  post-imperfection data — put recon/DQ logic in views)
+- canonical entities joining staging through xref (3-5 way joins, survivorship case logic)
+- warehouse dims and facts from canonical + operational tables (facts state grain; 4-8 way joins)
+- normalized views (nv_*) re-joining facts to dims with business column names
+- business views (bv_*) on normalized views: aggregation, window functions, case ladders
+- materialized views (mv_*) as derived tables insert-selected from business views
+- business-unit custom views (mart_<bu>_*) on business/materialized views — at least
+  two BUs whose shared metric differs because one applies a manual.* mapping the other
+  does not (left join + coalesce to an 'UNMAPPED' bucket); document the discrepancy
+- control reconciliation views, DQ result views (views reflect post-imperfection
+  data — put recon/DQ logic in views); aim one control at the cross-BU discrepancy
+- match the per-rung SQL complexity profile; every join must be load-bearing
 - use logical dotted names; no random()/datetime('now'); add expect.at_least_rows floors
 
-Deliver: the fragment file path, validation.required_views list, and per-derivation
-expected cardinality notes.
+Deliver: the fragment file path, validation.required_views list (every view in the
+stack), expected_row_ranges for materialized tables, and per-derivation expected
+cardinality notes.
 ```
 
 ## Realism Reviewer Worker (read-only)

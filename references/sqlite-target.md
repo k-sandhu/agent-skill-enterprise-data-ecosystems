@@ -10,7 +10,13 @@ SQLite has no true schema namespaces. The engine converts logical `schema.table`
 - `core.customer` -> `core_customer`
 - `wh.fact_order_line` -> `wh_fact_order_line`
 
-Author specs and derivation SQL with logical dotted names; the engine rewrites them. Use the layer prefixes from `references/common-layers.md` (`app_`, `raw_`, `stg_`, `xref_`, `mdm_`, `core_`, `wh_dim_`, `wh_fact_`, `mart_`, `control_`, `dq_`, `workflow_`, `document_`, `security_`, `privacy_`, `audit_`, `semantic_`, `integration_`). The `meta_` prefix is reserved for the engine (`meta_build_info`, `meta_table_stats`, `meta_derivation_stats`, `meta_imperfection_log`).
+Author specs and derivation SQL with logical dotted names; the engine rewrites them. Use the layer prefixes from `references/common-layers.md` (`app_`, `raw_`, `stg_`, `xref_`, `mdm_`, `core_`, `wh_dim_`, `wh_fact_`, `nv_`, `bv_`, `mv_`, `mart_`, `mart_<bu>_`, `manual_`, `catalog_`, `control_`, `dq_`, `workflow_`, `document_`, `security_`, `privacy_`, `audit_`, `semantic_`, `integration_`). The `meta_` prefix is reserved for the engine (`meta_build_info`, `meta_table_stats`, `meta_derivation_stats`, `meta_imperfection_log`).
+
+## Objects SQLite Lacks — and How to Model Them
+
+- **Materialized views**: none natively. Model each as a `source: "derivation"` table (prefix `mv_`) populated by insert-select from a business view — functionally identical to a scheduled matview refresh.
+- **Stored procedures / user-defined functions**: cannot execute in SQLite. Store realistic target-platform source text as `catalog.code_object` rows (paired with `integration.job` / `job_run` execution history) and ship authored `.sql` artifacts beside the spec for non-SQLite targets.
+- **View definitions** are first-class: `create view` derivations land in `sqlite/04_views.sql` and can self-register into a `catalog.code_object` table via `select name, sql from sqlite_master where type = 'view'` (reads of `sqlite_master` are allowed in derivation SQL).
 
 ## Type Mapping (engine-applied)
 
