@@ -50,28 +50,28 @@
     {
       "schema": "control", "name": "control_catalog", "layer": "control",
       "purpose": "Reconciliation control definitions; break populations come from the control/DQ views.",
-      "primary_key": ["control_id"], "rows": 3, "scale_exempt": true,
+      "primary_key": ["control_id"], "rows": 5, "scale_exempt": true,
       "columns": [
         {"name": "control_id", "type": "integer"},
-        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003"}}},
-        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Material consumption vs BOM standard", "2": "Lot genealogy completeness", "3": "Finished lots tie to completed work orders"}}},
-        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "work order x component", "2": "material issue", "3": "produced lot"}}},
-        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "5% of standard quantity", "2": "existence", "3": "existence"}}},
+        {"name": "control_code", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "CTL-001", "2": "CTL-002", "3": "CTL-003", "4": "CTL-004", "5": "CTL-005"}}},
+        {"name": "control_name", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "Material consumption vs BOM standard", "2": "Lot genealogy completeness", "3": "Finished lots tie to completed work orders", "4": "Period-end WIP roll-forward", "5": "Cost accounting vs plant operations scrap metric"}}},
+        {"name": "control_grain", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "work order x component", "2": "material issue", "3": "produced lot", "4": "month x plant x product family", "5": "plant x work center x product family"}}},
+        {"name": "tolerance", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "5% of standard quantity", "2": "existence", "3": "existence", "4": "1 currency unit", "5": "metric definition documented"}}},
         {"name": "frequency", "type": "string", "gen": "const:daily"},
         {"name": "owner", "type": "string", "gen": "staff_user"},
-        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_consumption_vs_bom", "2": "dq_rule_result_current", "3": "dq_rule_result_current"}}}
+        {"name": "break_view", "type": "string", "gen": {"type": "case", "on": "control_id", "cases": {"1": "control_recon_consumption_vs_bom", "2": "dq_rule_result_current", "3": "dq_rule_result_current", "4": "bv_wip_rollforward", "5": "control_recon_scrap_metric_discrepancy"}}}
       ]
     },
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 12, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 15, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active item missing standard cost", "2": "operation references unknown machine", "3": "part missing source crosswalk coverage", "4": "unparseable raw PLM extract date", "5": "lot-controlled issue missing genealogy edge", "6": "negative operation cycle time", "7": "duplicate downtime delivery", "8": "duplicate inspection entry", "9": "asset name drift vs MES machine master", "10": "BOM component equals its assembly", "11": "work order carries manual quality override", "12": "MES feed ingested more than 5 days late"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "erp.item", "2": "mes.operation", "3": "xref.item_identifier", "4": "raw.plm_item_extract", "5": "inventory.lot_genealogy", "6": "mes.operation", "7": "mes.downtime_event", "8": "quality.inspection", "9": "cmms.asset", "10": "plm.bom_component", "11": "production.work_order", "12": "mes.operation"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "error", "11": "warning", "12": "warning"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008", "9": "DQ-009", "10": "DQ-010", "11": "DQ-011", "12": "DQ-012", "13": "DQ-013", "14": "DQ-014", "15": "DQ-015"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active item missing standard cost", "2": "operation references unknown machine", "3": "part missing source crosswalk coverage", "4": "unparseable raw PLM extract date", "5": "lot-controlled issue missing genealogy edge", "6": "negative operation cycle time", "7": "duplicate downtime delivery", "8": "duplicate inspection entry", "9": "asset name drift vs MES machine master", "10": "BOM component equals its assembly", "11": "work order carries manual quality override", "12": "MES feed ingested more than 5 days late", "13": "work center missing cost center mapping", "14": "conflicting current work center cost mapping", "15": "unparseable manufacturing raw feed date"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "erp.item", "2": "mes.operation", "3": "xref.item_identifier", "4": "raw.plm_item_extract", "5": "inventory.lot_genealogy", "6": "mes.operation", "7": "mes.downtime_event", "8": "quality.inspection", "9": "cmms.asset", "10": "plm.bom_component", "11": "production.work_order", "12": "mes.operation", "13": "manual.work_center_cost_center_mapping", "14": "manual.work_center_cost_center_mapping", "15": "raw.erp_work_order_extract"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "error", "2": "error", "3": "error", "4": "warning", "5": "error", "6": "warning", "7": "warning", "8": "warning", "9": "warning", "10": "error", "11": "warning", "12": "warning", "13": "warning", "14": "warning", "15": "warning"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
@@ -610,6 +610,369 @@
         {"name": "quality_rate", "type": "decimal"},
         {"name": "oee", "type": "decimal"}
       ]
+    },
+    {
+      "schema": "wh", "name": "fact_operation_event", "layer": "warehouse_fact",
+      "purpose": "Typed MES operation-event fact sourced from the landed/staged MES feed.",
+      "grain": "one row per MES operation event",
+      "source": "derivation", "primary_key": ["operation_id"],
+      "indexes": [["work_order_id"], ["work_center_key"], ["operation_date"]],
+      "columns": [
+        {"name": "operation_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "part_key", "type": "integer"},
+        {"name": "work_center_key", "type": "integer"},
+        {"name": "machine_key", "type": "integer", "nullable": true},
+        {"name": "plant", "type": "string"},
+        {"name": "operation_date", "type": "date", "nullable": true},
+        {"name": "op_index", "type": "integer"},
+        {"name": "op_number", "type": "integer"},
+        {"name": "op_status", "type": "string"},
+        {"name": "qty_started", "type": "integer"},
+        {"name": "qty_good", "type": "integer"},
+        {"name": "qty_scrapped", "type": "integer"},
+        {"name": "labor_cost", "type": "decimal"},
+        {"name": "started_at", "type": "timestamp", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "cycle_time_minutes", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "wh", "name": "fact_material_consumption", "layer": "warehouse_fact",
+      "purpose": "Material consumption fact aligned to work-order, component, work-center, and date dimensions.",
+      "grain": "one row per work-order component issue",
+      "source": "derivation", "primary_key": ["issue_id"],
+      "indexes": [["work_order_id"], ["component_part_key"], ["issue_date"]],
+      "columns": [
+        {"name": "issue_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "part_key", "type": "integer"},
+        {"name": "component_part_key", "type": "integer"},
+        {"name": "work_center_key", "type": "integer", "nullable": true},
+        {"name": "plant", "type": "string"},
+        {"name": "issue_date", "type": "date"},
+        {"name": "qty_standard", "type": "decimal"},
+        {"name": "qty_issued", "type": "decimal"},
+        {"name": "unit_std_cost", "type": "decimal", "nullable": true},
+        {"name": "extended_cost", "type": "decimal", "nullable": true},
+        {"name": "usage_variance_qty", "type": "decimal"},
+        {"name": "usage_variance_value", "type": "decimal", "nullable": true}
+      ]
+    },
+    {
+      "schema": "mv", "name": "month_end_wip_snapshot", "layer": "mart",
+      "purpose": "SQLite-modeled materialized view for month-end WIP close snapshots.",
+      "grain": "one row per month-end x plant x product family",
+      "source": "derivation", "primary_key": ["snapshot_id"], "scale_exempt": true,
+      "columns": [
+        {"name": "snapshot_id", "type": "integer"},
+        {"name": "month_end_date", "type": "date"},
+        {"name": "plant", "type": "string"},
+        {"name": "product_family", "type": "string"},
+        {"name": "open_work_orders", "type": "integer"},
+        {"name": "beginning_wip_value", "type": "decimal"},
+        {"name": "material_issued_value", "type": "decimal"},
+        {"name": "labor_absorbed_value", "type": "decimal"},
+        {"name": "scrap_value", "type": "decimal"},
+        {"name": "completion_credit_value", "type": "decimal"},
+        {"name": "ending_wip_value", "type": "decimal"},
+        {"name": "refreshed_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "erp_work_order_extract", "layer": "raw",
+      "purpose": "ERP work-order file landing table with verbatim text fields, file ids, batch ids, and ingestion timestamps.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"},
+        {"name": "source_work_order_id", "type": "string"},
+        {"name": "work_order_number", "type": "string"},
+        {"name": "item_id", "type": "string"},
+        {"name": "part_id", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "order_class", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "qty_planned_text", "type": "string"},
+        {"name": "planned_start_date_text", "type": "string"},
+        {"name": "released_at_text", "type": "string", "nullable": true},
+        {"name": "completed_at_text", "type": "string", "nullable": true},
+        {"name": "closed_at_text", "type": "string", "nullable": true},
+        {"name": "source_updated_at_text", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "erp_work_order", "layer": "staging",
+      "purpose": "Typed and deduplicated ERP work-order staging table with guarded date parsing.",
+      "source": "derivation", "primary_key": ["work_order_id"],
+      "columns": [
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "work_order_number", "type": "string"},
+        {"name": "item_id", "type": "integer"},
+        {"name": "part_id", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "order_class", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "qty_planned", "type": "integer"},
+        {"name": "planned_start_date", "type": "date", "nullable": true},
+        {"name": "released_at", "type": "timestamp", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "closed_at", "type": "timestamp", "nullable": true},
+        {"name": "source_updated_at", "type": "timestamp", "nullable": true},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "mes_operation_event", "layer": "raw",
+      "purpose": "MES operation-event file landing table with verbatim payload columns and ingestion metadata.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"},
+        {"name": "source_operation_id", "type": "string"},
+        {"name": "source_work_order_id", "type": "string"},
+        {"name": "op_index_text", "type": "string"},
+        {"name": "op_number_text", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "work_center_id_text", "type": "string"},
+        {"name": "machine_id_text", "type": "string", "nullable": true},
+        {"name": "op_status", "type": "string"},
+        {"name": "qty_started_text", "type": "string"},
+        {"name": "qty_good_text", "type": "string"},
+        {"name": "qty_scrapped_text", "type": "string"},
+        {"name": "labor_cost_text", "type": "string"},
+        {"name": "started_at_text", "type": "string", "nullable": true},
+        {"name": "completed_at_text", "type": "string", "nullable": true},
+        {"name": "source_updated_at_text", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "mes_operation_event", "layer": "staging",
+      "purpose": "Typed and deduplicated MES operation-event staging table with guarded timestamp parsing.",
+      "source": "derivation", "primary_key": ["operation_id"],
+      "columns": [
+        {"name": "operation_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "op_index", "type": "integer"},
+        {"name": "op_number", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "work_center_id", "type": "integer"},
+        {"name": "machine_id", "type": "integer", "nullable": true},
+        {"name": "op_status", "type": "string"},
+        {"name": "qty_started", "type": "integer"},
+        {"name": "qty_good", "type": "integer"},
+        {"name": "qty_scrapped", "type": "integer"},
+        {"name": "labor_cost", "type": "decimal"},
+        {"name": "started_at", "type": "timestamp", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "source_updated_at", "type": "timestamp", "nullable": true},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "cmms_maintenance_extract", "layer": "raw",
+      "purpose": "CMMS maintenance extract landing table with file/batch metadata.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"},
+        {"name": "source_mo_id", "type": "string"},
+        {"name": "mo_number", "type": "string"},
+        {"name": "asset_id_text", "type": "string"},
+        {"name": "machine_id_text", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "mo_type", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "requested_date_text", "type": "string"},
+        {"name": "approved_at_text", "type": "string", "nullable": true},
+        {"name": "completed_at_text", "type": "string", "nullable": true},
+        {"name": "labor_hours_text", "type": "string"},
+        {"name": "parts_cost_text", "type": "string"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "cmms_maintenance_order", "layer": "staging",
+      "purpose": "Typed and deduplicated CMMS maintenance staging table.",
+      "source": "derivation", "primary_key": ["mo_id"],
+      "columns": [
+        {"name": "mo_id", "type": "integer"},
+        {"name": "mo_number", "type": "string"},
+        {"name": "asset_id", "type": "integer"},
+        {"name": "machine_id", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "mo_type", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "requested_date", "type": "date", "nullable": true},
+        {"name": "approved_at", "type": "timestamp", "nullable": true},
+        {"name": "completed_at", "type": "timestamp", "nullable": true},
+        {"name": "labor_hours", "type": "decimal"},
+        {"name": "parts_cost", "type": "decimal"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "quality_results_file", "layer": "raw",
+      "purpose": "Quality results file landing table with batch metadata and verbatim sample fields.",
+      "source": "derivation", "primary_key": ["landing_row_id"],
+      "columns": [
+        {"name": "landing_row_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"},
+        {"name": "source_inspection_id", "type": "string"},
+        {"name": "inspection_number", "type": "string"},
+        {"name": "operation_id_text", "type": "string"},
+        {"name": "work_order_id_text", "type": "string"},
+        {"name": "work_center_id_text", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "recorded_date_text", "type": "string"},
+        {"name": "sample_seq_text", "type": "string"},
+        {"name": "sample_size_text", "type": "string"},
+        {"name": "defects_found_text", "type": "string", "nullable": true},
+        {"name": "result", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "inspected_at_text", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "stg", "name": "quality_result", "layer": "staging",
+      "purpose": "Typed and deduplicated quality-result staging table.",
+      "source": "derivation", "primary_key": ["inspection_id"],
+      "columns": [
+        {"name": "inspection_id", "type": "integer"},
+        {"name": "inspection_number", "type": "string"},
+        {"name": "operation_id", "type": "integer"},
+        {"name": "work_order_id", "type": "integer"},
+        {"name": "work_center_id", "type": "integer"},
+        {"name": "plant", "type": "string"},
+        {"name": "recorded_date", "type": "date", "nullable": true},
+        {"name": "sample_seq", "type": "integer"},
+        {"name": "sample_size", "type": "integer"},
+        {"name": "defects_found", "type": "integer", "nullable": true},
+        {"name": "result", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "inspected_at", "type": "timestamp", "nullable": true},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "manual", "name": "work_center_cost_center_mapping", "layer": "operational",
+      "purpose": "Human-maintained work-center-to-cost-center mapping spreadsheet used only by cost-accounting marts.",
+      "source_system": "Cost Accounting Upload",
+      "primary_key": ["mapping_id"], "rows": 25, "scale_exempt": true,
+      "traits": ["audited", "effective_dated"],
+      "columns": [
+        {"name": "mapping_id", "type": "integer"},
+        {"name": "source_work_center_id", "type": "integer", "gen": {"type": "case", "on": "mapping_id", "cases": {"23": 5, "24": 6, "25": 6}, "default": {"type": "copy", "column": "mapping_id"}}},
+        {"name": "source_work_center_code", "type": "string", "gen": {"type": "fk_copy", "column": "source_work_center_id", "ref": "erp.work_center", "source_column": "work_center_code"}},
+        {"name": "plant", "type": "string", "gen": {"type": "fk_copy", "column": "source_work_center_id", "ref": "erp.work_center", "source_column": "plant"}},
+        {"name": "cost_center_code", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"23": "CC-STAL-405", "24": "CC-MACH-206", "25": "CC-REWORK-906"}, "default": {"type": "pattern", "pattern": "CC-###", "unique": true}}},
+        {"name": "cost_center_name", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"23": "Retired machining pool", "24": "Machining cell uploaded value", "25": "Rework pool conflicting upload"}, "default": {"type": "text_template", "templates": ["Plant cost center {col.cost_center_code}"]}}},
+        {"name": "business_unit", "type": "string", "gen": "const:cost_accounting"},
+        {"name": "mapping_status", "type": "string", "gen": {"type": "case", "on": "mapping_id", "cases": {"23": "stale", "24": "conflict", "25": "conflict"}, "default": "current"}},
+        {"name": "effective_start_date", "type": "date", "gen": {"type": "case", "on": "mapping_status", "cases": {"stale": "2023-01-01", "conflict": "2025-10-01"}, "default": "2024-01-01"}},
+        {"name": "effective_end_date", "type": "date", "nullable": true, "gen": {"type": "case", "on": "mapping_status", "cases": {"stale": "2025-03-31"}, "default": {"type": "constant", "value": null}}},
+        {"name": "current_flag", "type": "boolean", "gen": {"type": "case", "on": "mapping_status", "cases": {"stale": 0}, "default": 1}},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp", "gen": {"type": "case", "on": "mapping_status", "cases": {"stale": "2025-03-31 18:42:00", "conflict": "2025-11-30 20:15:00"}, "default": "2025-10-31 18:05:00"}},
+        {"name": "source_file_name", "type": "string", "gen": {"type": "case", "on": "mapping_status", "cases": {"stale": "wc_cost_center_mapping_2025Q1.xlsx", "conflict": "wc_cost_center_mapping_reupload_20251130.xlsx"}, "default": "wc_cost_center_mapping_20251031.xlsx"}},
+        {"name": "approved_flag", "type": "boolean", "gen": "const:1"}
+      ]
+    },
+    {
+      "schema": "workflow", "name": "mapping_request", "layer": "workflow",
+      "purpose": "Open workflow queue for unmapped or conflicting work-center cost-center mappings.",
+      "source": "derivation", "primary_key": ["request_id"],
+      "columns": [
+        {"name": "request_id", "type": "integer"},
+        {"name": "request_type", "type": "string"},
+        {"name": "work_center_id", "type": "integer"},
+        {"name": "work_center_code", "type": "string"},
+        {"name": "plant", "type": "string"},
+        {"name": "issue_type", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "assigned_queue", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "due_at", "type": "timestamp"},
+        {"name": "resolved_at", "type": "timestamp", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Code catalog for deployed views plus stored procedures, functions, extracts, and outbound feeds.",
+      "source": "derivation", "primary_key": ["code_object_id"],
+      "columns": [
+        {"name": "code_object_id", "type": "integer"},
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "text"},
+        {"name": "owner", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "deployment_status", "type": "string"},
+        {"name": "stale_flag", "type": "boolean"},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Code-level lineage edges from views, procedures, extracts, and feeds to source and target datasets.",
+      "source": "derivation", "primary_key": ["lineage_edge_id"],
+      "columns": [
+        {"name": "lineage_edge_id", "type": "integer"},
+        {"name": "code_object_name", "type": "string"},
+        {"name": "source_dataset", "type": "string"},
+        {"name": "target_dataset", "type": "string"},
+        {"name": "edge_type", "type": "string"},
+        {"name": "transformation_note", "type": "string"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Scheduled integration and warehouse-code jobs tied to cataloged code objects.",
+      "primary_key": ["job_id"], "rows": 7, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "erp_work_order_extract_load", "2": "mes_operation_event_load", "3": "cmms_maintenance_extract_load", "4": "quality_results_file_load", "5": "standard_cost_roll", "6": "refresh_month_end_wip_snapshot", "7": "finance_wip_feed"}}},
+        {"name": "code_object_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "raw_erp_work_order_extract_load", "2": "raw_mes_operation_event_load", "3": "raw_cmms_maintenance_extract_load", "4": "raw_quality_results_file_load", "5": "proc_standard_cost_roll", "6": "proc_refresh_mv_month_end_wip_snapshot", "7": "feed_finance_wip_journal"}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"5": "0 2 1 * *", "6": "30 3 L * *", "7": "0 5 L * *"}, "default": "15 1 * * *"}},
+        {"name": "owner", "type": "string", "gen": "staff_user"},
+        {"name": "criticality", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"6": "tier1", "7": "tier1"}, "default": "tier2"}},
+        {"name": "active_flag", "type": "boolean", "gen": "const:1"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job_run", "layer": "integration",
+      "purpose": "Historical job-run log with successful, partial, and failed runs.",
+      "primary_key": ["run_id"], "rows": 560,
+      "columns": [
+        {"name": "run_id", "type": "integer"},
+        {"name": "job_id", "type": "integer", "gen": "fk:integration.job@zipf(0.4)"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
+        {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_status", "type": "string", "gen": "choice:success=0.88,failed=0.07,partial=0.05"},
+        {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=3200,sigma=1.0,min=0,max=250000)"},
+        {"name": "duration_seconds", "type": "integer", "gen": "int:lognormal(median=180,sigma=0.8,min=12,max=7200)"},
+        {"name": "error_note", "type": "string", "nullable": true, "gen": {"type": "case", "on": "run_status", "cases": {"failed": "Source file failed checksum or target table lock timed out.", "partial": "Loaded with rejected rows routed to DQ quarantine."}, "default": {"type": "constant", "value": null}}}
+      ]
     }
   ],
   "state_machines": [
@@ -802,6 +1165,238 @@
       ]
     },
     {
+      "name": "raw_erp_work_order_extract",
+      "_note": "ERP work-order landing feed: raw text dates, file/batch ids, ingestion timestamp, and replay rows to make staging dedup load-bearing.",
+      "sql": [
+        "insert into raw.erp_work_order_extract",
+        "select row_number() over (order by wo.work_order_id),",
+        "       'FILE-ERP-WO-' || replace(wo.planned_start_date, '-', ''),",
+        "       'BATCH-ERP-WO-' || strftime('%Y%m', wo.planned_start_date),",
+        "       datetime(wo.planned_start_date, '+22 hours'),",
+        "       cast(wo.work_order_id as text), wo.work_order_number, cast(wo.item_id as text), cast(wo.part_id as text),",
+        "       wo.plant, wo.order_class, wo.status, cast(wo.qty_planned as text),",
+        "       strftime('%m/%d/%Y', wo.planned_start_date),",
+        "       case when wo.released_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.released_at) end,",
+        "       case when wo.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.completed_at) end,",
+        "       case when wo.closed_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.closed_at) end,",
+        "       strftime('%m/%d/%Y %H:%M:%S', wo.updated_at)",
+        "from production.work_order wo;",
+        "insert into raw.erp_work_order_extract",
+        "select 900000 + row_number() over (order by wo.work_order_id),",
+        "       'FILE-ERP-WO-REPLAY-20251231', 'BATCH-ERP-WO-REPLAY', '2025-12-31 23:10:00',",
+        "       cast(wo.work_order_id as text), wo.work_order_number, cast(wo.item_id as text), cast(wo.part_id as text),",
+        "       wo.plant, wo.order_class, wo.status, cast(wo.qty_planned as text),",
+        "       strftime('%m/%d/%Y', wo.planned_start_date),",
+        "       case when wo.released_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.released_at) end,",
+        "       case when wo.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.completed_at) end,",
+        "       case when wo.closed_at is not null then strftime('%m/%d/%Y %H:%M:%S', wo.closed_at) end,",
+        "       strftime('%m/%d/%Y %H:%M:%S', wo.updated_at)",
+        "from production.work_order wo where wo.work_order_id % 47 = 0;"
+      ]
+    },
+    {
+      "name": "stg_erp_work_order",
+      "sql": [
+        "insert into stg.erp_work_order",
+        "with parsed as (",
+        "  select landing_row_id, cast(source_work_order_id as integer) as work_order_id, work_order_number,",
+        "         cast(item_id as integer) as item_id, cast(part_id as integer) as part_id, plant, lower(order_class) as order_class,",
+        "         lower(status) as status, cast(qty_planned_text as integer) as qty_planned,",
+        "         case when planned_start_date_text like '__/__/____'",
+        "              then substr(planned_start_date_text, 7, 4) || '-' || substr(planned_start_date_text, 1, 2) || '-' || substr(planned_start_date_text, 4, 2) end as planned_start_date,",
+        "         case when released_at_text like '__/__/____ __:__:__'",
+        "              then substr(released_at_text, 7, 4) || '-' || substr(released_at_text, 1, 2) || '-' || substr(released_at_text, 4, 2) || substr(released_at_text, 11) end as released_at,",
+        "         case when completed_at_text like '__/__/____ __:__:__'",
+        "              then substr(completed_at_text, 7, 4) || '-' || substr(completed_at_text, 1, 2) || '-' || substr(completed_at_text, 4, 2) || substr(completed_at_text, 11) end as completed_at,",
+        "         case when closed_at_text like '__/__/____ __:__:__'",
+        "              then substr(closed_at_text, 7, 4) || '-' || substr(closed_at_text, 1, 2) || '-' || substr(closed_at_text, 4, 2) || substr(closed_at_text, 11) end as closed_at,",
+        "         case when source_updated_at_text like '__/__/____ __:__:__'",
+        "              then substr(source_updated_at_text, 7, 4) || '-' || substr(source_updated_at_text, 1, 2) || '-' || substr(source_updated_at_text, 4, 2) || substr(source_updated_at_text, 11) end as source_updated_at,",
+        "         file_id, batch_id, ingested_at",
+        "  from raw.erp_work_order_extract",
+        "), ranked as (",
+        "  select *, row_number() over (partition by work_order_id order by ingested_at desc, landing_row_id desc) as rn",
+        "  from parsed where work_order_id is not null",
+        ")",
+        "select work_order_id, work_order_number, item_id, part_id, plant, order_class, status, qty_planned,",
+        "       planned_start_date, released_at, completed_at, closed_at, source_updated_at, file_id, batch_id, ingested_at",
+        "from ranked where rn = 1;"
+      ]
+    },
+    {
+      "name": "raw_mes_operation_event",
+      "_note": "MES operation-event landing feed; replay rows make stg dedup choose the later batch.",
+      "sql": [
+        "insert into raw.mes_operation_event",
+        "select row_number() over (order by o.operation_id),",
+        "       'FILE-MES-OPS-' || replace(o.reported_date, '-', ''), coalesce(o.batch_id, 'BATCH-MES-OPS'), min(o.ingested_at, '2025-12-31 23:59:59'),",
+        "       cast(o.operation_id as text), cast(o.work_order_id as text), cast(o.op_index as text), cast(o.op_number as text),",
+        "       o.plant, cast(o.work_center_id as text), cast(o.machine_id as text), o.op_status,",
+        "       cast(o.qty_started as text), cast(o.qty_good as text), cast(o.qty_scrapped as text), cast(o.labor_cost as text),",
+        "       case when o.started_at is not null then strftime('%m/%d/%Y %H:%M:%S', o.started_at) end,",
+        "       case when o.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', o.completed_at) end,",
+        "       strftime('%m/%d/%Y %H:%M:%S', o.source_updated_at)",
+        "from mes.operation o;",
+        "insert into raw.mes_operation_event",
+        "select 910000 + row_number() over (order by o.operation_id),",
+        "       'FILE-MES-OPS-REPLAY-20251231', 'BATCH-MES-OPS-REPLAY', min('2025-12-31 22:30:00', '2025-12-31 23:59:59'),",
+        "       cast(o.operation_id as text), cast(o.work_order_id as text), cast(o.op_index as text), cast(o.op_number as text),",
+        "       o.plant, cast(o.work_center_id as text), cast(o.machine_id as text), o.op_status,",
+        "       cast(o.qty_started as text), cast(o.qty_good as text), cast(o.qty_scrapped as text), cast(o.labor_cost as text),",
+        "       case when o.started_at is not null then strftime('%m/%d/%Y %H:%M:%S', o.started_at) end,",
+        "       case when o.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', o.completed_at) end,",
+        "       strftime('%m/%d/%Y %H:%M:%S', o.source_updated_at)",
+        "from mes.operation o where o.operation_id % 53 = 0;"
+      ]
+    },
+    {
+      "name": "stg_mes_operation_event",
+      "sql": [
+        "insert into stg.mes_operation_event",
+        "with parsed as (",
+        "  select landing_row_id, cast(source_operation_id as integer) as operation_id, cast(source_work_order_id as integer) as work_order_id,",
+        "         cast(op_index_text as integer) as op_index, cast(op_number_text as integer) as op_number, plant,",
+        "         cast(work_center_id_text as integer) as work_center_id, cast(machine_id_text as integer) as machine_id, lower(op_status) as op_status,",
+        "         cast(qty_started_text as integer) as qty_started, cast(qty_good_text as integer) as qty_good,",
+        "         cast(qty_scrapped_text as integer) as qty_scrapped, cast(labor_cost_text as real) as labor_cost,",
+        "         case when started_at_text like '__/__/____ __:__:__'",
+        "              then substr(started_at_text, 7, 4) || '-' || substr(started_at_text, 1, 2) || '-' || substr(started_at_text, 4, 2) || substr(started_at_text, 11) end as started_at,",
+        "         case when completed_at_text like '__/__/____ __:__:__'",
+        "              then substr(completed_at_text, 7, 4) || '-' || substr(completed_at_text, 1, 2) || '-' || substr(completed_at_text, 4, 2) || substr(completed_at_text, 11) end as completed_at,",
+        "         case when source_updated_at_text like '__/__/____ __:__:__'",
+        "              then substr(source_updated_at_text, 7, 4) || '-' || substr(source_updated_at_text, 1, 2) || '-' || substr(source_updated_at_text, 4, 2) || substr(source_updated_at_text, 11) end as source_updated_at,",
+        "         file_id, batch_id, ingested_at",
+        "  from raw.mes_operation_event",
+        "), ranked as (",
+        "  select *, row_number() over (partition by operation_id order by ingested_at desc, landing_row_id desc) as rn",
+        "  from parsed where operation_id is not null",
+        ")",
+        "select operation_id, work_order_id, op_index, op_number, plant, work_center_id, machine_id, op_status,",
+        "       qty_started, qty_good, qty_scrapped, labor_cost, started_at, completed_at, source_updated_at, file_id, batch_id, ingested_at",
+        "from ranked where rn = 1;"
+      ]
+    },
+    {
+      "name": "raw_cmms_maintenance_extract",
+      "sql": [
+        "insert into raw.cmms_maintenance_extract",
+        "select row_number() over (order by mo.mo_id),",
+        "       'FILE-CMMS-MWO-' || strftime('%Y%m', mo.requested_date), 'BATCH-CMMS-MWO-' || strftime('%Y%m', mo.requested_date),",
+        "       datetime(mo.requested_date, '+21 hours'), cast(mo.mo_id as text), mo.mo_number, cast(mo.asset_id as text), cast(mo.machine_id as text),",
+        "       mo.plant, mo.mo_type, mo.priority, mo.status, strftime('%m/%d/%Y', mo.requested_date),",
+        "       case when mo.approved_at is not null then strftime('%m/%d/%Y %H:%M:%S', mo.approved_at) end,",
+        "       case when mo.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', mo.completed_at) end,",
+        "       cast(mo.labor_hours as text), cast(mo.parts_cost as text)",
+        "from cmms.maintenance_order mo;",
+        "insert into raw.cmms_maintenance_extract",
+        "select 920000 + row_number() over (order by mo.mo_id),",
+        "       'FILE-CMMS-MWO-REPLAY-20251231', 'BATCH-CMMS-MWO-REPLAY', '2025-12-31 21:45:00',",
+        "       cast(mo.mo_id as text), mo.mo_number, cast(mo.asset_id as text), cast(mo.machine_id as text),",
+        "       mo.plant, mo.mo_type, mo.priority, mo.status, strftime('%m/%d/%Y', mo.requested_date),",
+        "       case when mo.approved_at is not null then strftime('%m/%d/%Y %H:%M:%S', mo.approved_at) end,",
+        "       case when mo.completed_at is not null then strftime('%m/%d/%Y %H:%M:%S', mo.completed_at) end,",
+        "       cast(mo.labor_hours as text), cast(mo.parts_cost as text)",
+        "from cmms.maintenance_order mo where mo.mo_id % 43 = 0;"
+      ]
+    },
+    {
+      "name": "stg_cmms_maintenance_order",
+      "sql": [
+        "insert into stg.cmms_maintenance_order",
+        "with parsed as (",
+        "  select landing_row_id, cast(source_mo_id as integer) as mo_id, mo_number, cast(asset_id_text as integer) as asset_id,",
+        "         cast(machine_id_text as integer) as machine_id, plant, lower(mo_type) as mo_type, lower(priority) as priority, lower(status) as status,",
+        "         case when requested_date_text like '__/__/____'",
+        "              then substr(requested_date_text, 7, 4) || '-' || substr(requested_date_text, 1, 2) || '-' || substr(requested_date_text, 4, 2) end as requested_date,",
+        "         case when approved_at_text like '__/__/____ __:__:__'",
+        "              then substr(approved_at_text, 7, 4) || '-' || substr(approved_at_text, 1, 2) || '-' || substr(approved_at_text, 4, 2) || substr(approved_at_text, 11) end as approved_at,",
+        "         case when completed_at_text like '__/__/____ __:__:__'",
+        "              then substr(completed_at_text, 7, 4) || '-' || substr(completed_at_text, 1, 2) || '-' || substr(completed_at_text, 4, 2) || substr(completed_at_text, 11) end as completed_at,",
+        "         cast(labor_hours_text as real) as labor_hours, cast(parts_cost_text as real) as parts_cost, file_id, batch_id, ingested_at",
+        "  from raw.cmms_maintenance_extract",
+        "), ranked as (",
+        "  select *, row_number() over (partition by mo_id order by ingested_at desc, landing_row_id desc) as rn",
+        "  from parsed where mo_id is not null",
+        ")",
+        "select mo_id, mo_number, asset_id, machine_id, plant, mo_type, priority, status, requested_date, approved_at, completed_at,",
+        "       labor_hours, parts_cost, file_id, batch_id, ingested_at",
+        "from ranked where rn = 1;"
+      ]
+    },
+    {
+      "name": "raw_quality_results_file",
+      "sql": [
+        "insert into raw.quality_results_file",
+        "select row_number() over (order by q.inspection_id),",
+        "       'FILE-QMS-RESULTS-' || replace(q.recorded_date, '-', ''), 'BATCH-QMS-RESULTS-' || strftime('%Y%m', q.recorded_date),",
+        "       datetime(q.recorded_date, '+20 hours'), cast(q.inspection_id as text), q.inspection_number, cast(q.operation_id as text),",
+        "       cast(q.work_order_id as text), cast(q.work_center_id as text), q.plant, strftime('%m/%d/%Y', q.recorded_date),",
+        "       cast(q.sample_seq as text), cast(q.sample_size as text), cast(q.defects_found as text), q.result, q.disposition,",
+        "       case when q.inspected_at is not null then strftime('%m/%d/%Y %H:%M:%S', q.inspected_at) end",
+        "from quality.inspection q;",
+        "insert into raw.quality_results_file",
+        "select 930000 + row_number() over (order by q.inspection_id),",
+        "       'FILE-QMS-RESULTS-REPLAY-20251231', 'BATCH-QMS-RESULTS-REPLAY', '2025-12-31 20:20:00',",
+        "       cast(q.inspection_id as text), q.inspection_number, cast(q.operation_id as text), cast(q.work_order_id as text),",
+        "       cast(q.work_center_id as text), q.plant, strftime('%m/%d/%Y', q.recorded_date),",
+        "       cast(q.sample_seq as text), cast(q.sample_size as text), cast(q.defects_found as text), q.result, q.disposition,",
+        "       case when q.inspected_at is not null then strftime('%m/%d/%Y %H:%M:%S', q.inspected_at) end",
+        "from quality.inspection q where q.inspection_id % 37 = 0;"
+      ]
+    },
+    {
+      "name": "stg_quality_result",
+      "sql": [
+        "insert into stg.quality_result",
+        "with parsed as (",
+        "  select landing_row_id, cast(source_inspection_id as integer) as inspection_id, inspection_number, cast(operation_id_text as integer) as operation_id,",
+        "         cast(work_order_id_text as integer) as work_order_id, cast(work_center_id_text as integer) as work_center_id, plant,",
+        "         case when recorded_date_text like '__/__/____'",
+        "              then substr(recorded_date_text, 7, 4) || '-' || substr(recorded_date_text, 1, 2) || '-' || substr(recorded_date_text, 4, 2) end as recorded_date,",
+        "         cast(sample_seq_text as integer) as sample_seq, cast(sample_size_text as integer) as sample_size, cast(defects_found_text as integer) as defects_found,",
+        "         lower(result) as result, lower(disposition) as disposition,",
+        "         case when inspected_at_text like '__/__/____ __:__:__'",
+        "              then substr(inspected_at_text, 7, 4) || '-' || substr(inspected_at_text, 1, 2) || '-' || substr(inspected_at_text, 4, 2) || substr(inspected_at_text, 11) end as inspected_at,",
+        "         file_id, batch_id, ingested_at",
+        "  from raw.quality_results_file",
+        "), ranked as (",
+        "  select *, row_number() over (partition by inspection_id order by ingested_at desc, landing_row_id desc) as rn",
+        "  from parsed where inspection_id is not null",
+        ")",
+        "select inspection_id, inspection_number, operation_id, work_order_id, work_center_id, plant, recorded_date, sample_seq, sample_size,",
+        "       defects_found, result, disposition, inspected_at, file_id, batch_id, ingested_at",
+        "from ranked where rn = 1;"
+      ]
+    },
+    {
+      "name": "workflow_mapping_request",
+      "_note": "Unmapped work centers and duplicate current mappings create workflow cases; cost accounting consumes the mapping, plant ops does not.",
+      "sql": [
+        "insert into workflow.mapping_request",
+        "with current_map as (",
+        "  select source_work_center_id, count(*) as active_rows",
+        "  from manual.work_center_cost_center_mapping",
+        "  where current_flag = 1 and approved_flag = 1",
+        "    and effective_start_date <= '2025-12-31'",
+        "    and (effective_end_date is null or effective_end_date > '2025-12-31')",
+        "  group by source_work_center_id",
+        "), issues as (",
+        "  select wc.work_center_id, wc.work_center_code, wc.plant,",
+        "         case when coalesce(cm.active_rows, 0) = 0 then 'missing_mapping'",
+        "              when cm.active_rows > 1 then 'conflicting_mapping' end as issue_type",
+        "  from erp.work_center wc",
+        "  left join current_map cm on cm.source_work_center_id = wc.work_center_id",
+        "  where coalesce(cm.active_rows, 0) != 1",
+        ")",
+        "select row_number() over (order by work_center_id), 'work_center_cost_center', work_center_id, work_center_code, plant,",
+        "       issue_type, case when issue_type = 'conflicting_mapping' then 'high' else 'medium' end,",
+        "       'open', 'cost_mapping_queue',",
+        "       datetime('2025-12-31', '-' || (2 + work_center_id % 9) || ' days'),",
+        "       datetime('2025-12-31', '+' || (1 + work_center_id % 5) || ' days'), null",
+        "from issues;"
+      ]
+    },
+    {
       "name": "raw_plm_item_extract",
       "_note": "Raw landing copy with US-format dates; the format_drift imperfection later corrupts a slice, which DQ-004 catches.",
       "sql": [
@@ -882,6 +1477,40 @@
       ]
     },
     {
+      "name": "wh_fact_operation_event",
+      "expect": {"at_least_rows": 10000},
+      "sql": [
+        "insert into wh.fact_operation_event",
+        "select s.operation_id, s.work_order_id, wo.part_id, s.work_center_id, s.machine_id, s.plant,",
+        "       date(coalesce(s.started_at, s.completed_at, wo.planned_start_date)),",
+        "       s.op_index, s.op_number, s.op_status, s.qty_started, s.qty_good, s.qty_scrapped, s.labor_cost,",
+        "       s.started_at, s.completed_at,",
+        "       case when s.started_at is not null and s.completed_at is not null",
+        "            then round((julianday(s.completed_at) - julianday(s.started_at)) * 1440.0, 2) end",
+        "from stg.mes_operation_event s",
+        "join stg.erp_work_order wo on wo.work_order_id = s.work_order_id;"
+      ]
+    },
+    {
+      "name": "wh_fact_material_consumption",
+      "expect": {"at_least_rows": 5000},
+      "sql": [
+        "insert into wh.fact_material_consumption",
+        "with first_wc as (",
+        "  select work_order_id, work_center_id,",
+        "         row_number() over (partition by work_order_id order by op_index, operation_id) as rn",
+        "  from stg.mes_operation_event",
+        ")",
+        "select mi.issue_id, mi.work_order_id, mi.part_id, mi.component_part_id, fw.work_center_id, wo.plant,",
+        "       date(mi.issued_at), mi.qty_standard, mi.qty_issued, mi.unit_std_cost, mi.extended_cost,",
+        "       round(mi.qty_issued - mi.qty_standard, 2),",
+        "       case when mi.unit_std_cost is not null then round((mi.qty_issued - mi.qty_standard) * mi.unit_std_cost, 2) end",
+        "from production.material_issue mi",
+        "join stg.erp_work_order wo on wo.work_order_id = mi.work_order_id",
+        "left join first_wc fw on fw.work_order_id = mi.work_order_id and fw.rn = 1;"
+      ]
+    },
+    {
       "name": "wh_fact_production_order",
       "expect": {"at_least_rows": 1000},
       "sql": [
@@ -931,6 +1560,205 @@
         "       availability, performance, quality_rate,",
         "       round(availability * performance * quality_rate, 4)",
         "from base;"
+      ]
+    },
+    {
+      "name": "nv_production_order_operations",
+      "sql": [
+        "create view nv_production_order_operations as",
+        "select po.work_order_id, po.work_order_number, po.plant, po.status, po.order_class,",
+        "       po.planned_start_date, po.released_at, po.completed_at as work_order_completed_at,",
+        "       po.qty_planned as order_qty_planned, po.qty_good as order_qty_good, po.qty_scrapped as order_qty_scrapped,",
+        "       po.actual_material_cost, p.part_key, p.part_number, p.part_name, p.part_type, p.product_family, p.standard_cost,",
+        "       oe.operation_id, oe.op_index, oe.op_number, oe.op_status, oe.operation_date,",
+        "       wc.work_center_key, wc.work_center_code, wc.center_type, wc.shift_pattern,",
+        "       oe.qty_started, oe.qty_good, oe.qty_scrapped, oe.labor_cost, oe.started_at, oe.completed_at, oe.cycle_time_minutes,",
+        "       d.year_num, d.month_num, d.weekday_num",
+        "from wh.fact_production_order po",
+        "join wh.dim_part p on p.part_key = po.part_key",
+        "left join wh.fact_operation_event oe on oe.work_order_id = po.work_order_id",
+        "left join wh.dim_work_center wc on wc.work_center_key = oe.work_center_key",
+        "left join wh.dim_date d on d.date_key = coalesce(oe.operation_date, po.planned_start_date);"
+      ]
+    },
+    {
+      "name": "nv_material_consumption",
+      "sql": [
+        "create view nv_material_consumption as",
+        "select mc.issue_id, mc.work_order_id, mc.plant, mc.issue_date,",
+        "       parent.part_number as assembly_part_number, parent.part_name as assembly_part_name, parent.product_family, parent.part_type as assembly_part_type,",
+        "       comp.part_number as component_part_number, comp.part_name as component_part_name, comp.part_type as component_part_type,",
+        "       wc.work_center_key, wc.work_center_code, wc.center_type,",
+        "       mc.qty_standard, mc.qty_issued, mc.unit_std_cost, mc.extended_cost, mc.usage_variance_qty, mc.usage_variance_value,",
+        "       d.year_num, d.month_num, d.weekday_num",
+        "from wh.fact_material_consumption mc",
+        "join wh.dim_part parent on parent.part_key = mc.part_key",
+        "join wh.dim_part comp on comp.part_key = mc.component_part_key",
+        "left join wh.dim_work_center wc on wc.work_center_key = mc.work_center_key",
+        "left join wh.dim_date d on d.date_key = mc.issue_date;"
+      ]
+    },
+    {
+      "name": "nv_machine_utilization",
+      "sql": [
+        "create view nv_machine_utilization as",
+        "select f.util_id, f.activity_date as production_date, f.plant,",
+        "       m.machine_key, m.machine_code, m.manufacturer, m.rated_speed_uph,",
+        "       w.work_center_key, w.work_center_code, w.center_type, w.shift_pattern,",
+        "       f.planned_minutes, f.downtime_minutes, f.runtime_minutes, f.units_total, f.units_good,",
+        "       f.availability, f.performance, f.quality_rate, f.oee,",
+        "       d.year_num, d.month_num, d.weekday_num, d.is_weekend",
+        "from wh.fact_machine_utilization_daily f",
+        "join wh.dim_machine m on m.machine_key = f.machine_key",
+        "join wh.dim_work_center w on w.work_center_key = f.work_center_key",
+        "join wh.dim_date d on d.date_key = f.activity_date;"
+      ]
+    },
+    {
+      "name": "bv_oee_daily",
+      "sql": [
+        "create view bv_oee_daily as",
+        "select production_date, plant, work_center_key, work_center_code, center_type,",
+        "       count(distinct machine_key) as machines_active,",
+        "       sum(planned_minutes) as planned_minutes, sum(runtime_minutes) as runtime_minutes, sum(downtime_minutes) as downtime_minutes,",
+        "       sum(units_total) as units_total, sum(units_good) as units_good,",
+        "       round(avg(availability), 4) as availability, round(avg(performance), 4) as performance,",
+        "       round(avg(quality_rate), 4) as quality_rate, round(avg(oee), 4) as oee",
+        "from nv_machine_utilization",
+        "group by production_date, plant, work_center_key, work_center_code, center_type;"
+      ]
+    },
+    {
+      "name": "bv_yield_by_routing",
+      "sql": [
+        "create view bv_yield_by_routing as",
+        "select plant, product_family, part_type, work_center_key, work_center_code, center_type, op_number,",
+        "       count(distinct work_order_id) as work_orders_touched, count(operation_id) as operations_completed,",
+        "       sum(qty_started) as units_started, sum(qty_good) as units_good, sum(qty_scrapped) as units_scrapped,",
+        "       round(1.0 * sum(qty_good) / max(sum(qty_started), 1), 4) as first_pass_yield,",
+        "       round(1.0 * sum(qty_scrapped) / max(sum(qty_started), 1), 4) as unit_scrap_rate,",
+        "       round(sum(labor_cost), 2) as labor_cost,",
+        "       round(sum(qty_started * coalesce(standard_cost, 0)), 2) as started_standard_cost,",
+        "       round(sum(qty_scrapped * coalesce(standard_cost, 0)), 2) as scrap_standard_cost",
+        "from nv_production_order_operations",
+        "where operation_id is not null and op_status = 'completed'",
+        "group by plant, product_family, part_type, work_center_key, work_center_code, center_type, op_number;"
+      ]
+    },
+    {
+      "name": "bv_wip_rollforward",
+      "sql": [
+        "create view bv_wip_rollforward as",
+        "with order_one as (",
+        "  select work_order_id, plant, product_family, part_type, planned_start_date, status,",
+        "         max(order_qty_planned) as qty_planned, max(order_qty_good) as qty_good, max(order_qty_scrapped) as qty_scrapped,",
+        "         max(coalesce(standard_cost, 0)) as standard_cost, max(coalesce(actual_material_cost, 0)) as material_cost",
+        "  from nv_production_order_operations",
+        "  group by work_order_id, plant, product_family, part_type, planned_start_date, status",
+        "), labor_by_order as (",
+        "  select work_order_id, sum(coalesce(labor_cost, 0)) as labor_cost",
+        "  from nv_production_order_operations group by work_order_id",
+        "), base as (",
+        "  select date(o.planned_start_date, 'start of month', '+1 month', '-1 day') as month_end_date,",
+        "         o.plant, o.product_family, o.status, o.qty_good, o.qty_scrapped, o.standard_cost, o.material_cost, coalesce(l.labor_cost, 0) as labor_cost",
+        "  from order_one o left join labor_by_order l on l.work_order_id = o.work_order_id",
+        "  where o.planned_start_date is not null",
+        ")",
+        "select month_end_date, plant, product_family,",
+        "       sum(case when status not in ('closed', 'cancelled') then 1 else 0 end) as open_work_orders,",
+        "       round(sum(case when status not in ('closed', 'cancelled') then (material_cost + labor_cost) * 0.35 else 0 end), 2) as beginning_wip_value,",
+        "       round(sum(material_cost), 2) as material_issued_value,",
+        "       round(sum(labor_cost), 2) as labor_absorbed_value,",
+        "       round(sum(qty_scrapped * standard_cost), 2) as scrap_value,",
+        "       round(sum(case when status in ('completed', 'closed') then qty_good * standard_cost else 0 end), 2) as completion_credit_value,",
+        "       round(sum(case when status not in ('closed', 'cancelled') then (material_cost + labor_cost) * 0.35 else 0 end)",
+        "             + sum(material_cost) + sum(labor_cost)",
+        "             - sum(case when status in ('completed', 'closed') then qty_good * standard_cost else 0 end)",
+        "             - sum(qty_scrapped * standard_cost), 2) as ending_wip_value",
+        "from base",
+        "group by month_end_date, plant, product_family;"
+      ]
+    },
+    {
+      "name": "mv_month_end_wip_snapshot",
+      "expect": {"at_least_rows": 10},
+      "sql": [
+        "insert into mv.month_end_wip_snapshot",
+        "select row_number() over (order by month_end_date, plant, product_family),",
+        "       month_end_date, plant, product_family, open_work_orders, beginning_wip_value, material_issued_value,",
+        "       labor_absorbed_value, scrap_value, completion_credit_value, ending_wip_value, '2025-12-31 23:30:00'",
+        "from bv_wip_rollforward",
+        "where month_end_date <= '2025-12-31';"
+      ]
+    },
+    {
+      "name": "mart_costaccounting_scrap_summary",
+      "sql": [
+        "create view mart_costaccounting_scrap_summary as",
+        "with ranked_mapping as (",
+        "  select m.*, row_number() over (partition by source_work_center_id order by effective_start_date desc, mapping_id desc) as rn",
+        "  from manual.work_center_cost_center_mapping m",
+        "  where m.current_flag = 1 and m.approved_flag = 1",
+        "    and m.effective_start_date <= '2025-12-31'",
+        "    and (m.effective_end_date is null or m.effective_end_date > '2025-12-31')",
+        ")",
+        "select b.plant, b.product_family, b.work_center_key, b.work_center_code,",
+        "       coalesce(rm.cost_center_code, 'UNMAPPED') as cost_center_code,",
+        "       sum(b.operations_completed) as operations_completed, sum(b.units_started) as units_started,",
+        "       sum(b.units_scrapped) as units_scrapped, round(sum(b.scrap_standard_cost), 2) as scrap_absorption_value,",
+        "       round(sum(b.started_standard_cost), 2) as started_standard_cost,",
+        "       round(sum(b.scrap_standard_cost) / max(sum(b.started_standard_cost), 1), 4) as cost_accounting_scrap_rate",
+        "from bv_yield_by_routing b",
+        "left join ranked_mapping rm on rm.source_work_center_id = b.work_center_key and rm.rn = 1",
+        "group by b.plant, b.product_family, b.work_center_key, b.work_center_code, coalesce(rm.cost_center_code, 'UNMAPPED');"
+      ]
+    },
+    {
+      "name": "mart_costaccounting_wip_close",
+      "sql": [
+        "create view mart_costaccounting_wip_close as",
+        "select m.month_end_date, m.plant, m.product_family, m.open_work_orders,",
+        "       m.beginning_wip_value, m.material_issued_value, m.labor_absorbed_value, m.scrap_value,",
+        "       m.completion_credit_value, m.ending_wip_value,",
+        "       (select count(*) from workflow.mapping_request r where r.status = 'open' and r.plant = m.plant) as open_mapping_requests",
+        "from mv.month_end_wip_snapshot m;"
+      ]
+    },
+    {
+      "name": "mart_plantops_yield_summary",
+      "sql": [
+        "create view mart_plantops_yield_summary as",
+        "select plant, product_family, work_center_key, work_center_code, center_type,",
+        "       sum(operations_completed) as operations_completed, sum(units_started) as units_started,",
+        "       sum(units_good) as units_good, sum(units_scrapped) as units_scrapped,",
+        "       round(1.0 * sum(units_good) / max(sum(units_started), 1), 4) as plant_ops_yield_rate,",
+        "       round(1.0 * sum(units_scrapped) / max(sum(units_started), 1), 4) as plant_ops_scrap_rate",
+        "from bv_yield_by_routing",
+        "group by plant, product_family, work_center_key, work_center_code, center_type;"
+      ]
+    },
+    {
+      "name": "mart_plantops_oee_daily",
+      "sql": [
+        "create view mart_plantops_oee_daily as",
+        "select production_date, plant, work_center_code, center_type, machines_active, planned_minutes, runtime_minutes,",
+        "       downtime_minutes, units_total, units_good, availability, performance, quality_rate, oee",
+        "from bv_oee_daily;"
+      ]
+    },
+    {
+      "name": "control_recon_scrap_metric_discrepancy",
+      "_note": "Cost accounting uses standard-cost-weighted scrap and the manual cost-center mapping; plant ops uses unit scrap by work center. The control makes that definition drift visible.",
+      "sql": [
+        "create view control_recon_scrap_metric_discrepancy as",
+        "select p.plant, p.product_family, p.work_center_code, c.cost_center_code,",
+        "       p.plant_ops_scrap_rate, c.cost_accounting_scrap_rate,",
+        "       round(c.cost_accounting_scrap_rate - p.plant_ops_scrap_rate, 4) as scrap_rate_delta,",
+        "       case when c.cost_center_code = 'UNMAPPED' then 'mapping_gap' else 'metric_definition_gap' end as break_type",
+        "from mart_plantops_yield_summary p",
+        "join mart_costaccounting_scrap_summary c",
+        "  on c.plant = p.plant and c.product_family = p.product_family and c.work_center_key = p.work_center_key",
+        "where abs(c.cost_accounting_scrap_rate - p.plant_ops_scrap_rate) > 0.0001 or c.cost_center_code = 'UNMAPPED';"
       ]
     },
     {
@@ -1042,7 +1870,79 @@
         "from production.work_order where override_flag = 1",
         "union all",
         "select 'DQ-012', 'MES feed ingested more than 5 days late', cast(operation_id as text)",
-        "from mes.operation where julianday(ingested_at) - julianday(source_updated_at) > 5;"
+        "from mes.operation where julianday(ingested_at) - julianday(source_updated_at) > 5",
+        "union all",
+        "select 'DQ-013', 'work center missing cost-center mapping', cast(work_center_id as text)",
+        "from workflow.mapping_request where issue_type = 'missing_mapping'",
+        "union all",
+        "select 'DQ-014', 'conflicting current work-center cost mapping', cast(work_center_id as text)",
+        "from workflow.mapping_request where issue_type = 'conflicting_mapping'",
+        "union all",
+        "select 'DQ-015', 'unparseable manufacturing raw feed date', source_work_order_id",
+        "from raw.erp_work_order_extract where planned_start_date_text not like '__/__/____';"
+      ]
+    },
+    {
+      "name": "catalog_code_object",
+      "_note": "Views self-register from sqlite_master; non-SQLite procedures/functions/extracts are cataloged as source text with job history and lineage.",
+      "sql": [
+        "insert into catalog.code_object",
+        "select row_number() over (order by name), name, 'view', 'sqlite', sql,",
+        "       case when name like 'mart_costaccounting_%' then 'plant_controlling'",
+        "            when name like 'mart_plantops_%' or name like 'bv_oee%' then 'plant_operations'",
+        "            when name like 'control_%' then 'finance_controls' else 'data_platform' end,",
+        "       '2025-12-31 22:00:00', '2025-12-31 23:30:00', 'deployed', 0, null",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';",
+        "insert into catalog.code_object",
+        "select 1000, 'proc_standard_cost_roll', 'procedure', 'tsql',",
+        "       'create procedure proc_standard_cost_roll as update erp.item set standard_cost = standard_cost where current_flag = 1;',",
+        "       'cost_accounting', '2025-01-03 09:00:00', '2025-12-01 02:00:00', 'deployed', 0, 'Runs after supplier reprices and ECO releases.'",
+        "union all select 1001, 'proc_period_end_wip_close', 'procedure', 'tsql',",
+        "       'create procedure proc_period_end_wip_close as insert into mv.month_end_wip_snapshot select * from bv_wip_rollforward;',",
+        "       'plant_controlling', '2025-01-03 09:30:00', '2025-12-31 03:00:00', 'deployed', 0, 'Period-end WIP close procedure.'",
+        "union all select 1002, 'proc_refresh_mv_month_end_wip_snapshot', 'procedure', 'sql',",
+        "       'delete from mv.month_end_wip_snapshot; insert into mv.month_end_wip_snapshot select row_number() over (order by month_end_date, plant, product_family), month_end_date, plant, product_family, open_work_orders, beginning_wip_value, material_issued_value, labor_absorbed_value, scrap_value, completion_credit_value, ending_wip_value, ''2025-12-31 23:30:00'' from bv_wip_rollforward;',",
+        "       'data_platform', '2025-01-03 09:45:00', '2025-12-31 03:30:00', 'deployed', 0, 'Refresh script for SQLite-modeled materialized view.'",
+        "union all select 1003, 'fn_shift_calendar_bucket', 'function', 'sql',",
+        "       'create function fn_shift_calendar_bucket(ts timestamp, work_center_id int) returns varchar as select shift_pattern from erp.work_center where work_center_id = work_center_id;',",
+        "       'plant_operations', '2025-02-10 11:00:00', '2025-11-15 08:00:00', 'deployed', 0, 'Used by downstream warehouse targets outside SQLite.'",
+        "union all select 1004, 'extract_supplier_quality_monthly', 'extract', 'sql',",
+        "       'select l.vendor_code, n.disposition, count(*) as ncr_count from quality.nonconformance n join production.material_issue mi on mi.work_order_id = n.work_order_id join inventory.lot l on l.lot_id = mi.lot_id group by l.vendor_code, n.disposition;',",
+        "       'supplier_quality', '2025-03-01 07:00:00', '2025-12-31 04:10:00', 'deployed', 0, 'Monthly supplier-quality SFTP extract.'",
+        "union all select 1005, 'feed_finance_wip_journal', 'feed', 'sql',",
+        "       'select month_end_date, plant, product_family, ending_wip_value from mv.month_end_wip_snapshot where month_end_date = (select max(month_end_date) from mv.month_end_wip_snapshot);',",
+        "       'finance_systems', '2025-03-01 07:30:00', '2025-12-31 05:00:00', 'deployed', 0, 'Finance feed consumed by the GL close process.'",
+        "union all select 1100, 'raw_erp_work_order_extract_load', 'etl_script', 'sql',",
+        "       'insert into raw.erp_work_order_extract select * from external_erp_work_order_file;',",
+        "       'integration_platform', '2025-01-15 07:00:00', '2025-12-30 01:15:00', 'deployed', 0, 'Nightly ERP work-order landing job.'",
+        "union all select 1101, 'raw_mes_operation_event_load', 'etl_script', 'sql',",
+        "       'insert into raw.mes_operation_event select * from external_mes_operation_event_file;',",
+        "       'integration_platform', '2025-01-15 07:05:00', '2025-12-30 01:20:00', 'deployed', 0, 'MES operation-event landing job.'",
+        "union all select 1102, 'raw_cmms_maintenance_extract_load', 'etl_script', 'sql',",
+        "       'insert into raw.cmms_maintenance_extract select * from external_cmms_maintenance_file;',",
+        "       'integration_platform', '2025-01-15 07:10:00', '2025-12-30 01:25:00', 'deployed', 0, 'CMMS maintenance extract landing job.'",
+        "union all select 1103, 'raw_quality_results_file_load', 'etl_script', 'sql',",
+        "       'insert into raw.quality_results_file select * from external_quality_results_file;',",
+        "       'integration_platform', '2025-01-15 07:15:00', '2025-12-30 01:30:00', 'deployed', 0, 'Quality results landing job.';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "sql": [
+        "insert into catalog.lineage_edge",
+        "select row_number() over (order by object_name), object_name, 'sqlite_master', object_name, 'defines', 'View source self-registered from sqlite_master.'",
+        "from catalog.code_object where object_type = 'view';",
+        "insert into catalog.lineage_edge",
+        "select 5000, 'proc_standard_cost_roll', 'erp.item', 'erp.item', 'updates', 'Rolls current standard costs after reprice/ECO approval.'",
+        "union all select 5001, 'proc_period_end_wip_close', 'bv_wip_rollforward', 'mv.month_end_wip_snapshot', 'writes', 'Closes period WIP into a snapshot table.'",
+        "union all select 5002, 'proc_refresh_mv_month_end_wip_snapshot', 'bv_wip_rollforward', 'mv.month_end_wip_snapshot', 'refreshes', 'Scheduled materialized-view refresh.'",
+        "union all select 5003, 'fn_shift_calendar_bucket', 'erp.work_center', 'bv_oee_daily', 'supports', 'Supplies shift-calendar bucketing to OEE reporting.'",
+        "union all select 5004, 'extract_supplier_quality_monthly', 'quality.nonconformance', 'supplier_quality_sftp', 'extracts', 'Outbound supplier-quality defect extract.'",
+        "union all select 5005, 'feed_finance_wip_journal', 'mv.month_end_wip_snapshot', 'finance_wip_journal_feed', 'feeds', 'Month-end WIP balance feed to finance.'",
+        "union all select 5006, 'raw_erp_work_order_extract_load', 'production.work_order', 'raw.erp_work_order_extract', 'lands', 'ERP work-order extract landing.'",
+        "union all select 5007, 'raw_mes_operation_event_load', 'mes.operation', 'raw.mes_operation_event', 'lands', 'MES operation-event landing.'",
+        "union all select 5008, 'raw_cmms_maintenance_extract_load', 'cmms.maintenance_order', 'raw.cmms_maintenance_extract', 'lands', 'CMMS maintenance extract landing.'",
+        "union all select 5009, 'raw_quality_results_file_load', 'quality.inspection', 'raw.quality_results_file', 'lands', 'Quality result file landing.';"
       ]
     }
   ],
@@ -1063,7 +1963,9 @@
   "controls": [
     {"rule_id": "CTL-001", "rule_name": "Material consumption ties to BOM standard", "source_dataset": "production.material_issue", "target_dataset": "plm.bom_component", "grain": "work_order_id x component_part_id", "tolerance": "5% of standard quantity", "frequency": "daily", "owner": "plant_controlling", "severity": "high", "expected_break_rate": "~8% of work-order components (designed over/under-issues + restatement drift)", "break_view": "control_recon_consumption_vs_bom"},
     {"rule_id": "CTL-002", "rule_name": "Lot genealogy completeness", "source_dataset": "production.material_issue", "target_dataset": "inventory.lot_genealogy", "grain": "issue", "tolerance": "existence", "frequency": "daily", "owner": "quality_systems", "severity": "high", "expected_break_rate": "~2% of lot-controlled issues (missing scans)", "break_view": "dq_rule_result_current"},
-    {"rule_id": "CTL-003", "rule_name": "Finished lots tie to completed work orders", "source_dataset": "inventory.lot", "target_dataset": "production.work_order", "grain": "produced lot", "tolerance": "existence", "frequency": "daily", "owner": "plant_controlling", "severity": "medium", "expected_break_rate": "0 (structural: produced lots derive from completed orders)", "break_view": "dq_rule_result_current"}
+    {"rule_id": "CTL-003", "rule_name": "Finished lots tie to completed work orders", "source_dataset": "inventory.lot", "target_dataset": "production.work_order", "grain": "produced lot", "tolerance": "existence", "frequency": "daily", "owner": "plant_controlling", "severity": "medium", "expected_break_rate": "0 (structural: produced lots derive from completed orders)", "break_view": "dq_rule_result_current"},
+    {"rule_id": "CTL-004", "rule_name": "Period-end WIP roll-forward", "source_dataset": "bv_wip_rollforward", "target_dataset": "mv.month_end_wip_snapshot", "grain": "month_end_date x plant x product_family", "tolerance": "1 currency unit", "frequency": "monthly", "owner": "plant_controlling", "severity": "high", "expected_break_rate": "~1% at close from late postings and manual overrides", "break_view": "bv_wip_rollforward"},
+    {"rule_id": "CTL-005", "rule_name": "Cost-accounting vs plant-ops scrap metric", "source_dataset": "mart_costaccounting_scrap_summary", "target_dataset": "mart_plantops_yield_summary", "grain": "plant x work_center x product_family", "tolerance": "definition drift documented", "frequency": "daily", "owner": "finance_controls", "severity": "medium", "expected_break_rate": "expected definition differences plus unmapped work centers", "break_view": "control_recon_scrap_metric_discrepancy"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "erp.item", "rule_type": "required_field", "condition": "current items have standard_cost", "severity": "error", "expected_failure_rate": 0.02},
@@ -1077,23 +1979,45 @@
     {"rule_id": "DQ-009", "dataset": "cmms.asset", "rule_type": "consistency", "condition": "asset name matches MES machine code", "severity": "warning", "expected_failure_rate": 0.05},
     {"rule_id": "DQ-010", "dataset": "plm.bom_component", "rule_type": "consistency", "condition": "component differs from its assembly", "severity": "error", "expected_failure_rate": 0.001},
     {"rule_id": "DQ-011", "dataset": "production.work_order", "rule_type": "review_queue", "condition": "manual quality overrides audited", "severity": "warning", "expected_failure_rate": 0.02},
-    {"rule_id": "DQ-012", "dataset": "mes.operation", "rule_type": "timeliness", "condition": "ingested within 5 days of source update", "severity": "warning", "expected_failure_rate": 0.02}
+    {"rule_id": "DQ-012", "dataset": "mes.operation", "rule_type": "timeliness", "condition": "ingested within 5 days of source update", "severity": "warning", "expected_failure_rate": 0.02},
+    {"rule_id": "DQ-013", "dataset": "manual.work_center_cost_center_mapping", "rule_type": "coverage", "condition": "live work centers have an approved current cost-center mapping", "severity": "warning", "expected_failure_rate": 0.08},
+    {"rule_id": "DQ-014", "dataset": "manual.work_center_cost_center_mapping", "rule_type": "uniqueness", "condition": "one current approved mapping per work center", "severity": "warning", "expected_failure_rate": 0.04},
+    {"rule_id": "DQ-015", "dataset": "raw.erp_work_order_extract", "rule_type": "format", "condition": "landed work-order dates parse as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.01}
   ],
   "dataflows": [
     {"name": "item_mastering", "sequence": "plm.part -> raw extract -> staging -> xref -> core.part -> wh.dim_part"},
-    {"name": "plan_to_produce", "sequence": "erp.item -> production.work_order -> state machine -> mes.operation schedule -> wh.fact_production_order"},
+    {"name": "plan_to_produce", "sequence": "erp.item -> production.work_order -> raw ERP extract -> stg.erp_work_order -> state machine -> mes.operation schedule -> wh.fact_production_order"},
     {"name": "material_and_genealogy", "sequence": "plm.bom_component x released work orders -> production.material_issue -> inventory.lot (produced) -> inventory.lot_genealogy"},
-    {"name": "machine_to_oee", "sequence": "mes.downtime_event + mes.operation -> wh.fact_machine_utilization_daily -> mart_oee_daily"},
-    {"name": "quality_loop", "sequence": "mes.operation -> quality.inspection -> quality.nonconformance -> scrap/use-as-is dispositions"}
+    {"name": "machine_to_oee", "sequence": "mes.operation -> raw MES events -> stg.mes_operation_event -> wh.fact_operation_event + wh.fact_machine_utilization_daily -> nv/bv OEE views -> mart_plantops_oee_daily"},
+    {"name": "quality_loop", "sequence": "quality.inspection -> raw quality results -> stg.quality_result -> quality.nonconformance -> supplier quality extract"},
+    {"name": "cost_accounting_close", "sequence": "manual.work_center_cost_center_mapping -> mart_costaccounting_scrap_summary -> bv_wip_rollforward -> mv.month_end_wip_snapshot -> finance feed"},
+    {"name": "code_and_lineage", "sequence": "sqlite_master + stored source rows -> catalog.code_object -> catalog.lineage_edge -> integration.job/job_run"}
   ],
   "validation": {
-    "required_views": ["mart_oee_daily", "mart_yield_by_work_center", "control_recon_consumption_vs_bom", "dq_rule_result_current"],
+    "required_views": [
+      "nv_production_order_operations",
+      "nv_material_consumption",
+      "nv_machine_utilization",
+      "bv_oee_daily",
+      "bv_yield_by_routing",
+      "bv_wip_rollforward",
+      "mart_costaccounting_scrap_summary",
+      "mart_costaccounting_wip_close",
+      "mart_plantops_yield_summary",
+      "mart_plantops_oee_daily",
+      "mart_oee_daily",
+      "mart_yield_by_work_center",
+      "control_recon_consumption_vs_bom",
+      "control_recon_scrap_metric_discrepancy",
+      "dq_rule_result_current"
+    ],
     "expected_row_ranges": {
       "plm.part": [800, 1000],
       "production.work_order": [5000, 20000],
       "mes.operation": [22000, 90000],
       "production.material_issue": [30000, 130000],
-      "inventory.lot_genealogy": [15000, 100000]
+      "inventory.lot_genealogy": [15000, 100000],
+      "mv.month_end_wip_snapshot": [30, 350]
     }
   }
 }
