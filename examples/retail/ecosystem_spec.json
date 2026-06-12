@@ -1,5 +1,5 @@
 {
-  "_note": "Worked example: Copperleaf Mercantile, a fictional omnichannel general-merchandise retailer. Four source systems (TillPoint POS, CartHaven Commerce, ShelfWise Merchandising, LoopRewards Loyalty), store + web sales with a fulfillment state machine, derived tenders/returns, raw->stg->xref->core customer mastering, warehouse dims/facts, daily sales + returns marts, a tender recon control, and 12 logged imperfections each aimed at a catcher. Keys starting with '_' are comments stripped before validation.",
+  "_note": "Worked example: Copperleaf Mercantile, a fictional omnichannel general-merchandise retailer. Four source systems (TillPoint POS, CartHaven Commerce, ShelfWise Merchandising, LoopRewards Loyalty), store + web sales with a fulfillment state machine, feed-specific raw/staging landings, xref/core customer mastering, warehouse dims/facts, a full nv/bv/mv/BU view stack, cataloged code objects and lineage, a manual merchandising hierarchy override, recon controls, and logged imperfections each aimed at a catcher. Keys starting with '_' are comments stripped before validation.",
   "spec_version": 2,
   "organization": {
     "name": "Copperleaf Mercantile",
@@ -82,6 +82,32 @@
         {"name": "cost_ratio", "type": "decimal", "_note": "Cost ratio by category: grocery/electronics thin margin, apparel/beauty rich. Scalar case branches + ONE expression below — a case whose branches are different expressions silently reuses the first compiled expression (engine caches by column name).", "gen": {"type": "case", "on": "category", "cases": {"apparel": 0.42, "footwear": 0.48, "home": 0.5, "electronics": 0.72, "beauty": 0.38, "grocery": 0.68, "toys": 0.52}}},
         {"name": "unit_cost", "type": "decimal", "gen": "expr:round(list_price * cost_ratio, 2)"},
         {"name": "active_flag", "type": "boolean", "gen": "bool:0.9"}
+      ]
+    },
+    {
+      "_note": "Spreadsheet-style merchandising rollup overrides: generated one row per SKU, but only current/approved/eligible rows are applied downstream. The coverage flag leaves ~5% of SKUs unmapped; SCD2 versions, stale_mapping, and conflict flags feed DQ and mapping-review cases.",
+      "schema": "manual", "name": "merch_hierarchy_override", "layer": "operational",
+      "purpose": "Human-maintained SKU to merchandising hierarchy overrides, used by merchandising marts but not finance marts.",
+      "source_system": "Merchandising Ops Spreadsheet",
+      "primary_key": ["override_id"],
+      "rows": {"per_parent": "merch.product", "distribution": {"distribution": "constant", "value": 1}, "min": 1, "max": 1},
+      "traits": ["audited", "effective_dated"],
+      "history": {"strategy": "scd2", "change_rate": 0.08, "max_versions": 2, "track": ["override_category", "override_reason", "source_file_name"]},
+      "indexes": [["product_id"], ["sku"], ["current_flag"]],
+      "columns": [
+        {"name": "override_id", "type": "integer", "gen": "seq"},
+        {"name": "product_id", "type": "integer", "gen": "parent_key"},
+        {"name": "sku", "type": "string", "gen": {"type": "parent_copy", "source_column": "sku"}},
+        {"name": "source_category", "type": "string", "gen": {"type": "parent_copy", "source_column": "category"}},
+        {"name": "override_eligible_flag", "type": "boolean", "gen": {"type": "expression", "expression": "0 if product_id % 20 == 0 else 1"}},
+        {"name": "override_category", "type": "string", "gen": {"type": "case", "on": "source_category", "cases": {"apparel": {"type": "choice", "values": ["apparel", "private_label_apparel", "seasonal_apparel"], "weights": [0.72, 0.18, 0.10]}, "footwear": {"type": "choice", "values": ["footwear", "private_label_apparel", "seasonal_apparel"], "weights": [0.70, 0.20, 0.10]}, "home": {"type": "choice", "values": ["home", "seasonal_home", "giftable_home"], "weights": [0.70, 0.20, 0.10]}, "toys": {"type": "choice", "values": ["toys", "giftable_toys", "seasonal_home"], "weights": [0.68, 0.22, 0.10]}, "beauty": {"type": "choice", "values": ["beauty", "wellness_beauty", "private_label_beauty"], "weights": [0.74, 0.18, 0.08]}, "electronics": {"type": "choice", "values": ["electronics", "connected_home", "clearance_electronics"], "weights": [0.82, 0.10, 0.08]}, "grocery": {"type": "choice", "values": ["grocery", "pantry_private_label", "seasonal_grocery"], "weights": [0.80, 0.12, 0.08]}}}},
+        {"name": "override_reason", "type": "string", "gen": "choice:seasonal_reclass=0.32,private_label_rollup=0.28,supplier_funded_feature=0.18,category_reorg=0.16,cleanup_reupload=0.06"},
+        {"name": "business_unit", "type": "string", "gen": "const:merchandising"},
+        {"name": "source_file_name", "type": "string", "gen": "choice:hierarchy_reclass_q1_2025.xlsx=0.42,private_label_rollup_2025.xlsx=0.34,seasonal_gift_shop_upload.xlsx=0.18,reorg_cleanup_reload.xlsx=0.06"},
+        {"name": "uploaded_by", "type": "string", "gen": "staff_user"},
+        {"name": "uploaded_at", "type": "timestamp"},
+        {"name": "approved_flag", "type": "boolean", "gen": {"type": "expression", "expression": "0 if product_id % 37 == 0 else 1"}},
+        {"name": "conflict_upload_flag", "type": "boolean", "gen": {"type": "expression", "expression": "1 if product_id % 137 == 0 else 0"}}
       ]
     },
     {
@@ -300,8 +326,8 @@
       "columns": [
         {"name": "case_id", "type": "integer"},
         {"name": "case_number", "type": "string", "gen": {"type": "pattern", "pattern": "CASE-#####", "unique": true}},
-        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.24,tender_recon_break=0.26,blind_return_review=0.18,price_override_audit=0.17,inventory_count_variance=0.15"},
-        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "tender_recon_break": "sales_audit", "blind_return_review": "loss_prevention", "price_override_audit": "store_ops", "inventory_count_variance": "inventory_control"}}},
+        {"name": "case_type", "type": "string", "gen": "choice:duplicate_customer_review=0.21,tender_recon_break=0.23,blind_return_review=0.16,price_override_audit=0.15,inventory_count_variance=0.13,merch_hierarchy_mapping_review=0.12"},
+        {"name": "queue", "type": "string", "gen": {"type": "case", "on": "case_type", "cases": {"duplicate_customer_review": "mdm_queue", "tender_recon_break": "sales_audit", "blind_return_review": "loss_prevention", "price_override_audit": "store_ops", "inventory_count_variance": "inventory_control", "merch_hierarchy_mapping_review": "merch_data_stewards"}}},
         {"name": "priority", "type": "string", "gen": "choice:low=0.32,medium=0.48,high=0.2"},
         {"name": "related_entity", "type": "string", "gen": "pattern:ENT-######"},
         {"name": "status", "type": "string", "gen": "const:open"},
@@ -325,13 +351,47 @@
       ]
     },
     {
+      "schema": "workflow", "name": "mapping_review_case", "layer": "workflow",
+      "purpose": "Derived mapping-review cases seeded from stale and conflicting merchandising hierarchy overrides.",
+      "source": "derivation", "primary_key": ["case_id"],
+      "columns": [
+        {"name": "case_id", "type": "integer"},
+        {"name": "case_number", "type": "string"},
+        {"name": "issue_type", "type": "string"},
+        {"name": "related_sku", "type": "string"},
+        {"name": "override_id", "type": "integer"},
+        {"name": "status", "type": "string"},
+        {"name": "priority", "type": "string"},
+        {"name": "queue", "type": "string"},
+        {"name": "assigned_to", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "due_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "integration", "name": "job", "layer": "integration",
+      "purpose": "Batch, refresh, and outbound extract job catalog.",
+      "primary_key": ["job_id"], "rows": 8, "scale_exempt": true,
+      "columns": [
+        {"name": "job_id", "type": "integer"},
+        {"name": "job_name", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "pos_tlog_load", "2": "ecom_order_export_load", "3": "merch_item_master_load", "4": "returns_file_load", "5": "nightly_sales_close", "6": "inventory_snapshot_rebuild", "7": "mv_week_end_sales_snapshot_refresh", "8": "finance_gl_extract"}}},
+        {"name": "job_type", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "file_ingest", "2": "file_ingest", "3": "file_ingest", "4": "file_ingest", "5": "procedure", "6": "procedure", "7": "materialized_view_refresh", "8": "extract"}}},
+        {"name": "schedule_cron", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "15 02 * * *", "2": "30 02 * * *", "3": "45 02 * * *", "4": "05 03 * * *", "5": "30 03 * * *", "6": "10 04 * * *", "7": "20 04 * * 0", "8": "55 04 * * *"}}},
+        {"name": "owner_team", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "store_data_ops", "2": "ecommerce_data_ops", "3": "merch_data_ops", "4": "returns_ops", "5": "finance_data_ops", "6": "inventory_control", "7": "analytics_engineering", "8": "finance_integrations"}}},
+        {"name": "target_code_object", "type": "string", "gen": {"type": "case", "on": "job_id", "cases": {"1": "stg_pos_tlog_transaction", "2": "stg_ecom_order_export", "3": "stg_merch_item_master_feed", "4": "stg_returns_file", "5": "proc_nightly_sales_close", "6": "proc_rebuild_inventory_snapshot", "7": "proc_refresh_mv_week_end_sales_snapshot", "8": "extract_finance_gl_sales"}}},
+        {"name": "active_flag", "type": "boolean", "gen": "bool:0.98"}
+      ]
+    },
+    {
       "schema": "integration", "name": "job_run", "layer": "integration",
-      "purpose": "Batch job run log.",
-      "primary_key": ["run_id"], "rows": 800,
+      "purpose": "Batch job run history with successful, partial, and failed executions.",
+      "primary_key": ["run_id"], "rows": 900,
       "columns": [
         {"name": "run_id", "type": "integer"},
-        {"name": "job_name", "type": "string", "gen": "choice:pos_tlog_load=0.28,ecom_order_sync=0.22,loyalty_member_extract=0.18,merch_item_sync=0.14,warehouse_refresh=0.18"},
+        {"name": "job_id", "type": "integer", "gen": "fk:integration.job@zipf(0.7)"},
+        {"name": "job_name", "type": "string", "gen": {"type": "fk_copy", "column": "job_id", "ref": "integration.job", "source_column": "job_name"}},
         {"name": "run_started_at", "type": "timestamp", "gen": {"type": "timestamp", "business_hours": false}},
+        {"name": "run_ended_at", "type": "timestamp", "gen": {"type": "date_offset", "from": "run_started_at", "unit": "minutes", "offset": {"distribution": "lognormal", "median": 18, "sigma": 0.7, "min": 1, "max": 180}, "clamp_as_of": false, "as": "timestamp"}},
         {"name": "run_status", "type": "string", "gen": "choice:success=0.92,failed=0.04,partial=0.04"},
         {"name": "rows_processed", "type": "integer", "gen": "int:lognormal(median=5000,sigma=1.0,min=0)"},
         {"name": "error_note", "type": "string", "null_rate": 0.85, "gen": "text:exception_note"}
@@ -355,13 +415,13 @@
     {
       "schema": "dq", "name": "rule", "layer": "dq",
       "purpose": "Data quality rule catalog (results come from the dq_rule_result_current view).",
-      "primary_key": ["rule_id"], "rows": 6, "scale_exempt": true,
+      "primary_key": ["rule_id"], "rows": 8, "scale_exempt": true,
       "columns": [
         {"name": "rule_id", "type": "integer"},
-        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006"}}},
-        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active customer missing email", "2": "sale line references unknown product", "3": "active customer missing POS crosswalk", "4": "unparseable raw loyalty signup date", "5": "fulfillment events out of sequence", "6": "return line missing original sale line"}}},
-        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.customer", "2": "pos.transaction_line", "3": "xref.entity_identifier", "4": "raw.loyalty_member_extract", "5": "ecom.order_event", "6": "ret.return_line"}}},
-        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning", "5": "warning", "6": "error"}}},
+        {"name": "rule_code", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "DQ-001", "2": "DQ-002", "3": "DQ-003", "4": "DQ-004", "5": "DQ-005", "6": "DQ-006", "7": "DQ-007", "8": "DQ-008"}}},
+        {"name": "rule_name", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "active customer missing email", "2": "sale line references unknown product", "3": "active customer missing POS crosswalk", "4": "unparseable raw loyalty signup date", "5": "fulfillment events out of sequence", "6": "return line missing original sale line", "7": "stale merchandising hierarchy override", "8": "conflicting merchandising hierarchy override"}}},
+        {"name": "dataset", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "crm.customer", "2": "pos.transaction_line", "3": "xref.entity_identifier", "4": "raw.loyalty_member_extract", "5": "ecom.order_event", "6": "ret.return_line", "7": "manual.merch_hierarchy_override", "8": "manual.merch_hierarchy_override"}}},
+        {"name": "severity", "type": "string", "gen": {"type": "case", "on": "rule_id", "cases": {"1": "warning", "2": "error", "3": "error", "4": "warning", "5": "warning", "6": "error", "7": "warning", "8": "error"}}},
         {"name": "owner", "type": "string", "gen": "staff_user"}
       ]
     },
@@ -391,6 +451,209 @@
         {"name": "loyalty_tier", "type": "string"},
         {"name": "status", "type": "string"},
         {"name": "signup_date", "type": "date", "nullable": true}
+      ]
+    },
+    {
+      "schema": "raw", "name": "pos_tlog_file", "layer": "raw",
+      "purpose": "Raw POS transaction log file rows per store batch, including re-polled duplicate batches.",
+      "source": "derivation", "primary_key": ["raw_tlog_id"],
+      "columns": [
+        {"name": "raw_tlog_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "store_id_text", "type": "string"},
+        {"name": "txn_id_text", "type": "string"},
+        {"name": "txn_number", "type": "string"},
+        {"name": "line_number_text", "type": "string"},
+        {"name": "customer_id_text", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "txn_ts_text", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "sku", "type": "string"},
+        {"name": "quantity_text", "type": "string"},
+        {"name": "list_price_text", "type": "string"},
+        {"name": "unit_price_text", "type": "string"},
+        {"name": "promo_depth", "type": "string"},
+        {"name": "discount_amount_text", "type": "string"},
+        {"name": "line_amount_text", "type": "string"},
+        {"name": "source_updated_at", "type": "timestamp"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "pos_tlog_transaction", "layer": "staging",
+      "purpose": "Typed and deduplicated POS TLOG rows; re-polled batches keep only the latest ingested row per transaction line.",
+      "source": "derivation", "primary_key": ["sale_line_uid"],
+      "indexes": [["txn_id"], ["product_id"], ["sale_date"]],
+      "columns": [
+        {"name": "sale_line_uid", "type": "integer"},
+        {"name": "txn_id", "type": "integer"},
+        {"name": "txn_number", "type": "string"},
+        {"name": "line_number", "type": "integer"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "store_id", "type": "integer"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "txn_ts", "type": "timestamp", "nullable": true},
+        {"name": "sale_date", "type": "date", "nullable": true},
+        {"name": "status", "type": "string"},
+        {"name": "product_id", "type": "integer", "nullable": true},
+        {"name": "sku", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "promo_depth", "type": "string"},
+        {"name": "gross_amount", "type": "decimal"},
+        {"name": "discount_amount", "type": "decimal"},
+        {"name": "net_amount", "type": "decimal"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "ecom_order_export", "layer": "raw",
+      "purpose": "Raw ecommerce order export rows at order-line grain with order, status, and fulfillment timestamps as text.",
+      "source": "derivation", "primary_key": ["raw_order_export_id"],
+      "columns": [
+        {"name": "raw_order_export_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "order_id_text", "type": "string"},
+        {"name": "order_number", "type": "string"},
+        {"name": "order_line_id_text", "type": "string"},
+        {"name": "customer_id_text", "type": "string"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "device", "type": "string"},
+        {"name": "order_placed_text", "type": "string"},
+        {"name": "status", "type": "string"},
+        {"name": "shipped_at_text", "type": "string", "nullable": true},
+        {"name": "product_sku", "type": "string"},
+        {"name": "quantity_text", "type": "string"},
+        {"name": "list_price_text", "type": "string"},
+        {"name": "unit_price_text", "type": "string"},
+        {"name": "promo_depth", "type": "string"},
+        {"name": "discount_amount_text", "type": "string"},
+        {"name": "line_amount_text", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "ecom_order_export", "layer": "staging",
+      "purpose": "Typed ecommerce order export rows with guarded order and shipped timestamp parsing.",
+      "source": "derivation", "primary_key": ["order_line_id"],
+      "indexes": [["order_id"], ["product_id"], ["order_date"]],
+      "columns": [
+        {"name": "order_line_id", "type": "integer"},
+        {"name": "order_id", "type": "integer"},
+        {"name": "order_number", "type": "string"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "loyalty_tier", "type": "string"},
+        {"name": "device", "type": "string"},
+        {"name": "order_placed_ts", "type": "timestamp", "nullable": true},
+        {"name": "order_date", "type": "date", "nullable": true},
+        {"name": "status", "type": "string"},
+        {"name": "shipped_at", "type": "timestamp", "nullable": true},
+        {"name": "product_id", "type": "integer", "nullable": true},
+        {"name": "sku", "type": "string"},
+        {"name": "quantity", "type": "integer"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "unit_price", "type": "decimal"},
+        {"name": "promo_depth", "type": "string"},
+        {"name": "gross_amount", "type": "decimal"},
+        {"name": "discount_amount", "type": "decimal"},
+        {"name": "net_amount", "type": "decimal"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "merch_item_master_feed", "layer": "raw",
+      "purpose": "Raw merchandising item master feed with prices, costs, suppliers, and active flags as text.",
+      "source": "derivation", "primary_key": ["raw_item_id"],
+      "columns": [
+        {"name": "raw_item_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"},
+        {"name": "supplier_code", "type": "string"},
+        {"name": "gtin", "type": "string"},
+        {"name": "list_price_text", "type": "string"},
+        {"name": "unit_cost_text", "type": "string"},
+        {"name": "active_flag_text", "type": "string"},
+        {"name": "source_updated_text", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "merch_item_master_feed", "layer": "staging",
+      "purpose": "Typed merchandising item master feed with guarded source-updated timestamp parsing.",
+      "source": "derivation", "primary_key": ["product_id"],
+      "indexes": [["sku"], ["category"]],
+      "columns": [
+        {"name": "product_id", "type": "integer"},
+        {"name": "sku", "type": "string"},
+        {"name": "product_name", "type": "string"},
+        {"name": "category", "type": "string"},
+        {"name": "supplier_code", "type": "string"},
+        {"name": "gtin", "type": "string"},
+        {"name": "list_price", "type": "decimal"},
+        {"name": "unit_cost", "type": "decimal"},
+        {"name": "active_flag", "type": "boolean"},
+        {"name": "source_updated_at", "type": "timestamp", "nullable": true},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "raw", "name": "returns_file", "layer": "raw",
+      "purpose": "Raw returns file from store service desks and ecommerce RMAs.",
+      "source": "derivation", "primary_key": ["raw_return_id"],
+      "columns": [
+        {"name": "raw_return_id", "type": "integer"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "return_id_text", "type": "string"},
+        {"name": "return_line_id_text", "type": "string"},
+        {"name": "channel", "type": "string"},
+        {"name": "sale_line_id_text", "type": "string"},
+        {"name": "customer_id_text", "type": "string"},
+        {"name": "store_id_text", "type": "string", "nullable": true},
+        {"name": "sku", "type": "string"},
+        {"name": "quantity_text", "type": "string"},
+        {"name": "refund_amount_text", "type": "string"},
+        {"name": "return_date_text", "type": "string"},
+        {"name": "return_reason", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "stg", "name": "returns_file", "layer": "staging",
+      "purpose": "Typed returns rows with guarded return-date parsing.",
+      "source": "derivation", "primary_key": ["return_line_id"],
+      "indexes": [["return_id"], ["product_id"], ["return_date"]],
+      "columns": [
+        {"name": "return_line_id", "type": "integer"},
+        {"name": "return_id", "type": "integer"},
+        {"name": "channel", "type": "string"},
+        {"name": "sale_line_id", "type": "integer"},
+        {"name": "original_sale_line_uid", "type": "integer"},
+        {"name": "customer_id", "type": "integer"},
+        {"name": "store_id", "type": "integer", "nullable": true},
+        {"name": "product_id", "type": "integer", "nullable": true},
+        {"name": "sku", "type": "string"},
+        {"name": "quantity_returned", "type": "integer"},
+        {"name": "refund_amount", "type": "decimal"},
+        {"name": "return_date", "type": "date", "nullable": true},
+        {"name": "return_reason", "type": "string"},
+        {"name": "disposition", "type": "string"},
+        {"name": "file_id", "type": "string"},
+        {"name": "batch_id", "type": "string"},
+        {"name": "ingested_at", "type": "timestamp"}
       ]
     },
     {
@@ -519,6 +782,7 @@
         {"name": "store_code", "type": "string"},
         {"name": "region", "type": "string"},
         {"name": "store_format", "type": "string"},
+        {"name": "training_store_flag", "type": "boolean"},
         {"name": "city", "type": "string"},
         {"name": "state", "type": "string"}
       ]
@@ -532,6 +796,17 @@
         {"name": "tier_name", "type": "string"},
         {"name": "annual_spend_threshold", "type": "integer"},
         {"name": "points_multiplier", "type": "decimal"}
+      ]
+    },
+    {
+      "schema": "wh", "name": "dim_channel", "layer": "warehouse_dimension",
+      "purpose": "Channel dimension for store, ecommerce demand, and shipped-sales reporting.",
+      "source": "derivation", "primary_key": ["channel_key"],
+      "columns": [
+        {"name": "channel_key", "type": "integer"},
+        {"name": "channel_name", "type": "string"},
+        {"name": "channel_group", "type": "string"},
+        {"name": "demand_recognition", "type": "string"}
       ]
     },
     {
@@ -571,6 +846,7 @@
         {"name": "return_id", "type": "integer"},
         {"name": "channel", "type": "string"},
         {"name": "return_date", "type": "date"},
+        {"name": "original_sale_line_uid", "type": "integer"},
         {"name": "customer_key", "type": "integer"},
         {"name": "store_key", "type": "integer", "nullable": true},
         {"name": "product_key", "type": "integer"},
@@ -578,6 +854,58 @@
         {"name": "refund_amount", "type": "decimal"},
         {"name": "return_reason", "type": "string"},
         {"name": "disposition", "type": "string"}
+      ]
+    },
+    {
+      "schema": "mv", "name": "week_end_sales_snapshot", "layer": "mart",
+      "purpose": "Materialized week-end sales snapshot populated from business views and refreshed by a cataloged job.",
+      "source": "derivation", "primary_key": ["snapshot_id"], "scale_exempt": true,
+      "columns": [
+        {"name": "snapshot_id", "type": "integer"},
+        {"name": "week_end_date", "type": "date"},
+        {"name": "channel", "type": "string"},
+        {"name": "fiscal_week_label", "type": "string"},
+        {"name": "transactions", "type": "integer"},
+        {"name": "units", "type": "integer"},
+        {"name": "gross_sales", "type": "decimal"},
+        {"name": "promo_discount", "type": "decimal"},
+        {"name": "return_amount", "type": "decimal"},
+        {"name": "finance_net_sales", "type": "decimal"},
+        {"name": "snapshot_created_at", "type": "timestamp"}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "code_object", "layer": "catalog",
+      "purpose": "Catalog of deployed views, target-platform procedures, functions, and extract definitions.",
+      "source": "derivation", "primary_key": ["object_id"],
+      "columns": [
+        {"name": "object_id", "type": "integer"},
+        {"name": "object_name", "type": "string"},
+        {"name": "object_type", "type": "string"},
+        {"name": "language", "type": "string"},
+        {"name": "source_text", "type": "text"},
+        {"name": "owner_team", "type": "string"},
+        {"name": "created_at", "type": "timestamp"},
+        {"name": "last_altered_at", "type": "timestamp"},
+        {"name": "deployment_status", "type": "string"},
+        {"name": "schedule", "type": "string", "nullable": true},
+        {"name": "destination_system", "type": "string", "nullable": true},
+        {"name": "notes", "type": "string", "nullable": true}
+      ]
+    },
+    {
+      "schema": "catalog", "name": "lineage_edge", "layer": "catalog",
+      "purpose": "Column/table lineage edges linking code objects to datasets they read or write.",
+      "source": "derivation", "primary_key": ["edge_id"],
+      "columns": [
+        {"name": "edge_id", "type": "integer"},
+        {"name": "source_object", "type": "string"},
+        {"name": "target_object", "type": "string"},
+        {"name": "edge_type", "type": "string"},
+        {"name": "source_column", "type": "string", "nullable": true},
+        {"name": "target_column", "type": "string", "nullable": true},
+        {"name": "code_object_name", "type": "string"},
+        {"name": "confidence_score", "type": "decimal"}
       ]
     }
   ],
@@ -652,6 +980,30 @@
       ]
     },
     {
+      "name": "raw_merch_item_master_feed",
+      "sql": [
+        "insert into raw.merch_item_master_feed",
+        "select p.product_id, 'MERCH-ITEM-' || replace(date(p.updated_at), '-', '') || '.csv',",
+        "       'MERCH-' || replace(date(p.updated_at), '-', ''), p.sku, p.product_name, p.category,",
+        "       s.supplier_code, p.gtin, printf('%.2f', p.list_price), printf('%.2f', p.unit_cost),",
+        "       case when p.active_flag = 1 then 'Y' else 'N' end, strftime('%Y-%m-%d %H:%M:%S', p.updated_at),",
+        "       case when datetime(p.updated_at, '+2 hours') > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(p.updated_at, '+2 hours') end",
+        "from merch.product p left join merch.supplier s on s.supplier_id = p.supplier_id;"
+      ]
+    },
+    {
+      "name": "stg_merch_item_master_feed",
+      "sql": [
+        "insert into stg.merch_item_master_feed",
+        "select cast(raw_item_id as integer), trim(sku), trim(product_name), lower(trim(category)), supplier_code, gtin,",
+        "       cast(list_price_text as real), cast(unit_cost_text as real),",
+        "       case when upper(active_flag_text) in ('Y', 'YES', '1', 'TRUE') then 1 else 0 end,",
+        "       case when source_updated_text like '____-__-__ __:__:__' then source_updated_text else null end,",
+        "       file_id, batch_id, ingested_at",
+        "from raw.merch_item_master_feed;"
+      ]
+    },
+    {
       "name": "xref_entity_identifier",
       "_note": "Three source identities per customer (loyalty members only get the third) — a crosswalk that maps a single system is not a crosswalk.",
       "sql": [
@@ -685,7 +1037,90 @@
       "sql": [
         "insert into core.product",
         "select product_id, sku, product_name, category, list_price, unit_cost, active_flag",
-        "from merch.product;"
+        "from stg.merch_item_master_feed;"
+      ]
+    },
+    {
+      "name": "raw_pos_tlog_file",
+      "_note": "Second insert simulates re-polled store batches; staging deduplicates by transaction/line and latest ingested_at.",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into raw.pos_tlog_file",
+        "select l.line_id, 'POS-' || t.store_id || '-' || replace(date(t.txn_ts), '-', '') || '.tlog',",
+        "       'POS-' || t.store_id || '-' || replace(date(t.txn_ts), '-', ''), cast(t.store_id as text),",
+        "       cast(t.txn_id as text), t.txn_number, cast(l.line_number as text), cast(t.customer_id as text),",
+        "       t.loyalty_tier, strftime('%Y-%m-%d %H:%M:%S', t.txn_ts), t.status, p.sku,",
+        "       cast(l.quantity as text), printf('%.2f', l.list_price), printf('%.2f', l.unit_price),",
+        "       l.promo_depth, printf('%.2f', l.discount_amount), printf('%.2f', l.extended_amount),",
+        "       t.source_updated_at,",
+        "       case when datetime(t.ingested_at) > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(t.ingested_at) end",
+        "from pos.transaction_line l join pos.transaction t on t.txn_id = l.txn_id",
+        "left join merch.product p on p.product_id = l.product_id;",
+        "insert into raw.pos_tlog_file",
+        "select 7000000 + l.line_id, 'POS-' || t.store_id || '-' || replace(date(t.txn_ts), '-', '') || '-REPOLL.tlog',",
+        "       'POS-' || t.store_id || '-' || replace(date(t.txn_ts), '-', '') || '-REPOLL', cast(t.store_id as text),",
+        "       cast(t.txn_id as text), t.txn_number, cast(l.line_number as text), cast(t.customer_id as text),",
+        "       t.loyalty_tier, strftime('%Y-%m-%d %H:%M:%S', t.txn_ts), t.status, p.sku,",
+        "       cast(l.quantity as text), printf('%.2f', l.list_price), printf('%.2f', l.unit_price),",
+        "       l.promo_depth, printf('%.2f', l.discount_amount), printf('%.2f', l.extended_amount),",
+        "       t.source_updated_at,",
+        "       case when datetime(t.ingested_at, '+1 day') > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(t.ingested_at, '+1 day') end",
+        "from pos.transaction_line l join pos.transaction t on t.txn_id = l.txn_id",
+        "left join merch.product p on p.product_id = l.product_id",
+        "where l.line_id % 41 = 0;"
+      ]
+    },
+    {
+      "name": "stg_pos_tlog_transaction",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into stg.pos_tlog_transaction",
+        "with typed as (",
+        "  select r.*, p.product_id,",
+        "         case when txn_ts_text like '____-__-__ __:__:__' then txn_ts_text else null end as parsed_txn_ts,",
+        "         row_number() over (partition by txn_number, line_number_text order by ingested_at desc, raw_tlog_id desc) as rn",
+        "  from raw.pos_tlog_file r left join merch.product p on p.sku = r.sku",
+        ")",
+        "select raw_tlog_id, cast(txn_id_text as integer), txn_number, cast(line_number_text as integer),",
+        "       cast(customer_id_text as integer), cast(store_id_text as integer), lower(loyalty_tier),",
+        "       parsed_txn_ts, date(parsed_txn_ts), lower(status), product_id, sku, cast(quantity_text as integer),",
+        "       cast(list_price_text as real), cast(unit_price_text as real), promo_depth,",
+        "       round(cast(quantity_text as integer) * cast(list_price_text as real), 2),",
+        "       cast(discount_amount_text as real), cast(line_amount_text as real), file_id, batch_id, ingested_at",
+        "from typed where rn = 1;"
+      ]
+    },
+    {
+      "name": "raw_ecom_order_export",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into raw.ecom_order_export",
+        "select l.order_line_id, 'ECOM-ORDER-' || replace(date(o.order_placed_ts), '-', '') || '.csv',",
+        "       'ECOM-' || replace(date(o.order_placed_ts), '-', ''), cast(o.order_id as text), o.order_number,",
+        "       cast(l.order_line_id as text), cast(o.customer_id as text), o.loyalty_tier, o.device,",
+        "       strftime('%Y-%m-%d %H:%M:%S', o.order_placed_ts), o.status,",
+        "       case when o.shipped_at is null then null else strftime('%Y-%m-%d %H:%M:%S', o.shipped_at) end,",
+        "       p.sku, cast(l.quantity as text), printf('%.2f', l.list_price), printf('%.2f', l.unit_price),",
+        "       l.promo_depth, printf('%.2f', l.discount_amount), printf('%.2f', l.extended_amount),",
+        "       case when datetime(o.order_placed_ts, '+3 hours') > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(o.order_placed_ts, '+3 hours') end",
+        "from ecom.order_line l join ecom.order_header o on o.order_id = l.order_id",
+        "left join merch.product p on p.product_id = l.product_id;"
+      ]
+    },
+    {
+      "name": "stg_ecom_order_export",
+      "expect": {"at_least_rows": 1000},
+      "sql": [
+        "insert into stg.ecom_order_export",
+        "select cast(order_line_id_text as integer), cast(order_id_text as integer), order_number, cast(customer_id_text as integer),",
+        "       lower(loyalty_tier), device,",
+        "       case when order_placed_text like '____-__-__ __:__:__' then order_placed_text else null end,",
+        "       case when order_placed_text like '____-__-__ __:__:__' then date(order_placed_text) else null end,",
+        "       lower(status), case when shipped_at_text like '____-__-__ __:__:__' then shipped_at_text else null end,",
+        "       p.product_id, product_sku, cast(quantity_text as integer), cast(list_price_text as real), cast(unit_price_text as real),",
+        "       promo_depth, round(cast(quantity_text as integer) * cast(list_price_text as real), 2),",
+        "       cast(discount_amount_text as real), cast(line_amount_text as real), file_id, batch_id, ingested_at",
+        "from raw.ecom_order_export r left join merch.product p on p.sku = r.product_sku;"
       ]
     },
     {
@@ -767,6 +1202,36 @@
       ]
     },
     {
+      "name": "raw_returns_file",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into raw.returns_file",
+        "select rl.return_line_id, 'RETURNS-' || replace(rl.return_date, '-', '') || '.csv',",
+        "       'RET-' || replace(rl.return_date, '-', ''), cast(rl.return_id as text), cast(rl.return_line_id as text),",
+        "       rl.channel, cast(rl.sale_line_id as text), cast(rh.customer_id as text),",
+        "       case when rh.store_id is null then null else cast(rh.store_id as text) end, p.sku,",
+        "       cast(rl.quantity_returned as text), printf('%.2f', rl.refund_amount), strftime('%m/%d/%Y', rl.return_date),",
+        "       rl.return_reason, rl.disposition,",
+        "       case when datetime(rl.return_date, '+5 hours') > '2025-12-31 23:59:59' then '2025-12-31 23:59:59' else datetime(rl.return_date, '+5 hours') end",
+        "from ret.return_line rl join ret.return_header rh on rh.return_id = rl.return_id",
+        "left join merch.product p on p.product_id = rl.product_id;"
+      ]
+    },
+    {
+      "name": "stg_returns_file",
+      "expect": {"at_least_rows": 300},
+      "sql": [
+        "insert into stg.returns_file",
+        "select cast(return_line_id_text as integer), cast(return_id_text as integer), lower(channel), cast(sale_line_id_text as integer),",
+        "       case when lower(channel) = 'web' then 5000000 + cast(sale_line_id_text as integer) else cast(sale_line_id_text as integer) end,",
+        "       cast(customer_id_text as integer), case when store_id_text is null then null else cast(store_id_text as integer) end,",
+        "       p.product_id, r.sku, cast(quantity_text as integer), cast(refund_amount_text as real),",
+        "       case when return_date_text like '__/__/____' then substr(return_date_text,7,4) || '-' || substr(return_date_text,1,2) || '-' || substr(return_date_text,4,2) else null end,",
+        "       return_reason, disposition, file_id, batch_id, ingested_at",
+        "from raw.returns_file r left join merch.product p on p.sku = r.sku;"
+      ]
+    },
+    {
       "name": "wh_dim_date",
       "sql": [
         "insert into wh.dim_date",
@@ -798,7 +1263,7 @@
       "name": "wh_dim_store",
       "sql": [
         "insert into wh.dim_store",
-        "select store_id, store_code, region, store_format, city, state from ops.store;"
+        "select store_id, store_code, region, store_format, case when store_id = 24 then 1 else 0 end, city, state from ops.store;"
       ]
     },
     {
@@ -809,28 +1274,34 @@
       ]
     },
     {
+      "name": "wh_dim_channel",
+      "sql": [
+        "insert into wh.dim_channel",
+        "select 1, 'store', 'store', 'completed transaction'",
+        "union all select 2, 'web', 'ecommerce', 'order demand and shipped sales';"
+      ]
+    },
+    {
       "name": "wh_fact_sales_line",
-      "_note": "Union of completed store lines and non-cancelled web lines. Orphaned SKUs left-join to NULL cost, so their margin is genuinely unreportable downstream.",
+      "_note": "Union of staged completed store lines and staged non-cancelled web lines. Orphaned SKUs left-join to NULL cost, so their margin is genuinely unreportable downstream.",
       "expect": {"at_least_rows": 1000},
       "sql": [
         "insert into wh.fact_sales_line",
-        "select l.line_id, 'store', t.txn_id, date(t.txn_ts), t.customer_id, t.store_id, l.product_id,",
-        "       t.loyalty_tier, l.promo_depth, l.quantity, l.list_price, l.unit_price,",
-        "       round(l.quantity * l.list_price, 2), l.discount_amount, l.extended_amount,",
-        "       round(l.quantity * p.unit_cost, 2), round(l.extended_amount - l.quantity * p.unit_cost, 2)",
-        "from pos.transaction_line l",
-        "join pos.transaction t on t.txn_id = l.txn_id",
-        "left join merch.product p on p.product_id = l.product_id",
-        "where t.status = 'completed';",
+        "select s.sale_line_uid, 'store', s.txn_id, s.sale_date, s.customer_id, s.store_id, s.product_id,",
+        "       s.loyalty_tier, s.promo_depth, s.quantity, s.list_price, s.unit_price,",
+        "       s.gross_amount, s.discount_amount, s.net_amount,",
+        "       round(s.quantity * p.unit_cost, 2), round(s.net_amount - s.quantity * p.unit_cost, 2)",
+        "from stg.pos_tlog_transaction s",
+        "left join merch.product p on p.product_id = s.product_id",
+        "where s.status = 'completed' and s.sale_date is not null;",
         "insert into wh.fact_sales_line",
-        "select 5000000 + l.order_line_id, 'web', o.order_id, date(o.order_placed_ts), o.customer_id, null, l.product_id,",
-        "       o.loyalty_tier, l.promo_depth, l.quantity, l.list_price, l.unit_price,",
-        "       round(l.quantity * l.list_price, 2), l.discount_amount, l.extended_amount,",
-        "       round(l.quantity * p.unit_cost, 2), round(l.extended_amount - l.quantity * p.unit_cost, 2)",
-        "from ecom.order_line l",
-        "join ecom.order_header o on o.order_id = l.order_id",
-        "left join merch.product p on p.product_id = l.product_id",
-        "where o.status not in ('auth_declined', 'cancelled_oos', 'cancelled_by_customer');"
+        "select 5000000 + s.order_line_id, 'web', s.order_id, s.order_date, s.customer_id, null, s.product_id,",
+        "       s.loyalty_tier, s.promo_depth, s.quantity, s.list_price, s.unit_price,",
+        "       s.gross_amount, s.discount_amount, s.net_amount,",
+        "       round(s.quantity * p.unit_cost, 2), round(s.net_amount - s.quantity * p.unit_cost, 2)",
+        "from stg.ecom_order_export s",
+        "left join merch.product p on p.product_id = s.product_id",
+        "where s.status not in ('auth_declined', 'cancelled_oos', 'cancelled_by_customer') and s.order_date is not null;"
       ]
     },
     {
@@ -838,20 +1309,205 @@
       "expect": {"at_least_rows": 300},
       "sql": [
         "insert into wh.fact_return_line",
-        "select rl.return_line_id, rl.return_id, rl.channel, rl.return_date, rh.customer_id, rh.store_id,",
-        "       rl.product_id, rl.quantity_returned, rl.refund_amount, rl.return_reason, rl.disposition",
-        "from ret.return_line rl join ret.return_header rh on rh.return_id = rl.return_id;"
+        "select return_line_id, return_id, channel, return_date, original_sale_line_uid, customer_id, store_id,",
+        "       product_id, quantity_returned, refund_amount, return_reason, disposition",
+        "from stg.returns_file where return_date is not null;"
+      ]
+    },
+    {
+      "name": "nv_sales_line",
+      "sql": [
+        "create view nv_sales_line as",
+        "select f.sale_line_uid, f.channel, ch.channel_key, ch.channel_group, f.sale_ref, f.sale_date,",
+        "       d.year_num, d.month_num, d.weekday_num, d.is_weekend, f.customer_key, c.full_name, c.home_region,",
+        "       coalesce(nullif(f.loyalty_tier, ''), c.loyalty_tier, 'none') as loyalty_tier,",
+        "       coalesce(lt.tier_name, 'none') as loyalty_tier_dim, coalesce(lt.points_multiplier, 1.0) as points_multiplier,",
+        "       f.store_key, coalesce(s.store_code, 'WEB') as store_code, coalesce(s.region, 'Digital') as store_region,",
+        "       coalesce(s.store_format, 'ecommerce') as store_format, coalesce(s.training_store_flag, 0) as training_store_flag,",
+        "       f.product_key, p.sku, p.product_name, p.category, f.promo_depth, f.quantity, f.list_price, f.unit_price,",
+        "       f.gross_amount, f.discount_amount, f.net_amount, f.cost_amount, f.margin_amount",
+        "from wh.fact_sales_line f",
+        "join wh.dim_date d on d.date_key = f.sale_date",
+        "join wh.dim_channel ch on ch.channel_name = f.channel",
+        "left join wh.dim_customer c on c.customer_key = f.customer_key",
+        "left join wh.dim_loyalty_tier lt on lt.tier_name = nullif(f.loyalty_tier, 'none')",
+        "left join wh.dim_store s on s.store_key = f.store_key",
+        "left join wh.dim_product p on p.product_key = f.product_key;"
+      ]
+    },
+    {
+      "name": "nv_return_line",
+      "sql": [
+        "create view nv_return_line as",
+        "select r.return_line_key, r.return_id, r.channel, ch.channel_key, ch.channel_group, r.return_date,",
+        "       d.year_num, d.month_num, d.weekday_num, r.original_sale_line_uid, sf.sale_date as original_sale_date,",
+        "       r.customer_key, c.full_name, c.home_region, coalesce(c.loyalty_tier, 'none') as loyalty_tier,",
+        "       r.store_key, coalesce(s.store_code, 'WEB') as store_code, coalesce(s.region, 'Digital') as store_region,",
+        "       coalesce(s.training_store_flag, 0) as training_store_flag, r.product_key, p.sku, p.product_name, p.category,",
+        "       r.quantity_returned, r.refund_amount, r.return_reason, r.disposition",
+        "from wh.fact_return_line r",
+        "join wh.dim_date d on d.date_key = r.return_date",
+        "join wh.dim_channel ch on ch.channel_name = r.channel",
+        "left join wh.fact_sales_line sf on sf.sale_line_uid = r.original_sale_line_uid",
+        "left join wh.dim_customer c on c.customer_key = r.customer_key",
+        "left join wh.dim_store s on s.store_key = r.store_key",
+        "left join wh.dim_product p on p.product_key = r.product_key;"
+      ]
+    },
+    {
+      "name": "bv_sales_daily_by_channel",
+      "sql": [
+        "create view bv_sales_daily_by_channel as",
+        "select sale_date, channel, channel_group, count(distinct sale_ref) as transactions, sum(quantity) as units,",
+        "       round(sum(gross_amount), 2) as gross_sales, round(sum(discount_amount), 2) as promo_discount,",
+        "       round(sum(net_amount), 2) as net_sales,",
+        "       round(sum(sum(net_amount)) over (partition by channel order by sale_date rows between unbounded preceding and current row), 2) as running_net_sales",
+        "from nv_sales_line",
+        "group by sale_date, channel, channel_group;"
+      ]
+    },
+    {
+      "name": "bv_comp_store_sales",
+      "sql": [
+        "create view bv_comp_store_sales as",
+        "with monthly as (",
+        "  select store_key, store_code, store_region, year_num, month_num,",
+        "         count(distinct sale_ref) as transactions, round(sum(net_amount), 2) as net_sales",
+        "  from nv_sales_line where channel = 'store' and training_store_flag = 0",
+        "  group by store_key, store_code, store_region, year_num, month_num",
+        ")",
+        "select store_key, store_code, store_region, year_num, month_num, transactions, net_sales,",
+        "       lag(net_sales) over (partition by store_key, month_num order by year_num) as prior_year_net_sales,",
+        "       round(net_sales - coalesce(lag(net_sales) over (partition by store_key, month_num order by year_num), 0), 2) as yoy_delta",
+        "from monthly;"
+      ]
+    },
+    {
+      "name": "bv_loyalty_tier_economics",
+      "sql": [
+        "create view bv_loyalty_tier_economics as",
+        "with customer_sales as (",
+        "  select loyalty_tier, customer_key, count(distinct sale_ref) as transactions, sum(quantity) as units,",
+        "         round(sum(net_amount), 2) as net_sales, round(sum(margin_amount), 2) as margin_amount",
+        "  from nv_sales_line group by loyalty_tier, customer_key",
+        ")",
+        "select loyalty_tier, customer_key, transactions, units, net_sales, margin_amount,",
+        "       row_number() over (partition by loyalty_tier order by net_sales desc) as tier_spend_rank,",
+        "       round(net_sales / nullif(sum(net_sales) over (partition by loyalty_tier), 0), 6) as tier_sales_share",
+        "from customer_sales;"
+      ]
+    },
+    {
+      "name": "bv_promo_lift",
+      "sql": [
+        "create view bv_promo_lift as",
+        "select channel, promo_depth,",
+        "       case when promo_depth = 'none' then 'baseline'",
+        "            when round(sum(discount_amount) / nullif(sum(gross_amount), 0), 4) >= 0.25 then 'deep_discount'",
+        "            when round(sum(discount_amount) / nullif(sum(gross_amount), 0), 4) >= 0.15 then 'mid_discount'",
+        "            else 'light_discount' end as promo_bucket,",
+        "       count(*) as line_count, sum(quantity) as units, round(sum(gross_amount), 2) as gross_sales,",
+        "       round(sum(discount_amount), 2) as promo_discount, round(sum(net_amount), 2) as net_sales,",
+        "       round(sum(net_amount) / nullif(sum(quantity), 0), 2) as net_sales_per_unit",
+        "from nv_sales_line",
+        "group by channel, promo_depth;"
+      ]
+    },
+    {
+      "name": "mv_week_end_sales_snapshot",
+      "expect": {"at_least_rows": 100},
+      "sql": [
+        "insert into mv.week_end_sales_snapshot",
+        "with weekly_sales as (",
+        "  select date(sale_date, '+' || ((6 - cast(strftime('%w', sale_date) as integer) + 7) % 7) || ' days') as week_end_date,",
+        "         channel, sum(transactions) as transactions, sum(units) as units, round(sum(gross_sales), 2) as gross_sales,",
+        "         round(sum(promo_discount), 2) as promo_discount, round(sum(net_sales), 2) as net_sales",
+        "  from bv_sales_daily_by_channel group by 1, channel",
+        "), weekly_returns as (",
+        "  select date(return_date, '+' || ((6 - cast(strftime('%w', return_date) as integer) + 7) % 7) || ' days') as week_end_date,",
+        "         channel, round(sum(refund_amount), 2) as return_amount",
+        "  from nv_return_line group by 1, channel",
+        ")",
+        "select row_number() over (order by s.week_end_date, s.channel), s.week_end_date, s.channel,",
+        "       'FY' || strftime('%Y', s.week_end_date) || '-W' || printf('%02d', cast(strftime('%W', s.week_end_date) as integer) + 1),",
+        "       s.transactions, s.units, s.gross_sales, s.promo_discount, coalesce(r.return_amount, 0),",
+        "       round(s.net_sales - coalesce(r.return_amount, 0), 2), '2025-12-31 04:20:00'",
+        "from weekly_sales s left join weekly_returns r on r.week_end_date = s.week_end_date and r.channel = s.channel;"
+      ]
+    },
+    {
+      "name": "mart_finance_net_sales",
+      "sql": [
+        "create view mart_finance_net_sales as",
+        "with sales as (",
+        "  select sale_date as business_date, channel, category as product_category,",
+        "         round(sum(gross_amount), 2) as gross_sales, round(sum(net_amount), 2) as sales_net_amount",
+        "  from nv_sales_line where training_store_flag = 0 group by sale_date, channel, category",
+        "), returns_on_sale_date as (",
+        "  select original_sale_date as business_date, channel, category as product_category, round(sum(refund_amount), 2) as return_amount",
+        "  from nv_return_line where original_sale_date is not null and training_store_flag = 0 group by original_sale_date, channel, category",
+        "), keys as (",
+        "  select business_date, channel, product_category from sales",
+        "  union select business_date, channel, product_category from returns_on_sale_date",
+        ")",
+        "select k.business_date, k.channel, k.product_category, coalesce(s.gross_sales, 0) as gross_sales,",
+        "       coalesce(s.sales_net_amount, 0) as sales_net_amount, coalesce(r.return_amount, 0) as return_amount_on_sale_date,",
+        "       round(coalesce(s.sales_net_amount, 0) - coalesce(r.return_amount, 0), 2) as finance_net_sales",
+        "from keys k left join sales s on s.business_date = k.business_date and s.channel = k.channel and s.product_category = k.product_category",
+        "left join returns_on_sale_date r on r.business_date = k.business_date and r.channel = k.channel and r.product_category = k.product_category;"
+      ]
+    },
+    {
+      "name": "mart_merch_category_sales",
+      "sql": [
+        "create view mart_merch_category_sales as",
+        "with active_override as (",
+        "  select product_id, override_category from (",
+        "    select product_id, override_category, row_number() over (partition by product_id order by uploaded_at desc, override_id desc) as rn",
+        "    from manual.merch_hierarchy_override",
+        "    where current_flag = 1 and effective_end_date is null and approved_flag = 1 and override_eligible_flag = 1",
+        "  ) where rn = 1",
+        "), sales as (",
+        "  select n.sale_date as business_date, n.channel, coalesce(o.override_category, n.category, 'UNMAPPED') as merch_category,",
+        "         sum(n.quantity) as units_sold, round(sum(n.net_amount), 2) as sales_net_amount",
+        "  from nv_sales_line n left join active_override o on o.product_id = n.product_key",
+        "  group by n.sale_date, n.channel, coalesce(o.override_category, n.category, 'UNMAPPED')",
+        "), returns_on_return_date as (",
+        "  select r.return_date as business_date, r.channel, coalesce(o.override_category, r.category, 'UNMAPPED') as merch_category,",
+        "         sum(r.quantity_returned) as units_returned, round(sum(r.refund_amount), 2) as return_amount",
+        "  from nv_return_line r left join active_override o on o.product_id = r.product_key",
+        "  group by r.return_date, r.channel, coalesce(o.override_category, r.category, 'UNMAPPED')",
+        "), keys as (",
+        "  select business_date, channel, merch_category from sales",
+        "  union select business_date, channel, merch_category from returns_on_return_date",
+        ")",
+        "select k.business_date, k.channel, k.merch_category, coalesce(s.units_sold, 0) as units_sold,",
+        "       coalesce(s.sales_net_amount, 0) as sales_net_amount, coalesce(r.units_returned, 0) as units_returned,",
+        "       coalesce(r.return_amount, 0) as return_amount_on_return_date,",
+        "       round(coalesce(s.sales_net_amount, 0) - coalesce(r.return_amount, 0), 2) as merch_net_sales",
+        "from keys k left join sales s on s.business_date = k.business_date and s.channel = k.channel and s.merch_category = k.merch_category",
+        "left join returns_on_return_date r on r.business_date = k.business_date and r.channel = k.channel and r.merch_category = k.merch_category;"
+      ]
+    },
+    {
+      "name": "mart_ecom_demand_vs_shipped",
+      "sql": [
+        "create view mart_ecom_demand_vs_shipped as",
+        "select n.sale_date as order_date, count(distinct n.sale_ref) as demand_orders, sum(n.quantity) as demand_units,",
+        "       round(sum(n.net_amount), 2) as demand_net_sales,",
+        "       count(distinct case when o.shipped_at is not null then n.sale_ref end) as shipped_orders,",
+        "       round(sum(case when o.shipped_at is not null then n.net_amount else 0 end), 2) as shipped_net_sales",
+        "from nv_sales_line n left join ecom.order_header o on o.order_id = n.sale_ref",
+        "where n.channel = 'web'",
+        "group by n.sale_date;"
       ]
     },
     {
       "name": "mart_sales_daily",
       "sql": [
         "create view mart_sales_daily as",
-        "select sale_date, channel, count(distinct sale_ref) as transactions, sum(quantity) as units,",
-        "       round(sum(gross_amount), 2) as gross_sales, round(sum(discount_amount), 2) as promo_discount,",
-        "       round(sum(net_amount), 2) as net_sales",
-        "from wh.fact_sales_line",
-        "group by sale_date, channel;"
+        "select sale_date, channel, transactions, units, gross_sales, promo_discount, net_sales",
+        "from bv_sales_daily_by_channel;"
       ]
     },
     {
@@ -860,7 +1516,7 @@
         "create view mart_returns_daily as",
         "select return_date, channel, count(distinct return_id) as returns, sum(quantity_returned) as units_returned,",
         "       round(sum(refund_amount), 2) as refund_total",
-        "from wh.fact_return_line",
+        "from nv_return_line",
         "group by return_date, channel;"
       ]
     },
@@ -868,11 +1524,8 @@
       "name": "mart_promotion_performance",
       "sql": [
         "create view mart_promotion_performance as",
-        "select channel, promo_depth, count(*) as line_count, sum(quantity) as units,",
-        "       round(sum(gross_amount), 2) as gross_sales, round(sum(discount_amount), 2) as promo_discount,",
-        "       round(sum(net_amount), 2) as net_sales",
-        "from wh.fact_sales_line",
-        "group by channel, promo_depth;"
+        "select channel, promo_depth, line_count, units, gross_sales, promo_discount, net_sales",
+        "from bv_promo_lift;"
       ]
     },
     {
@@ -887,6 +1540,30 @@
         "join (select txn_id, round(sum(tender_amount), 2) as tender_total",
         "      from pos.tender group by txn_id) tt on tt.txn_id = lt.txn_id",
         "where abs(tt.tender_total - lt.txn_total) > 0.01;"
+      ]
+    },
+    {
+      "name": "control_recon_finance_merch_net_sales",
+      "_note": "Reconciles intentionally competing BU net sales definitions: finance nets returns on original sale date and excludes store 24; merchandising applies manual hierarchy overrides and nets returns on return date.",
+      "sql": [
+        "create view control_recon_finance_merch_net_sales as",
+        "with finance as (",
+        "  select substr(business_date, 1, 7) as period_month, channel, product_category as category, round(sum(finance_net_sales), 2) as finance_net_sales",
+        "  from mart_finance_net_sales group by substr(business_date, 1, 7), channel, product_category",
+        "), merch as (",
+        "  select substr(business_date, 1, 7) as period_month, channel, merch_category as category, round(sum(merch_net_sales), 2) as merch_net_sales",
+        "  from mart_merch_category_sales group by substr(business_date, 1, 7), channel, merch_category",
+        "), keys as (",
+        "  select period_month, channel, category from finance",
+        "  union select period_month, channel, category from merch",
+        ")",
+        "select k.period_month, k.channel, k.category, coalesce(f.finance_net_sales, 0) as finance_net_sales,",
+        "       coalesce(m.merch_net_sales, 0) as merch_net_sales,",
+        "       round(coalesce(m.merch_net_sales, 0) - coalesce(f.finance_net_sales, 0), 2) as break_amount,",
+        "       'mapping_override_or_return_timing' as break_reason",
+        "from keys k left join finance f on f.period_month = k.period_month and f.channel = k.channel and f.category = k.category",
+        "left join merch m on m.period_month = k.period_month and m.channel = k.channel and m.category = k.category",
+        "where abs(coalesce(m.merch_net_sales, 0) - coalesce(f.finance_net_sales, 0)) > 0.01;"
       ]
     },
     {
@@ -917,7 +1594,67 @@
         "select 'DQ-006', 'return line missing original sale line', cast(rl.return_line_id as text)",
         "from ret.return_line rl",
         "where (rl.channel = 'store' and not exists (select 1 from pos.transaction_line p where p.line_id = rl.sale_line_id))",
-        "   or (rl.channel = 'web' and not exists (select 1 from ecom.order_line w where w.order_line_id = rl.sale_line_id));"
+        "   or (rl.channel = 'web' and not exists (select 1 from ecom.order_line w where w.order_line_id = rl.sale_line_id))",
+        "union all",
+        "select 'DQ-007', 'stale merchandising hierarchy override', sku",
+        "from manual.merch_hierarchy_override",
+        "where current_flag = 0 or (effective_end_date is not null and effective_end_date < '2025-12-31')",
+        "union all",
+        "select 'DQ-008', 'conflicting merchandising hierarchy override re-upload', sku",
+        "from manual.merch_hierarchy_override",
+        "where current_flag = 1 and conflict_upload_flag = 1;"
+      ]
+    },
+    {
+      "name": "workflow_mapping_review_case",
+      "expect": {"at_least_rows": 1},
+      "sql": [
+        "insert into workflow.mapping_review_case",
+        "with candidates as (",
+        "  select row_number() over (order by rule_code, entity_id) as rn, rule_code, issue, entity_id",
+        "  from dq_rule_result_current where rule_code in ('DQ-007', 'DQ-008') limit 120",
+        ")",
+        "select 900000 + rn, 'MAP-' || printf('%06d', rn), issue, entity_id,",
+        "       coalesce((select min(override_id) from manual.merch_hierarchy_override m where m.sku = candidates.entity_id), 0),",
+        "       'open', case when rule_code = 'DQ-008' then 'high' else 'medium' end, 'merch_data_stewards',",
+        "       'merch_data_steward', datetime('2025-12-15 09:00:00', '+' || rn || ' hours'),",
+        "       datetime('2025-12-18 17:00:00', '+' || rn || ' hours')",
+        "from candidates;"
+      ]
+    },
+    {
+      "name": "catalog_code_object_register",
+      "sql": [
+        "insert into catalog.code_object",
+        "select row_number() over (order by name), name, 'view', 'sql', sql, 'analytics_engineering',",
+        "       '2024-01-15 09:00:00', '2025-12-20 22:00:00', 'deployed', null, null, 'self-registered from sqlite_master'",
+        "from sqlite_master where type = 'view' and name not like 'sqlite_%';",
+        "insert into catalog.code_object",
+        "select 1001, 'proc_nightly_sales_close', 'procedure', 'sql', 'create procedure proc_nightly_sales_close(p_close_date date) begin select business_date, channel, sum(finance_net_sales) as finance_net_sales from mart_finance_net_sales where business_date = p_close_date group by business_date, channel; end', 'finance_data_ops', '2024-02-01 09:00:00', '2025-12-20 21:10:00', 'deployed', '30 03 * * *', null, 'nightly sales close after POS and ecom loads'",
+        "union all select 1002, 'proc_rebuild_inventory_snapshot', 'procedure', 'sql', 'create procedure proc_rebuild_inventory_snapshot(p_snapshot_date date) begin select snapshot_date, store_id, product_id, sum(on_hand_units) as on_hand_units from inv_stock_snapshot where snapshot_date = p_snapshot_date group by snapshot_date, store_id, product_id; end', 'inventory_control', '2024-03-01 09:00:00', '2025-12-19 04:15:00', 'deployed', '10 04 * * *', null, 'store inventory snapshot rebuild'",
+        "union all select 1003, 'proc_refresh_mv_week_end_sales_snapshot', 'procedure', 'sql', 'create procedure proc_refresh_mv_week_end_sales_snapshot() begin delete from mv_week_end_sales_snapshot; insert into mv_week_end_sales_snapshot select * from mv_week_end_sales_snapshot; end', 'analytics_engineering', '2024-04-01 09:00:00', '2025-12-21 04:20:00', 'deployed', '20 04 * * 0', null, 'modeled refresh procedure for the materialized weekly snapshot'",
+        "union all select 1004, 'fn_retail_fiscal_week_454', 'function', 'sql', 'create function fn_retail_fiscal_week_454(p_date date) returns varchar as begin return fiscal year and 4-5-4 week for p_date; end', 'finance_data_ops', '2024-01-05 09:00:00', '2025-10-01 12:00:00', 'deployed', null, null, 'retail 4-5-4 fiscal week helper referenced by close procedures'",
+        "union all select 1005, 'extract_supplier_sell_through', 'extract', 'sql', 'select business_date, channel, merch_category, units_sold, merch_net_sales from mart_merch_category_sales where business_date >= :start_date and business_date <= :end_date', 'merch_data_ops', '2024-06-01 09:00:00', '2025-12-20 05:00:00', 'deployed', '00 05 * * 1', 'supplier_sftp', 'CSV supplier sell-through feed'",
+        "union all select 1006, 'extract_finance_gl_sales', 'extract', 'sql', 'select business_date, channel, product_category, finance_net_sales from mart_finance_net_sales where business_date = :close_date', 'finance_integrations', '2024-06-15 09:00:00', '2025-12-20 05:10:00', 'deployed', '55 04 * * *', 'LedgerWorks GL', 'daily finance GL sales extract';"
+      ]
+    },
+    {
+      "name": "catalog_lineage_edge",
+      "sql": [
+        "insert into catalog.lineage_edge",
+        "select 1, 'raw_pos_tlog_file', 'stg_pos_tlog_transaction', 'read_write', null, null, 'stg_pos_tlog_transaction', 0.98",
+        "union all select 2, 'raw_ecom_order_export', 'stg_ecom_order_export', 'read_write', null, null, 'stg_ecom_order_export', 0.98",
+        "union all select 3, 'raw_merch_item_master_feed', 'stg_merch_item_master_feed', 'read_write', null, null, 'stg_merch_item_master_feed', 0.98",
+        "union all select 4, 'raw_returns_file', 'stg_returns_file', 'read_write', null, null, 'stg_returns_file', 0.98",
+        "union all select 5, 'wh_fact_sales_line', 'nv_sales_line', 'view_dependency', null, null, 'nv_sales_line', 1.0",
+        "union all select 6, 'wh_fact_return_line', 'nv_return_line', 'view_dependency', null, null, 'nv_return_line', 1.0",
+        "union all select 7, 'nv_sales_line', 'bv_sales_daily_by_channel', 'view_dependency', 'net_amount', 'net_sales', 'bv_sales_daily_by_channel', 1.0",
+        "union all select 8, 'bv_sales_daily_by_channel', 'mv_week_end_sales_snapshot', 'materialized_refresh', 'net_sales', 'finance_net_sales', 'proc_refresh_mv_week_end_sales_snapshot', 0.96",
+        "union all select 9, 'manual_merch_hierarchy_override', 'mart_merch_category_sales', 'manual_mapping', 'override_category', 'merch_category', 'mart_merch_category_sales', 0.94",
+        "union all select 10, 'mart_finance_net_sales', 'control_recon_finance_merch_net_sales', 'control_input', 'finance_net_sales', 'finance_net_sales', 'control_recon_finance_merch_net_sales', 1.0",
+        "union all select 11, 'mart_merch_category_sales', 'control_recon_finance_merch_net_sales', 'control_input', 'merch_net_sales', 'merch_net_sales', 'control_recon_finance_merch_net_sales', 1.0",
+        "union all select 12, 'mart_merch_category_sales', 'extract_supplier_sell_through', 'extract_output', 'merch_net_sales', 'merch_net_sales', 'extract_supplier_sell_through', 0.95",
+        "union all select 13, 'mart_finance_net_sales', 'extract_finance_gl_sales', 'extract_output', 'finance_net_sales', 'finance_net_sales', 'extract_finance_gl_sales', 0.95;"
       ]
     }
   ],
@@ -928,15 +1665,19 @@
     {"name": "orphan_sale_lines", "type": "orphan_fk", "table": "pos.transaction_line", "rate": 0.004, "stage": "pre_derivation", "params": {"column": "product_id"}, "scenario": "Discontinued SKUs hard-deleted from the item master; DQ-002 flags the lines and their margin is unreportable in the fact."},
     {"name": "pos_price_overrides", "type": "manual_override", "table": "pos.transaction", "rate": 0.012, "stage": "pre_derivation", "params": {"column": "manual_override_flag", "value": 1, "note_column": "override_note"}, "scenario": "Cashier price/tender overrides with supervisor codes; store_ops price_override_audit queue reviews them."},
     {"name": "raw_signup_date_drift", "type": "format_drift", "table": "raw.loyalty_member_extract", "rate": 0.03, "stage": "post_derivation", "params": {"column": "source_signup_date", "format": "padded"}, "scenario": "Loyalty extract patch pads dates differently; staging parse nulls them and DQ-004 catches the raw rows."},
+    {"name": "raw_pos_tlog_date_drift", "type": "format_drift", "table": "raw.pos_tlog_file", "rate": 0.01, "stage": "post_derivation", "params": {"column": "txn_ts_text", "format": "padded"}, "scenario": "A POS TLOG parser upgrade pads timestamps for a subset of re-polled store batches; guarded staging parse and DQ review catch the feed."},
     {"name": "missing_pos_xref", "type": "missing_xref", "table": "xref.entity_identifier", "rate": 0.03, "stage": "post_derivation", "scenario": "Crosswalk rows lost in the 2024 loyalty re-platform; DQ-003 counts unmapped active customers."},
     {"name": "stale_xref_mappings", "type": "stale_mapping", "table": "xref.entity_identifier", "rate": 0.02, "stage": "post_derivation", "params": {"column": "valid_to"}, "scenario": "Expired identifier mappings never re-pointed; data stewards triage."},
+    {"name": "stale_merch_hierarchy_overrides", "type": "stale_mapping", "table": "manual.merch_hierarchy_override", "rate": 0.025, "stage": "post_derivation", "params": {"column": "effective_end_date"}, "scenario": "Merchandising keeps stale hierarchy override rows active after a category reorg; DQ-007 and mapping_review_case route them to data stewards."},
+    {"name": "conflicting_merch_hierarchy_uploads", "type": "conflicting_source_values", "table": "manual.merch_hierarchy_override", "rate": 0.01, "stage": "post_derivation", "params": {"column": "override_category", "variants": ["seasonal_home", "private_label_apparel", "supplier_funded_feature"]}, "scenario": "A cleanup upload conflicts with an earlier hierarchy file for the same SKU; DQ-008 catches the conflicting category value."},
     {"name": "tender_restatements", "type": "restatement_reversal", "table": "pos.tender", "rate": 0.006, "stage": "post_derivation", "params": {"amount_columns": ["tender_amount"], "reason_column": "adjustment_note"}, "scenario": "Post-void and re-ring corrections land as reversal + restated tender pairs; control_recon_tender_to_transaction breaks on them."},
     {"name": "oms_event_disorder", "type": "out_of_order_events", "table": "ecom.order_event", "rate": 0.012, "stage": "pre_derivation", "params": {"sequence_column": "event_seq", "group_column": "order_id"}, "scenario": "OMS webhook stream delivers fulfillment events out of order; DQ-005 flags shipped-before-picked sequences."},
     {"name": "duplicate_job_runs", "type": "duplicate_webhook", "table": "integration.job_run", "rate": 0.01, "stage": "pre_derivation", "scenario": "Scheduler retries double-log batch runs."},
     {"name": "customer_email_gaps", "type": "null_field", "table": "crm.customer", "rate": 0.02, "stage": "pre_derivation", "params": {"column": "email"}, "scenario": "Kiosk signups skip email capture; DQ-001 counts active customers without one."}
   ],
   "controls": [
-    {"rule_id": "CTL-001", "rule_name": "Tender totals tie to transaction totals", "source_dataset": "pos.transaction_line", "target_dataset": "pos.tender", "grain": "txn_id", "tolerance": "0.01", "frequency": "daily", "owner": "sales_audit", "severity": "high", "expected_break_rate": "~0.6% of completed transactions (tender restatement reversals)", "break_view": "control_recon_tender_to_transaction"}
+    {"rule_id": "CTL-001", "rule_name": "Tender totals tie to transaction totals", "source_dataset": "pos.transaction_line", "target_dataset": "pos.tender", "grain": "txn_id", "tolerance": "0.01", "frequency": "daily", "owner": "sales_audit", "severity": "high", "expected_break_rate": "~0.6% of completed transactions (tender restatement reversals)", "break_view": "control_recon_tender_to_transaction"},
+    {"rule_id": "CTL-002", "rule_name": "Finance and merchandising net sales definitions reconcile", "source_dataset": "mart_finance_net_sales", "target_dataset": "mart_merch_category_sales", "grain": "month/channel/category", "tolerance": "0.01", "frequency": "daily", "owner": "finance_data_ops", "severity": "medium", "expected_break_rate": "persistent by category where merchandising overrides or return-date timing differ", "break_view": "control_recon_finance_merch_net_sales"}
   ],
   "dq_rules": [
     {"rule_id": "DQ-001", "dataset": "crm.customer", "rule_type": "required_field", "condition": "active customers have email", "severity": "warning", "expected_failure_rate": 0.07},
@@ -944,22 +1685,28 @@
     {"rule_id": "DQ-003", "dataset": "xref.entity_identifier", "rule_type": "coverage", "condition": "every active customer mapped to a POS identifier", "severity": "error", "expected_failure_rate": 0.03},
     {"rule_id": "DQ-004", "dataset": "raw.loyalty_member_extract", "rule_type": "format", "condition": "signup date parses as MM/DD/YYYY", "severity": "warning", "expected_failure_rate": 0.03},
     {"rule_id": "DQ-005", "dataset": "ecom.order_event", "rule_type": "sequence", "condition": "event timestamps non-decreasing within an order", "severity": "warning", "expected_failure_rate": 0.012},
-    {"rule_id": "DQ-006", "dataset": "ret.return_line", "rule_type": "fk_exists", "condition": "return line references an original sale line", "severity": "error", "expected_failure_rate": 0.01}
+    {"rule_id": "DQ-006", "dataset": "ret.return_line", "rule_type": "fk_exists", "condition": "return line references an original sale line", "severity": "error", "expected_failure_rate": 0.01},
+    {"rule_id": "DQ-007", "dataset": "manual.merch_hierarchy_override", "rule_type": "stale_mapping", "condition": "current merchandising hierarchy overrides are not stale or expired", "severity": "warning", "expected_failure_rate": 0.025},
+    {"rule_id": "DQ-008", "dataset": "manual.merch_hierarchy_override", "rule_type": "conflicting_mapping", "condition": "a SKU has no conflicting hierarchy re-upload", "severity": "error", "expected_failure_rate": 0.01}
   ],
   "dataflows": [
     {"name": "customer_mastering", "sequence": "crm.customer (LoopRewards) -> raw.loyalty_member_extract -> stg.customer -> xref.entity_identifier -> core.customer -> wh.dim_customer"},
-    {"name": "store_sales", "sequence": "pos.transaction/transaction_line -> pos.tender -> wh.fact_sales_line -> mart_sales_daily / control_recon_tender_to_transaction"},
-    {"name": "ecom_order_to_deliver", "sequence": "ecom.order_header -> fulfillment state machine -> ecom.order_event -> wh.fact_sales_line"},
-    {"name": "returns", "sequence": "delivered web orders + completed store line slice -> ret.return_line/return_header -> wh.fact_return_line -> mart_returns_daily"}
+    {"name": "store_sales", "sequence": "pos.transaction/transaction_line -> raw.pos_tlog_file -> stg.pos_tlog_transaction -> wh.fact_sales_line -> nv_sales_line -> bv_sales_daily_by_channel -> mart_finance_net_sales / mart_merch_category_sales"},
+    {"name": "ecom_order_to_deliver", "sequence": "ecom.order_header/order_line -> raw.ecom_order_export -> stg.ecom_order_export -> wh.fact_sales_line -> mart_ecom_demand_vs_shipped"},
+    {"name": "merch_item_mastering", "sequence": "merch.product -> raw.merch_item_master_feed -> stg.merch_item_master_feed -> core.product -> wh.dim_product"},
+    {"name": "returns", "sequence": "delivered web orders + completed store line slice -> ret.return_line/return_header -> raw.returns_file -> stg.returns_file -> wh.fact_return_line -> nv_return_line"},
+    {"name": "manual_hierarchy_override", "sequence": "manual.merch_hierarchy_override -> mart_merch_category_sales only -> dq_rule_result_current -> workflow.mapping_review_case"},
+    {"name": "code_catalog_and_lineage", "sequence": "sqlite_master views + procedure/extract source -> catalog.code_object -> catalog.lineage_edge -> integration.job/job_run history"}
   ],
   "validation": {
-    "required_views": ["mart_sales_daily", "mart_returns_daily", "mart_promotion_performance", "control_recon_tender_to_transaction", "dq_rule_result_current"],
+    "required_views": ["nv_sales_line", "nv_return_line", "bv_sales_daily_by_channel", "bv_comp_store_sales", "bv_loyalty_tier_economics", "bv_promo_lift", "mart_finance_net_sales", "mart_merch_category_sales", "mart_ecom_demand_vs_shipped", "mart_sales_daily", "mart_returns_daily", "mart_promotion_performance", "control_recon_tender_to_transaction", "control_recon_finance_merch_net_sales", "dq_rule_result_current"],
     "expected_row_ranges": {
       "crm.customer": [2700, 3400],
       "pos.transaction": [10000, 65000],
       "pos.transaction_line": [25000, 170000],
       "ecom.order_header": [5000, 35000],
-      "wh.fact_sales_line": [28000, 220000]
+      "wh.fact_sales_line": [28000, 220000],
+      "mv.week_end_sales_snapshot": [150, 300]
     }
   }
 }
